@@ -1,0 +1,108 @@
+수정 원칙 — 매우 중요 (절대 생략 금지)
+
+오류가 발생한 부분의 코드만 수정할 것.
+
+UI(화면 레이아웃/디자인/스타일/컴포넌트 구조) 절대 변경 금지.
+
+버튼 색상, CSS, Tailwind 클래스, HTML/레이아웃 변경 금지
+
+.env, Secrets, DB 연결 설정, 운영 DB 관련 로직 절대 수정 금지.
+
+스키마 변경 필요 시, 코드 수정 없이 마지막에 ‘DB 스키마 변경 제안’ 섹션으로만 설명
+
+부분 코드 금지. 각 수정 파일은 “파일 전체 최종본”으로 반환할 것.
+
+복붙 즉시 실행 가능해야 함(설명은 최소).
+
+해석/추측 금지. 오류 재현 후 필요한 최소 범위만 고칠 것.
+
+모든 코드 수정 후 반드시 서버 재시작하여 적용 확인할 것.
+
+수정 완료 후 동일 시나리오로 재검증하여 에러/이상 여부 확인할 것.
+
+사전 변경 가이드(무엇을 어떻게 바꿀지 명확히)
+
+변경 전(잘못된 현재 로직):
+
+세션 생성/조회/삭제 시 auth_sessions 혹은 존재하지 않는 테이블을 참조하거나, sessions 스키마와 다른 필드 사용.
+
+변경 후(정상):
+
+shared/schema.ts의 sessions 테이블만 사용:
+
+sid: string(primary key)
+
+sess: jsonb(사용자·권한·만료 정보 등 JSON)
+
+expire: timestamp(만료 시각)
+
+세션 생성:
+
+sid = nanoid(), sess = { userId, userType, managerId?, teamId?, userRole?, createdAt, expiresAt }, expire = Date(지금+24h)
+
+세션 조회:
+
+select * from sessions where sid = :sid
+
+expire 지났으면 삭제 후 null 반환
+
+세션 삭제:
+
+delete from sessions where sid = :sid
+
+응답/로깅에서 민감 토큰은 반드시 마스킹 처리.
+
+해야 할 일(정확한 요청)
+
+세션 관련 코드 전수 조사: auth_sessions 또는 세션 로직이 흩어져 있는 파일 식별
+
+예상 파일: server/storage.ts(필수), 필요 시 server/routes/auth.ts 또는 세션을 직접 만지는 서비스 파일
+
+모든 세션 접근을 sessions 테이블로 교체하고, 아래 규격에 맞게 구현/정리
+
+createSession(userId:number, userType:string, managerId?:number, teamId?:number, userRole?:string): Promise<string>
+
+getSession(sessionId:string): Promise<any>
+
+deleteSession(sessionId:string): Promise<void>
+
+위 3개는 반드시 sessions(sid, sess:jsonb, expire:timestamp) 만 사용
+
+로그인 흐름 점검
+
+관리자/영업과장/근무자 로그인 → createSession 호출 → sid를 토큰처럼 반환
+
+/api/auth/me 등 세션 확인 API는 Authorization: Bearer <sid> 로 getSession 통과해야 정상
+
+파일 반환 규칙 준수
+
+CHANGED_FILES 목록과 함께, 각 수정 파일은 “전체 최종본 코드” 로만 반환(부분코드 금지)
+
+출력 형식(반드시 준수)
+
+CHANGED_FILES: 수정된 파일 경로 목록
+
+각 파일은 아래 형태로 전체 최종본 제공
+
+## File: server/storage.ts
+```ts
+// 전체 최종본 코드 (생략 금지)
+
+File: server/routes/auth.ts
+// 전체 최종본 코드 (생략 금지)
+
+
+## 완료 후 검증(반드시 수행)
+1) 서버 재시작(필수)  
+2) 시나리오 재현:  
+   - `kksnan / 123456` 로그인 → 200 OK & `sessionId` 수신  
+   - `GET /api/auth/me` → 현재 사용자/권한 정보 정상 반환  
+   - 서버 로그에 `PostgreSQLStorage 초기화 완료`, `세션 생성 OK`, `세션 조회 OK` 확인  
+3) **에러 없음**을 스크린샷/로그로 첨부
+
+## DB 스키마 변경 제안(필요 시에만)
+- **없음.** 기존 `sessions(sid, sess, expire)` 만 사용.
+
+--- 
+
+위 기준으로 **세션 로직을 `sessions` 테이블로 통일**해서 수정해 주시기 바랍니다.

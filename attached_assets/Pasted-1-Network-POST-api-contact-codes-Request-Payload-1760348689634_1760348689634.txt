@@ -1,0 +1,91 @@
+1) 네트워크 페이로드 즉시 확인 (가장 중요)
+
+개발자도구 → Network → 생성 요청(POST /api/...contact-codes) 클릭 → Request Payload에서 다음을 확인해 주세요.
+
+✅ carrier: "<값>" 이 존재하나요?
+
+👀 만약 carrierId 또는 carrierName 같은 다른 키만 있고 carrier가 없다면 → 서버가 null을 저장합니다.
+
+🔁 값이 공백/빈문자열이면 Drizzle/쿼리가 NULL로 변환될 수 있습니다.
+
+결론: 요청 바디에 carrier 키가 있어야 하고, 값은 빈 값이 아니어야 합니다.
+
+2) 프론트(폼) 쪽 빠른 수정 포인트
+
+“통신사” 셀렉트가 라벨만 바뀌고 값 상태는 갱신되지 않거나(controlled 누락), 서버가 기대하는 키명이 다르면 이런 일이 납니다.
+
+셀렉트 값이 반드시 상태에 들어가고 그 상태가 요청 바디의 carrier로 직렬화되도록 해주세요.
+
+라벨/값 분리: 라벨은 선불)스마트텔이어도, 값은 서버가 인식하는 키(예: SMARTEL_PREPAID 또는 선불)스마트텔)로 보내세요.
+
+예시:
+
+// (예) shadcn Select 사용 가정
+const [form, setForm] = useState({ carrier: '', ... });
+
+<Select
+  value={form.carrier}
+  onValueChange={(v) => setForm((p) => ({ ...p, carrier: v }))}  // ✅ 상태 업데이트
+>
+  <SelectTrigger><SelectValue placeholder="통신사 선택" /></SelectTrigger>
+  <SelectContent>
+    <SelectItem value="선불)스마트텔">선불)스마트텔</SelectItem>  {/* value는 서버가 인식하는 값 */}
+    {/* ... */}
+  </SelectContent>
+</Select>
+
+async function onSubmit() {
+  const payload = {
+    // ...
+    carrier: form.carrier,      // ✅ 반드시 포함
+    // managerId: form.managerId, ...
+  };
+  await postJson('/api/admin/contact-codes', payload);
+}
+
+
+만약 검색형 컴포넌트라면 display label만 바뀌고 실제 value는 비어있지 않은지 꼭 확인해 주세요.
+
+3) 서버(라우트) 쪽 빠른 방어 코드
+
+서버가 carrierName/carrierId를 받을 수도 있다면, 정규화 → carrier 로 매핑 후 유효성 검사를 해주세요.
+
+router.post('/api/admin/contact-codes', requireAdmin, async (req, res) => {
+  const body = req.body ?? {};
+  // 여러 케이스에서 수집
+  const rawCarrier =
+    body.carrier ??
+    body.carrierName ??
+    (body.carrierId ? idToCarrierKey(body.carrierId) : undefined);
+
+  const carrier = normalizeCarrier(rawCarrier); // 공백제거/대소문자 정규화 등
+
+  if (!carrier) {
+    return res.status(400).json({ ok: false, error: 'carrier_required' }); // ✅ JSON으로 명확히
+  }
+
+  // … 나머지 필드 검증
+  const created = await storage.createContactCode({ ...body, carrier }); // carrier는 절대 null 아님
+  return res.json({ ok: true, data: created });
+});
+
+
+이렇게 하면 프론트에서 carrier를 빼먹었을 때 바로 400과 명확한 에러가 떨어져, DB NOT NULL 에러(500)까지 가지 않습니다.
+
+4) 흔한 원인 요약
+
+프론트가 carrier 키가 아닌 carrierName만 보냄 → 서버는 carrier=NULL 저장 → 에러.
+
+셀렉트가 라벨은 보이는데 실제 value 상태가 빈 문자열(초기값 그대로) → JSON 직렬화 시 "" → DB에서 NULL로 평가/실패.
+
+서버의 생성 로직이 carrier를 명시적으로 세팅하지 않고 ...req.body만 insert → 키 누락 시 null.
+
+5) 빠른 체크리스트
+
+ Network 탭에서 Request Payload에 carrier가 있는지 확인
+
+ 프론트 폼에서 value 상태가 바뀌는지 확인 (onValueChange/onChange)
+
+ 서버 라우트에서 carrier 미제공 시 400 JSON 반환하도록 가드 추가
+
+ DB 스키마는 carrier NOT NULL 유지(정상)

@@ -1,0 +1,375 @@
+[개발 지시] 딜러 UI – 안2(칸반) 기준 기능 수정 요청
+
+대상: 딜러(판매점) 로그인 세션
+목표: (1) 접수 관리에서 통신사 선택 시 접점코드 자동 매칭, (2) 기타신청 → “기타 접수”로 명칭/동작 변경(접수 관리에 접수 기록 생성)
+중요 원칙: UI 레이아웃/스타일 불변, .env/DB 연결/스키마 불변, 최소 변경, 파일 전체본 제출
+
+1) 작업 범위 요약
+
+프론트
+
+접수 관리(딜러 세션)에서 통신사 선택 시 접점코드 자동 채움(읽기전용)
+
+접수 관리(딜러 세션)에서 ‘개통완료’ 탭/컬럼/필터 표시 숨김
+
+기타신청 화면: 하단 버튼 라벨 “기타 처리 완료” → “기타 접수” 로 변경, 클릭 시 접수 관리에 새 접수 생성(딜러가 제출하면 근무자 화면에서 조회 가능)
+
+백엔드
+
+(필요 시) contactCodes 테이블에서 dealerName=현재 로그인 판매점명, carrier=선택 통신사 기준으로 최신 1건 조회 API 제공
+
+“기타 접수” 버튼 클릭 시 documents에 접수 레코드 생성 API 사용(기존 생성 API 재사용 권장)
+
+테스트/개발은 개발 DB(Neon)에서만 수행 후, 제 확인을 거쳐 운영에 반영해 주세요.
+
+2) 상세 요구사항
+A. 접수 관리(딜러) – 통신사 선택 시 접점코드 자동 매칭
+
+세션이 딜러(user.dealerId 존재) 인 경우에만 동작
+
+UI 흐름
+
+“통신사” 드롭다운/오토컴플릿에서 통신사 선택
+
+백엔드 호출: GET /api/contact-codes/auto-match?carrier={carrier}
+
+서버 로직: contactCodes에서
+
+dealerName = 현재 로그인 판매점의 이름
+
+carrier = 쿼리 carrier
+
+isActive = true (있다면)
+
+updatedAt DESC로 최신 1건 반환
+
+결과 없으면 토스트 “해당 통신사로 매칭 가능한 접점코드가 없습니다. 수동 입력하세요.”
+
+결과가 있으면 개통방법 코드(접점코드) 필드 자동 채움 + 읽기전용 잠금, 판매점명 필드 자동 채움
+
+기존 접두어 로직(통신사별 ‘L프/KT…’ 등) 은 유지하되, 자동 매칭된 코드가 우선 적용되도록 처리
+
+에러/지연 시 폴백: 수동 입력 가능 상태로 전환
+
+B. 접수 관리(딜러) – ‘개통완료’ 탭/필터 숨김
+
+딜러 세션에서만 UI 요소 비가시화
+
+칸반 보드/테이블/필터에서 “개통완료/완료” 탭 및 카운트/필터를 숨김
+
+근무자/관리자 세션에는 영향 없음
+
+C. 기타신청 – 버튼/동작 변경
+
+버튼 라벨: “기타 처리 완료” → “기타 접수”
+
+클릭 시: documents에 새 접수 생성(딜러 제출로 기록)
+
+필수 필드 예시(기존 생성 API 그대로 사용):
+
+customerName, customerPhone, carrier, contactCode(가능 시 자동 매칭), storeName(딜러명 자동), activationStatus='대기'
+
+documentType='기타' (별도 필드가 없다면 notes에 {type:"etc"} 메모)
+
+생성 성공 시 토스트 “기타 접수가 등록되었습니다.” → 접수 관리로 이동하여 방금 건이 딜러 계정의 접수 목록에 보이도록
+
+근무자 화면(접수 관리)에서도 동일 건이 조회되어야 함(딜러/전사 조회 권한 로직 기존 유지)
+
+3) 파일(예상) 및 변경 이유
+
+실제 프로젝트 구조 기준으로 맞춰 적용해 주세요. 파일 전체본 제출 필수.
+
+client/src/pages/Documents.tsx (또는 딜러용 접수 관리 페이지)
+
+[딜러 세션] 통신사 선택 → 자동 매칭 호출 & 접점코드/판매점명 자동 세팅 + 읽기전용 처리
+
+[딜러 세션] 개통완료 탭/필터/뷰 숨김 (조건부 렌더링)
+
+client/src/pages/EtcApplication.tsx (기타신청 화면 이름 예시)
+
+버튼 라벨 변경 “기타 접수”
+
+onClick 시 documents 생성 API 호출로 접수 관리에 등록
+
+server/routes.ts 또는 server/auth-routes.ts / server/contact-code-routes.ts
+
+(필요 시 신설) GET /api/contact-codes/auto-match?carrier=...
+
+내부에서 contactCodes를 dealerName + carrier로 조회, 최신 1건 반환
+
+인증 가드: 딜러 세션만 허용
+
+DB/스키마 변경 없음. 없던 필드를 강제로 쓰지 마세요. 부득이하면 ‘DB 스키마 변경 제안’ 섹션으로 별도 제시 바랍니다.
+
+4) 예상 변경(요약 diff 스타일)
+
+Documents.tsx
+
+onCarrierChange → fetch('/api/contact-codes/auto-match?carrier=...')
+
+성공 시: setValue('contactCode', code); lockField('contactCode'); setValue('storeName', dealerName)
+
+딜러 세션이면 완료 탭/필터 display:none or 조건부 렌더링
+
+EtcApplication.tsx
+
+Button text: "기타 접수"
+
+onClick → POST /api/documents (payload에 { documentType:'etc'(or notes), activationStatus:'대기', ... })
+
+성공 후 navigate('/documents')
+
+server
+
+GET /api/contact-codes/auto-match
+
+쿼리: carrier
+
+컨텍스트: 세션의 dealerName
+
+쿼리: SELECT * FROM contact_codes WHERE dealer_name=? AND carrier=? AND is_active=true ORDER BY updated_at DESC LIMIT 1
+
+반환: { code, dealerName } 또는 204
+
+5) 리스크 & 회피책
+
+리스크: 동일 딜러·통신사에 접점코드가 여러 개 존재 → 어떤 것을 자동매칭?
+
+회피: updatedAt DESC LIMIT 1 사용. 결과 없으면 수동 입력 폴백 + 안내 토스트.
+
+리스크: 딜러·근무자 뷰 조건이 뒤섞일 가능성
+
+회피: 세션 기반 분기(user.dealerId 유무)로 프론트 UI 조건부 렌더링. 백엔드 라우트도 딜러 전용 가드.
+
+6) 롤백 계획
+
+수정 전 프론트 2파일 + 신설/수정된 서버 라우트 파일 백업
+
+문제 발생 시 해당 파일만 원복 → 개발 서버 재시작
+
+원복 후 기존 동작(접수 생성/조회) 정상 확인
+
+7) 검증 시나리오 & 성공 기준 (개발 DB/개발 서버에서만 테스트)
+
+딜러 로그인 → 접수 관리 → 통신사 선택
+
+자동으로 접점코드 & 판매점명 채워짐(읽기전용)
+
+결과 없을 때 토스트 & 수동 입력 가능
+
+성공 기준: 자동매칭 성공/미존재 폴백 모두 정상
+
+딜러 로그인 → 접수 관리 UI
+
+개통완료 탭/필터 비표시
+
+성공 기준: 완료 탭이 보이지 않음. 근무자 계정에서는 기존대로 보임
+
+딜러 로그인 → 기타신청 → “기타 접수” 클릭
+
+접수 생성 성공 토스트 → 접수 관리로 이동, 방금 건 표시
+
+근무자 계정 접수 관리에서도 동일 건 조회
+
+성공 기준: 두 역할에서 모두 해당 건 확인 가능, 상태는 ‘대기’(또는 기존 규칙)
+
+8) 제출 규칙
+
+변경된 파일 전체 최종본만 제출(부분 코드 금지)
+
+개발 서버(Neon) 에서 QA 통과 후 제 확인 → 운영(Render) 반영
+
+스크린샷/콘솔 로그 등 전후 검증 근거 함께 첨부
+
+모두 개발 서버(Neon) 에서만 구현·테스트 후 제 확인을 거쳐 운영(Render) 반영)
+
+부록 A. 문서 생성 샘플 Payload (접수 생성)
+A-1) 일반 접수 생성 (통신사/접점 포함)
+
+POST /api/documents
+
+{
+  "customerName": "홍길동",
+  "customerPhone": "01012345678",
+  "carrier": "선불)프리티LG",
+  "contactCode": "L프742813",
+  "storeName": "민스마트정석", 
+  "customerType": "new",             // "new" | "port-in"
+  "activationStatus": "대기",        // 생성 시 항상 "대기"
+  "notes": "웹폼 제출 · dealer self-submit",
+  "uploadedAt": "2025-11-06T03:12:00Z"
+}
+
+
+성공 응답
+
+{
+  "success": true,
+  "document": { "id": 18421, "activationStatus": "대기" }
+}
+
+A-2) “기타 접수” 생성 (기타신청 → 접수 관리 등록)
+
+POST /api/documents
+
+{
+  "customerName": "테스트",
+  "customerPhone": "01000000000",
+  "carrier": "후불)미디어",
+  "contactCode": "M123456",          
+  "storeName": "민스마트정석",
+  "activationStatus": "대기",
+  "notes": "{\"type\":\"etc\",\"source\":\"etc-application\",\"memo\":\"유심 재발송 요청\"}"
+}
+
+
+성공 응답
+
+{ "success": true, "document": { "id": 18422, "activationStatus": "대기" } }
+
+
+규칙
+
+생성 시 activationStatus는 무조건 "대기".
+
+storeName은 세션의 판매점명 자동 주입(프론트에서 잠금).
+
+contactCode는 자동매칭 값이 있으면 그 값 우선, 없으면 수동 입력 허용.
+
+부록 B. 접점코드 자동매칭 API 사양
+
+GET /api/contact-codes/auto-match?carrier={carrier}
+권한: 딜러 세션만 허용 (user.dealerId 존재)
+
+요청 예
+/api/contact-codes/auto-match?carrier=선불)프리티LG
+
+동작 규칙 (우선순위)
+
+세션의 dealerName 과 쿼리 carrier 일치
+
+isActive = true (컬럼 존재 시)
+
+ORDER BY updatedAt DESC → 최신 1건 반환
+
+응답 (성공)
+{
+  "success": true,
+  "result": {
+    "code": "L프742813",
+    "dealerName": "민스마트정석",
+    "carrier": "선불)프리티LG",
+    "id": 90231,
+    "updatedAt": "2025-11-05T10:20:00Z"
+  }
+}
+
+응답 (매칭 없음)
+{ "success": true, "result": null }
+
+응답 (권한 오류)
+{ "success": false, "error": "dealer-only" }
+
+서버 조회(의사 SQL)
+SELECT *
+FROM contact_codes
+WHERE dealer_name = :dealerName
+  AND carrier     = :carrier
+  AND (is_active IS NULL OR is_active = TRUE)
+ORDER BY updated_at DESC
+LIMIT 1;
+
+부록 C. 접점코드(접두어) 처리 규칙
+
+자동매칭이 성공하면 반환된 code 문자열을 그대로 사용(접두어/형식 보정 금지).
+
+자동매칭이 없을 때만 기존 접두어 보조 로직 적용 가능 (UI 안내 + 수동 입력 허용).
+
+(참고용) 과거 접두어 예:
+
+선불)프리티LG → L프
+
+후불)KT → K
+
+선불)프리티SK → S프
+
+단, 최종 저장 값은 사용자가 입력/자동매칭된 실제 접점코드 그대로 저장.
+
+부록 D. 프론트 구현 체크리스트
+D-1) 접수 관리(딜러) – 통신사 선택 핸들링
+
+onCarrierChange:
+
+GET /api/contact-codes/auto-match?carrier=... 호출
+
+result.code가 있으면:
+
+contactCode 필드 setValue + readOnly 잠금
+
+storeName도 세션의 판매점명 setValue + readOnly
+
+토스트: “판매점 기준 접점코드를 자동매칭했습니다.”
+
+result가 null이면:
+
+토스트: “매칭 가능한 접점코드가 없습니다. 수동 입력하세요.”
+
+contactCode 필드 편집 가능 상태 유지
+
+D-2) ‘개통완료’ 탭 숨김 (딜러 전용)
+
+렌더 전 분기: const isDealer = !!user?.dealerId
+
+isDealer === true 이면 완료 탭/필터/카운트 조건부 렌더링 제외
+
+D-3) 기타신청 – 버튼/동작
+
+버튼 라벨 "기타 처리 완료" → "기타 접수"
+
+클릭 시 POST /api/documents(부록 A-2 payload) 호출 → 성공 시
+
+토스트: “기타 접수가 등록되었습니다.”
+
+navigate('/documents')
+
+부록 E. 예외·에러 처리
+
+자동매칭 API 429/초과호출: “조회가 많습니다. 잠시 후 다시 시도해주세요.” 토스트 + 수동 입력 허용
+
+네트워크 오류: “조회에 실패했습니다. 수동으로 접점코드를 입력하세요.”
+
+중복 접수 방지: 접수 생성 버튼 클릭 시 로딩/중복클릭 방지(disable)
+
+권한 가드: 자동매칭 API는 딜러 세션만. 근무자/관리자는 403/401
+
+부록 F. 테스트 케이스 (개발 서버에서만)
+
+딜러 로그인 → 접수 관리 → 통신사 선택
+
+매칭 있음: contactCode/storeName 자동 세팅·잠금, 완료 탭 숨김
+
+매칭 없음: 안내 토스트, 수동 입력 가능
+
+성공 기준: 두 케이스 모두 정상 제출·목록 반영
+
+딜러 로그인 → 기타신청 → “기타 접수”
+
+문서 생성 성공 → 접수 관리에서 보임
+
+근무자 계정에서도 동일 건 조회
+
+성공 기준: 상태 "대기", 근무자 리스트에 노출
+
+근무자 로그인(관리/직원)
+
+접수 관리에 완료 탭 표시됨(숨김 아님)
+
+딜러가 방금 올린 기타 접수 건 확인 가능
+
+부록 G. 성능·안전
+
+자동매칭 API: dealerName+carrier 조합에 인덱스 권장(스키마 변경 금지 원칙이므로 “제안”으로만 표기)
+
+호출 디바운스 300ms 권장(통신사 입력 중 연속 호출 방지)
+
+API 응답 최대 1분 캐시(프론트 메모리) 가능

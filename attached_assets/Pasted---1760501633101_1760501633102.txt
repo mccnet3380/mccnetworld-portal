@@ -1,0 +1,243 @@
+[사전 변경 안내 — ‘접두어 자동입력 + 뒤자리만 입력’ 초고속 조회로 전환]
+
+목적(한 줄)
+- 통신사 선택 시 접점코드의 접두어를 자동 채워 넣고, 사용자는 뒤자리(숫자)만 입력하면 즉시 단건 조회되도록 하여 반응 속도를 200ms 내로 단축한다. (보조 검색 버튼은 예외용으로만 제공)
+
+변경 범위
+- 프론트: SubmitApplication.tsx (코드 입력 UX 변경)
+- 백엔드: 단건 조회 API 추가(GET /api/contact-codes/by-code)
+- DB: (carrier, code) 복합 인덱스 추가
+- 기존 자동완성 API는 유지하되 기본 경로에선 사용 안 함
+
+1) 접두어 매핑 & UI
+- 통신사 선택 시 코드 입력란을 ‘접두어 잠금 + 뒤자리 입력’ 형태로 전환
+  예) 통신사=후불)미디어 → 접두어 ‘L미’ 자동 표시/고정, 커서는 접두어 뒤에 위치
+- 사용자는 뒤 5~6자리(실제 포맷에 맞춤)만 입력 → 엔터/포커스아웃 시 조회
+- 접두어는 읽기 전용(span) + 뒤자리는 입력(input)으로 구성 (마스킹/포맷팅)
+- 코드 전체 미리보기(회색): L미-587860 형태로 동시 표기
+- 실패 시: “해당 코드가 없습니다. [검색 열기]” 토스트 + 보조 검색 버튼 제공
+- 통신사 변경 시: 접두어 자동 갱신, 뒤자리 입력값 초기화
+
+2) 백엔드 API (단건 조회)
+- GET /api/contact-codes/by-code?carrier=…&code=…
+  - carrier: 선택된 통신사 키 (필수)
+  - code: ‘전체 코드 문자열(접두어+숫자)’ 또는 ‘숫자 뒤자리’ 중 하나
+  - 동작:
+    - 서버에서 carrier별 접두어 테이블을 참조하여 최종 full_code를 구성
+    - 정확 일치 단건 SELECT 후 {id, code, name, carrier, …} 반환 (없으면 404/204)
+- 보안/검증:
+  - carrier 없는 요청은 400
+  - code 길이/패턴 검증(숫자 5~6자 등) 실패 시 422
+
+3) DB 인덱스
+```sql
+-- 정확 일치 단건 조회용 (가장 중요)
+CREATE INDEX IF NOT EXISTS idx_contact_codes_carrier_code
+  ON contact_codes(carrier, code);
+프론트 로직 (요약)
+
+상태: carrier, prefix, suffix
+
+prefix = carrier 선택 시 매핑표로 결정
+
+사용자가 suffix 입력 → onBlur 또는 Enter 에서 fetch:
+GET /api/contact-codes/by-code?carrier=X&code=<prefix+suffix>
+
+성공: 판매점명/연관 필드 자동 채우기, 코드 확정
+
+실패: 토스트 + “검색 열기” 버튼 표시 → 기존 검색 모달로 fallback
+
+브라우저 자동완성/자동저장 무력화(폼 및 인풋에 autoComplete="off"/"new-password")
+
+접두어 매핑 테이블 (예시)
+
+코드에 하드코딩하지 말고 상수 테이블/설정으로 관리
+
+ts
+코드 복사
+const CODE_PREFIX_MAP: Record<string, string> = {
+  '후불)미디어': 'L미',
+  'SKB-EI': 'SEI',
+  'LG-탑'   : 'LT',
+  // ...
+};
+백엔드에서도 동일 매핑을 공유(공용 config)하여 by-code API가 신뢰할 수 있게
+
+성공 기준
+
+통신사 선택 → 뒤자리만 입력 → 엔터 시 0.2~0.4초 내 판매점명이 자동 채워짐
+
+자동완성 드롭다운이 나타나지 않고, 입력 지연이 사실상 0에 수렴
+
+예외 케이스는 “검색 열기”로 대체 가능
+
+롤백
+
+프론트에서 접두어 UI를 숨기고 기존 자동완성으로 즉시 복귀 가능
+
+복합 인덱스는 유지해도 부작용 없음
+
+yaml
+코드 복사
+
+---
+
+### 어떤 방식이 더 나은가요?
+- **속도/안정성 우선**이면 지금 제안한 **접두어 자동입력 + 단건 조회**가 최선입니다.  
+- **유연한 검색(불완전 입력/오타 허용)**이 더 중요하면 자동완성도 필요하지만, 기본 경로는 단건 조회로 두고, **예외시에만 검색 모달**로 여는 하이브리드가 UX·성능 모두에서 이득입니다.
+
+
+
+
+나의 말:
+자동 기억? 자동 저장 기능 삭제도 들어가있는 프롬프트를 만들어줘
+
+
+ChatGPT의 말:
+
+10s 동안 생각함
+아래 “붙여넣기용 프롬프트”를 Replit에 전달해 주세요.
+(접수 폼 개편 + 자동기억/자동저장 전면 비활성화까지 포함)
+
+csharp
+코드 복사
+[사전 변경 안내 — 접수 폼 고속화 + ‘자동 기억/자동 저장’ 전면 비활성화]
+
+목적(한 줄)
+- 접수 신청 UX를 “통신사 선택 → 코드 뒤자리만 입력”으로 단순/고속화하고, 브라우저/패스워드매니저/앱 로컬드래프트의 자동기억·자동저장을 전역 차단한다.
+
+변경 범위
+- 프론트: client/src/pages/SubmitApplication.tsx (+ 공통 Form/Input 컴포넌트)
+- 백엔드: GET /api/contact-codes/by-code (단건 조회 API)
+- DB: (carrier, code) 복합 인덱스
+- 전역: 자동완성/자동저장 방지 속성 적용, 로컬 드래프트 저장 제거
+
+────────────────────────────────
+1) UI/동작 변경 — 접두어 자동입력 + 뒤자리만 입력
+────────────────────────────────
+- 섹션 순서: [통신사 정보] → [고객 정보]로 렌더 순서 변경(포커스/탭 순서 포함)
+- 통신사 선택 시 접점코드 접두어를 자동 고정(읽기전용)하고, 사용자는 ‘숫자 뒤자리’만 입력
+  예) 후불)미디어 선택 → 접두어 ‘L미’ 자동 고정 → 뒤 6자리 입력 → 엔터/포커스아웃 시 조회
+- 실패 시 토스트 “코드 없음. [검색 열기]” + 예외용 검색 모달 버튼 제공(보조)
+- 통신사 변경 시 접두어 갱신 + 뒤자리 초기화
+- 접두어 매핑은 공용 상수로 관리:
+  ```ts
+  export const CODE_PREFIX_MAP: Record<string,string> = {
+    '후불)미디어': 'L미',
+    'SKB-EI': 'SEI',
+    'LG-탑': 'LT',
+    // ...
+  };
+백엔드 단건 조회 API
+
+GET /api/contact-codes/by-code?carrier=…&code=…
+
+carrier(필수), code: 접두어+뒤자리 전체 문자열
+
+200: {id, code, name, carrier}, 404/204: 없음, 400: carrier 누락, 422: 패턴 불일치
+
+DB 인덱스
+
+sql
+코드 복사
+CREATE INDEX IF NOT EXISTS idx_contact_codes_carrier_code
+  ON contact_codes(carrier, code);
+성공 기준
+
+통신사 선택 → 뒤자리 입력 → 엔터 시 0.2~0.4초 내 판매점명 자동 채움
+
+일반 자동완성 드롭다운 없이 입력 지연 체감 0에 수렴
+
+────────────────────────────────
+2) ‘자동 기억/자동 저장’ 전면 비활성화 (브라우저/확장/로컬 모두)
+────────────────────────────────
+전역 전략
+
+모든 제출 폼과 주요 인풋에 자동완성/자동저장 차단 속성 부여
+
+브라우저/패스워드 관리자(LastPass/1Password 등) 무시 플래그 추가
+
+앱 레벨의 로컬 드래프트 저장(localStorage/sessionStorage) 제거
+
+A) 폼/인풋 속성(공통 컴포넌트로 일괄 적용)
+
+최상위 <form>:
+
+jsx
+코드 복사
+<form autoComplete="off" aria-autocomplete="none" data-form="no-autosave">
+  {/* 크롬 완전 차단용 더미 */}
+  <input type="text"  style={{display:'none'}} autoComplete="username" />
+  <input type="password" style={{display:'none'}} autoComplete="new-password" />
+  …
+</form>
+모든 입력 필드 기본 속성:
+
+jsx
+코드 복사
+<Input
+  autoComplete="off"
+  autoCapitalize="off"
+  autoCorrect="off"
+  spellCheck={false}
+  data-lpignore="true"     // LastPass 무시
+  data-1p-ignore="true"    // 1Password 무시
+  inputMode={/* tel/email/numeric 등 필드에 맞춤 */}
+  name={`mcc_${logicalName}`} // 너무 일반적인 name 피함(name/phone/email 등)
+/>
+전화번호 필드: inputMode="tel" + autoComplete="new-password"
+
+이메일/이름 등 민감 정보: autoComplete="new-password"로 강제 차단
+
+B) 로컬 드래프트 저장 제거
+
+SubmitApplication.tsx 및 관련 훅에서 localStorage/sessionStorage 사용한 임시 저장 로직 전부 제거/주석
+
+잔존 시그널 탐지: 프로젝트 전역 검색 localStorage|sessionStorage|draft|persist
+
+필요 시 “페이지 이탈 경고”는 유지하되 실제 값 저장은 금지
+
+C) 브라우저별 예외 케이스 대응
+
+iOS Safari 자동수정 방지: autoCapitalize="off" autoCorrect="off" spellCheck={false}
+
+크롬 계열 자동채움 집요 시: 필드 name을 랜덤/네임스페이스 접두어로 변경(위 mcc_)
+
+검증 기준
+
+전화번호/이메일/이름 등 어떤 필드에도 과거 값 드롭다운/자동채움이 표시되지 않음
+
+비밀번호 관리자 확장(LastPass/1Password)이 개입하지 않음
+
+로컬 저장된 드래프트가 생성되지 않음
+
+────────────────────────────────
+3) 테스트 시나리오
+────────────────────────────────
+
+통신사 선택 → 접두어 자동 고정 → 뒤자리 입력 → 엔터: 0.4초 내 판매점명 자동 채움
+
+통신사 변경 → 접두어/입력값 초기화, 이전 결과 미노출
+
+크롬/엣지/사파리(모바일 포함)에서 자동완성/자동저장 제안 전혀 없음
+
+새로고침/재방문해도 과거 입력값 제안/자동 채움 없음
+
+────────────────────────────────
+4) 배포/롤백
+────────────────────────────────
+
+DB 인덱스 → 백엔드 API → 프론트 순으로 적용
+
+문제 시 프론트는 기존 자동완성 경로로 즉시 롤백 가능(속성은 유지해도 무방)
+
+yaml
+코드 복사
+
+--- 
+
+원하시면, 위 “자동완성/자동저장 차단”을 **공통 Form/Input 컴포넌트**로 묶는 간단한 패치 코드 예시도 추가로 드리겠습니다.
+
+
+
+

@@ -1,0 +1,109 @@
+목표
+판매점이 접수하면 /dealer-dashboard의 신청 현황에 즉시 표시되도록 전 구간(프론트 호출 → 서버 라우트 → DAO 쿼리 → 필터)을 점검·수정한다. UI 변경 금지.
+
+0) 위치 먼저 찾기 (경로 모르면 전역 검색)
+
+프론트: DealerDashboard.tsx (또는 동일 기능 파일), queryClient.ts
+
+서버: GET /api/dealer/applications 라우트, POST /api/documents 생성 라우트
+
+DAO/Storage: getDocuments(...) 구현부
+
+1) 프론트 수정
+
+API 호출 보장
+
+useQuery({ queryKey:["/api/dealer/applications"] })가 실제 fetch(queryKey[0]) 실행되는지 확인.
+
+페이지 마운트 시 로그 추가:
+
+console.log("[DealerDashboard] mount");
+
+
+응답 스키마 방어:
+
+const documents = Array.isArray(data) ? data : (data?.data ?? []);
+
+
+필터 기본값 점검
+
+기간을 “최근 7일” 또는 “전체(KST 기준)”로.
+
+상태/문서종류 초기 필터 때문에 0건 되지 않게.
+
+2) 서버: GET /api/dealer/applications 보강（필수）
+
+아래 형태로 로그 + 안전한 조회 분기 추가:
+
+router.get('/api/dealer/applications', requireAuth, async (req,res)=>{
+  const userId = req.session?.userId;
+  const userType = req.session?.userType;
+  const FALLBACK = (process.env.DEALER_USER_FALLBACK ?? 'on').toLowerCase()==='on';
+  console.log('[DEALER_DASHBOARD] hit', { userId, userType });
+
+  if (userType !== 'user') return res.status(403).json({ error:'DEALER_ONLY' });
+
+  const user = await storage.getUserById(userId!);
+  if (!user) return res.status(403).json({ error:'USER_NOT_FOUND' });
+
+  let rows:any[] = [];
+  if (user.dealerId) {
+    rows = await storage.getDocuments({ dealerId: user.dealerId });
+    console.log('[DEALER_DASHBOARD] by dealerId', { dealerId:user.dealerId, count:rows.length });
+    if (rows.length===0 && FALLBACK) {
+      const r2 = await storage.getDocuments({ userId });
+      console.log('[DEALER_DASHBOARD] fallback userId', { userId, count:r2.length });
+      rows = r2;
+    }
+  } else if (FALLBACK) {
+    rows = await storage.getDocuments({ userId });
+    console.log('[DEALER_DASHBOARD] no dealerId → userId', { userId, count:rows.length });
+  } else {
+    return res.status(403).json({ error:'DEALER_ID_MISSING' });
+  }
+  return res.json(rows);
+});
+
+3) 서버: POST /api/documents 생성 시 필수 저장（필수）
+
+생성 시 반드시:
+
+document.user_id  = req.session.userId;
+document.dealer_id = resolvedDealerIdOrNull; // 가능하면 채움
+document.dealer_name_snapshot    = req.body.storeName || dealer?.name || '';
+document.contact_code_snapshot   = req.body.contactCode || '';
+console.log('[DocCreate]', { userId:req.session.userId, dealerId:document.dealer_id, code:req.body.contactCode, store:req.body.storeName });
+
+4) DAO 쿼리 정확화（필수）
+
+getDocuments({ dealerId }) → WHERE dealer_id = :dealerId ORDER BY created_at DESC
+
+getDocuments({ userId }) → WHERE user_id = :userId ORDER BY created_at DESC
+
+항상 배열 반환.
+
+5) 수용 기준（검증 체크리스트）
+
+ /dealer-dashboard 진입 시 네트워크 탭에 /api/dealer/applications 호출 보임.
+
+ 판매점 계정으로 접수 후 신청 현황 ‘전체’에 즉시 1건 표시.
+
+ 서버 로그에
+
+[DocCreate] … dealerId=…
+
+[DEALER_DASHBOARD] … count: …
+가 찍힘.
+
+ 기간/상태/종류 기본 필터 때문에 0건이 되는 케이스가 재현되지 않음.
+
+ 에러 시 403/500 코드와 원인 문자열이 반환·표시됨.
+
+6) 문제가 계속되면 추가 로그
+
+GET /api/dealer/applications 상단에:
+
+console.log('[DEALER_DASHBOARD] headers-cookie-exist', !!req.headers.cookie);
+
+
+쿠키 미첨부(CORS/도메인)로 세션이 안 붙는지 즉시 확인.

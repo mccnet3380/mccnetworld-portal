@@ -1,0 +1,163 @@
+[사전 변경 안내]
+수정 목적(한 줄)
+- 배치 파일(여러 장) 처리 시 미리보기 누락, 통계 중복(3장=3건), 당일 현황 0건 이슈를 백엔드에서 해결한다. (notes의 batch_meta 보존 + 통계 쿼리에서 child 문서 제외)
+
+해결할 오류 / 재현 절차
+- 3장 업로드 → 개통 처리
+  · 서류 관리: 다운로드 1개만, 썸네일 미표시 ❌
+  · 대시보드: 당월 개통수량 3건으로 표기(실제 1건) ❌
+  · 당일 현황: 0건으로 표기 ❌
+
+변경 범위 요약
+- 백엔드: server/storage.ts
+  1) updateDocument()의 singleOnly/notes 처리 → 빈 문자열/undefined를 SET하지 않도록 수정(기존 batch_meta 보존)
+  2) 통계 쿼리(getMonthlyActivationSummary, getTodayStats) → child 문서(`"isChild":true`) 제외
+- 프론트/DB/환경변수/스타일: 변경 없음
+
+수정 파일 목록
+- server/storage.ts (단일 파일)
+
+요구 사항(절대 준수)
+- 기존 API 시그니처/응답 구조 불변
+- 트랜잭션/권한/검증 로직은 유지
+- SQL/빌더에서 child 제외는 안전한 LIKE 패턴 사용
+- notes에 있는 batch_meta는 절대로 덮어쓰지 않음(빈 문자열 방지)
+
+[수정 지시]
+
+1) 상단 유틸/플래그 보강(중복 import 금지)
+----------------------------------------------------------------
+import { sql, and, eq, gte, lte } from "drizzle-orm";
+import { documents } from "@/server/db/schema";
+
+const LOG_BATCH_DEBUG =
+  (process.env.LOG_BATCH_DEBUG ?? "").toLowerCase() === "true" ||
+  (process.env.APP_ENV ?? "development") !== "production";
+
+function logBatch(...args: any[]) {
+  if (LOG_BATCH_DEBUG) console.log("[BATCH_PROCESS]", ...args);
+}
+
+/** child 문서 판별용 SQL 패턴: notes LIKE %\"isChild\":true% */
+const CHILD_LIKE = `%\\"isChild\\":true%`;
+----------------------------------------------------------------
+
+2) updateDocument() 에서 notes 보존
+- 현재 singleOnly를 구성할 때 `notes: ""`(또는 undefined)가 들어가 batch_meta가 지워지는 문제가 있으므로,
+  singleOnly에는 `notes`가 **빈 문자열/undefined/null**이면 포함하지 않도록 가드 추가.
+- 배치 동기화(activationStatus 변경) 시에도 동일 가드 적용.
+
+핵심 변경 블록(개념, 기존 로직에 아래 가드만 추가)
+----------------------------------------------------------------
+/* ... 기존 updateDocument 시그니처/트랜잭션 유지 ... */
+
+// singleOnly 구성 시
+const singleOnly: Record<string, any> = {};
+for (const k of Object.keys(data)) {
+  if (k === "activationStatus" || k === "activatedBy" || k === "activatedAt") continue;
+
+  // ✅ notes 보존 가드: 빈 문자열/undefined/null이면 SET하지 않음
+  if (k === "notes") {
+    const nv = (data as any)[k];
+    if (nv === "" || nv === undefined || nv === null) {
+      // skip: batch_meta 보존
+      continue;
+    }
+  }
+  singleOnly[k] = (data as any)[k];
+}
+
+// 배치 동기화 분기에서도 동일: notes가 비어있으면 set 안 함
+// const updateData = {...} // 기존 유지
+// ... 이후 기존 로직 그대로
+----------------------------------------------------------------
+
+3) 통계 쿼리 수정 — child 제외
+- getMonthlyActivationSummary, getTodayStats 내부에서 집계 대상을
+  “child 문서 제외(= 부모/대표 row만)”로 제한.
+- 텍스트 notes 기준이므로 LIKE 사용.
+
+예시 A) 월간 개통수량 (개념)
+----------------------------------------------------------------
+export async function getMonthlyActivationSummary(db, y: number, m: number) {
+  const monthStart = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+  const monthEnd   = new Date(Date.UTC(y, m, 0, 23, 59, 59));
+
+  // activationStatus 가 '개통'(또는 프로젝트 상 정의된 완료 상태) 조건은 기존 그대로
+  // ✅ child 제외: notes NOT LIKE CHILD_LIKE
+  const rows = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(
+      gte(documents.activatedAt, monthStart),
+      lte(documents.activatedAt, monthEnd),
+      sql`${documents.activationStatus} = '개통'`,
+      sql`${documents.notes} NOT LIKE ${CHILD_LIKE}`
+    ));
+
+  // 부모 row만 카운트 → 중복(3장=3건) 제거
+  const count = rows.length;
+
+  logBatch("MonthlySummary", { y, m, count });
+  return { count };
+}
+----------------------------------------------------------------
+
+예시 B) 당일 현황 (개념)
+----------------------------------------------------------------
+export async function getTodayStats(db, tzNow?: Date) {
+  const now = tzNow ?? new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0,0,0));
+  const end   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23,59,59));
+
+  const rows = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(
+      gte(documents.activatedAt, start),
+      lte(documents.activatedAt, end),
+      sql`${documents.activationStatus} = '개통'`,
+      sql`${documents.notes} NOT LIKE ${CHILD_LIKE}`
+    ));
+
+  const count = rows.length;
+  logBatch("TodayStats", { date: start.toISOString().slice(0,10), count });
+  return { count };
+}
+----------------------------------------------------------------
+
+※ 실제 함수/이름/상태값은 프로젝트 코드에 맞춰 동일하게 유지하고, WHERE 절에 `AND notes NOT LIKE CHILD_LIKE` 만 추가해 주세요.
+
+4) (선택) 미리보기 보장용 확인 로그
+- 개통 처리 직후, 부모 row의 notes에 batch_meta(예: attachments/파일 배열 메타)가 있는지 로그:
+----------------------------------------------------------------
+logBatch("Created attachments:", { count: (attachments?.length ?? 0) });
+----------------------------------------------------------------
+
+[검증 시나리오 & 성공 기준]
+시나리오 1) 배치 파일 미리보기
+- 3장 업로드 → 개통 처리 → 서류 관리
+  ✅ 썸네일 3개 표시(프론트 변경 없이, notes의 batch_meta 보존으로 해결)
+  ✅ DB: `SELECT notes FROM documents WHERE id=<parent>`에 batch_meta 존재
+
+시나리오 2) 당월 개통수량
+- 같은 배치(3장) 개통 후 대시보드 확인
+  ✅ ‘당월 개통수량’ = 1건 (child 제외 카운트)
+
+시나리오 3) 당일 현황
+- 오늘 개통 1건 처리
+  ✅ ‘당일 개통건수’ = 1
+
+로그 확인
+- `[BATCH_PROCESS] Created attachments: count=3`
+- `[BATCH_PROCESS] MonthlySummary { y, m, count: 1 }`
+- `[BATCH_PROCESS] TodayStats { date: 'YYYY-MM-DD', count: 1 }`
+
+리스크와 회피책
+- 통계 수치가 이전과 달라 보일 수 있음(이전이 중복 카운트였음). 공지 문구 권장: “배치 중복 제거 반영”.
+- LIKE 기반 필터는 notes 포맷을 전제로 함 → 포맷 변경 시 테스트 필요.
+
+롤백 계획
+- server/storage.ts만 원복:
+  git checkout HEAD~1 -- server/storage.ts
+- 또는 singleOnly의 notes 가드/통계 WHERE 조건을 제거하고 재배포

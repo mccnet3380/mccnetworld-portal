@@ -1,0 +1,107 @@
+수정 목적 (한 줄)
+
+파일 보기 시 Blob의 MIME 타입을 명시하고 비정상 응답 가드를 추가하여 새 탭에서 이미지/PDF가 바로 렌더링되도록 복구.
+
+해결할 오류 / 재현 절차
+
+증상
+
+접수 관리 → 첨부파일 있는 행 → 📄 보기 클릭
+
+새 탭에서 빈 페이지 또는 {"error":"인증이 필요합니다"}만 표시
+
+다운로드는 정상(파일 자체는 존재)
+
+원인
+
+response.blob()로 받은 데이터를 MIME 타입 없이 Blob 생성 → 브라우저가 미리보기 불가
+
+(부가) 서버가 에러(JSON) 반환 시에도 그대로 Blob을 열어 에러 텍스트가 새 탭에 표시
+
+변경 범위 요약
+
+프론트엔드 1파일만 수정: client/src/pages/Documents.tsx
+
+handleViewFile에서:
+
+자격증명 포함 요청 보장: credentials: 'include' (동일 도메인이어도 명시)
+
+응답 가드: !response.ok면 에러 메시지 토스트/얼럿 후 중단
+
+Content-Type 추출: response.headers.get('Content-Type')
+
+타입 지정 Blob 재생성: new Blob([raw], { type: contentType || 'application/octet-stream' })
+
+objectURL 오픈 + 정리: window.open(url, '_blank','noopener') → 사용 후 URL.revokeObjectURL
+
+백엔드/환경/DB/스키마/스타일: 변경 없음
+
+수정 파일 목록
+
+client/src/pages/Documents.tsx
+
+함수: handleViewFile (또는 동일 역할 함수)
+
+예상 변경 내용 (요약 diff·개념)
+
+Before
+
+const blob = await response.blob(); → URL.createObjectURL(blob) → window.open(url, '_blank')
+
+After
+
+// 1) fetch 옵션: credentials 보장
+const response = await fetch(fileUrl, { method: 'GET', credentials: 'include' });
+
+// 2) 비정상 응답 가드
+if (!response.ok) {
+  const msg = (await response.text()).slice(0, 200) || '파일을 열 수 없습니다.';
+  toast.error(msg); // 기존 토스트 유틸 사용
+  return;
+}
+
+// 3) Content-Type 확보
+const contentType = response.headers.get('Content-Type')?.split(';')[0] || 'application/octet-stream';
+
+// 4) 타입 지정 Blob
+const raw = await response.blob();
+const blob = new Blob([raw], { type: contentType });
+
+// 5) 새 탭 열기 + URL 정리
+const url = URL.createObjectURL(blob);
+const win = window.open(url, '_blank', 'noopener');
+setTimeout(() => URL.revokeObjectURL(url), 5_000); // 메모리 정리
+
+
+UI/레이아웃/클래스는 일절 변경 없음.
+
+리스크와 회피책
+
+서버가 Content-Type을 주지 않는 경우 → application/octet-stream으로 폴백(브라우저가 다운로드/뷰어 처리)
+
+팝업 차단 → window.open이 null이면 토스트로 안내(기존 동작 유지)
+
+401/403 등 서버 에러 → response.ok 가드로 토스트 표시 후 미리보기 중단(이전처럼 에러 JSON을 새 탭에 띄우지 않음)
+
+롤백 계획
+
+Documents.tsx의 handleViewFile을 기존 구현으로 원복 → npm run build → 서버 재시작
+
+검증 시나리오 & 성공 기준
+
+이미지(.jpg/.png)
+
+📄 보기 클릭 → 브라우저 이미지 뷰어로 바로 표시(200)
+
+PDF
+
+📄 보기 클릭 → 브라우저 PDF 뷰어로 표시(스크롤/프린트 가능)
+
+기타 문서(.docx 등)
+
+📄 보기 클릭 → 브라우저가 지원 시 인라인 / 미지원 시 다운로드 프롬프트
+
+에러 응답 가드
+
+강제 401/404 케이스 → 토스트로 안내, 새 탭에 에러 JSON 표시되지 않음
+성공 기준: 빈 페이지/에러 JSON 미표시, 이미지/PDF 인라인 렌더 정상, 콘솔에 오류 없음.

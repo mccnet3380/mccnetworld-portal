@@ -1,0 +1,142 @@
+[사전 변경 안내]
+수정 목적(한 줄)
+- 관리자 패널의 서류 관리 페이지에서 배치 문서(여러 파일)의 모든 첨부파일이 표시되도록 렌더링 로직을 보강합니다. (백엔드 변경 없음)
+
+해결할 오류 / 재현 절차
+- 문제: 개통완료 관리에서는 1개 항목에 파일 3개가 포함되어 보이지만, 관리자 → 서류 관리에서는 같은 항목이 파일 1개만 표시됨
+- 재현: 파일 3개 업로드 → 접수 → 개통완료 처리 → 서류 관리에서 해당 항목 열람 시 1개만 보임
+
+변경 범위 요약
+- 프론트: `client/src/pages/DocumentManagement.tsx` (또는 실제 서류 관리 컴포넌트 파일)만 수정
+- 백엔드/환경/DB/스타일/빌드: 변경 없음
+
+요구 사항(절대 준수)
+- `attachments` 배열이 존재하면 배열 전체를 표시
+- 배열이 없고 단일 필드만 있을 경우(예: `attachment` 또는 `file`)는 기존 단일 표시 유지(폴백)
+- 각 파일에 대해 파일명/크기/다운로드 링크를 제공하되, 데이터 키가 환경에 따라 다를 수 있으므로 `name|filename`, `size|fileSize`, `url|downloadUrl|path`를 순차적으로 탐색
+- UI 구조(테이블/카드)와 기존 스타일은 최대한 유지, 내부 셀만 확장
+
+[수정 지시]
+
+1) 파일 열기
+- `client/src/pages/DocumentManagement.tsx` (또는 동일 역할의 페이지 컴포넌트) 열기
+
+2) 유틸 추가: 바이트 단위 포맷터
+- 파일 상단(컴포넌트 바깥 또는 내부 최상단)에 아래 헬퍼 추가
+
+----------------------------------------------------------------
+function formatBytes(bytes?: number): string {
+  if (!bytes && bytes !== 0) return "";
+  const sizes = ["B","KB","MB","GB","TB"];
+  const i = bytes === 0 ? 0 : Math.floor(Math.log(bytes) / Math.log(1024));
+  const val = bytes / Math.pow(1024, i);
+  return `${val % 1 === 0 ? val : val.toFixed(1)} ${sizes[i]}`;
+}
+
+type AnyFile = {
+  id?: string|number;
+  name?: string;
+  filename?: string;
+  size?: number;
+  fileSize?: number;
+  url?: string;
+  downloadUrl?: string;
+  path?: string;
+};
+
+function normalizeFiles(doc: any): AnyFile[] {
+  // 1) attachments 배열 우선
+  if (Array.isArray(doc?.attachments) && doc.attachments.length > 0) {
+    return doc.attachments as AnyFile[];
+  }
+  // 2) 단일 필드 폴백(attachment/file/attachedFile 등)
+  const single = doc?.attachment ?? doc?.file ?? doc?.attachedFile;
+  if (single) return [single as AnyFile];
+  // 3) 최종 폴백 없음
+  return [];
+}
+
+function fileDisplayName(f: AnyFile): string {
+  return (f.name ?? f.filename ?? `file-${f.id ?? ""}`).toString();
+}
+
+function fileHref(f: AnyFile, doc: any): string | undefined {
+  // 우선순위: url > downloadUrl > path
+  return f.url ?? f.downloadUrl ?? f.path;
+}
+----------------------------------------------------------------
+
+3) 테이블/리스트의 "첨부파일" 셀 렌더링 수정
+- 기존에 단일 파일만 가정하고 렌더링하던 코드를 찾아 아래 패턴으로 교체
+- 테이블 셀 내부 예시:
+
+----------------------------------------------------------------
+// 기존 (예시)
+// <td>{doc.attachment?.name}</td>
+
+// 수정
+<td>
+  {(() => {
+    const files = normalizeFiles(doc);
+    if (files.length === 0) {
+      // 기존 동작 유지: 아무것도 없으면 빈칸 또는 기존 단일 표현
+      return doc?.attachment?.name ?? "-";
+    }
+    return (
+      <ul style={{ margin: 0, paddingLeft: "1rem" }}>
+        {files.map((f, idx) => {
+          const href = fileHref(f, doc);
+          const size = formatBytes(f.size ?? f.fileSize);
+          const label = fileDisplayName(f);
+          return (
+            <li key={f.id ?? `${doc.id}-att-${idx}`}>
+              {href ? (
+                <a href={href} target="_blank" rel="noopener noreferrer" download>
+                  {label}
+                </a>
+              ) : (
+                <span>{label}</span>
+              )}
+              {size ? <span style={{ opacity: 0.7, marginLeft: 6 }}>({size})</span> : null}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  })()}
+</td>
+----------------------------------------------------------------
+
+- 목록이 카드 형태라면 동일한 로직을 카드의 "첨부파일" 섹션에 적용
+- React Table/데이터 그리드 사용 시에도 `cell` 렌더러만 위 로직으로 교체
+
+4) (선택) 접근성/UX 보강
+- 여러 파일일 때 `<details><summary>파일 3개</summary> ... </details>` 형태로 감싸 출력 가능(요구 범위 밖이므로 기본은 단순 목록)
+
+[검증 시나리오 & 성공 기준]
+
+시나리오 1: 배치 문서(3개 파일)
+1) 파일 3개 업로드 → 접수
+2) 개통완료 처리
+3) 관리자 → 서류 관리 진입
+✅ 한 항목에서 파일 3개 모두 목록에 표시(파일명/크기/다운로드 링크)
+
+시나리오 2: 단일 문서(1개 파일)
+1) 파일 1개 업로드 → 접수 → 기타완료 처리
+2) 서류 관리 확인
+✅ 기존과 동일하게 파일 1개 표시
+
+시나리오 3: 전체 목록
+- 배치 문서와 단일 문서가 섞여 있을 때
+✅ 배치 항목은 n개 파일 모두 표시, 단일 항목은 1개만 표시
+✅ 레이아웃 깨짐/스타일 변화 없음
+
+[리스크와 회피책]
+- 데이터 키 차이: `name|filename`, `size|fileSize`, `url|downloadUrl|path`를 순차 탐색해 호환성 확보
+- 성능: 파일 수가 적으므로 영향 미미
+- UI: 테이블 셀 높이 증가 가능 → 필요 시 `max-height`와 스크롤을 도입(이번 변경 범위 밖)
+
+[롤백 계획]
+- 프론트 변경 파일만 원복:
+  git checkout HEAD -- client/src/pages/DocumentManagement.tsx
+- 저장/재시작 후 이전 동작으로 복귀

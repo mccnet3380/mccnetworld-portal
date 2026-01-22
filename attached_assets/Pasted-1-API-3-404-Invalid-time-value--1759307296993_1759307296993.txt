@@ -1,0 +1,153 @@
+1) 수정 목적(한 줄)
+
+관리자 패널 진입 시 빈 화면을 만드는 ① 누락된 API 3건의 404와 ② 날짜 직렬화 오류(Invalid time value)를 최소 변경으로 모두 해소.
+
+2) 해결할 오류 / 재현 절차(간단)
+
+증상
+
+관리자 패널 클릭 → 빈 화면
+
+콘솔: 404 /api/admin/additional-services, /api/document-templates, /api/worker-stats
+
+추가 에러: “Invalid time value”
+
+재현
+
+Super Admin 로그인 → 관리자 패널
+
+DevTools Network/Console에서 위 3개 404 및 날짜 에러 확인
+
+3) 변경 범위 요약 (최소)
+
+백엔드(필수)
+
+server/routes.ts: 누락된 3개 라우트 추가(requireAdmin 보호)
+
+GET /api/admin/additional-services (+ POST/PUT/DELETE alias, 기존 일반 라우트 재사용)
+
+GET /api/document-templates (초기 stub: [] 반환)
+
+GET /api/worker-stats (초기 stub: [] 또는 AdminPanel이 기대하는 스키마로 빈 배열)
+
+server/storage.ts: 필요한 경우 stub 메서드만 추가(실데이터 준비 전엔 빈 배열/기본형 반환, 에러 X)
+
+프론트엔드(필수·최소)
+
+client/src/pages/AdminPanel.tsx: 날짜 표시/전송부의 안전 포맷터 적용
+
+빈 값(''/null/undefined) 또는 문자열에 new Date()/toISOString()을 직접 호출하지 않도록 가드 함수 1개로 통일
+
+UI/레이아웃/스타일/컴포넌트 구조 변경 금지
+
+빌드/배포
+
+기존 파이프라인 유지. dist/.vite 캐시 삭제 후 재빌드 & 서버 재시작만 수행.
+
+불변: 환경변수/Secrets, DB 스키마, CSS/Tailwind, 라우팅 구조(경로명은 프론트 기대에 맞춤)
+
+4) 수정 파일 목록 (최소화)
+
+server/routes.ts — 3개 라우트 추가(관리자 보호, 응답 스키마는 프론트 기대값에 맞춤)
+
+server/storage.ts — 필요한 stub 메서드만 추가(에러 대신 빈 배열/기본형 반환)
+
+client/src/pages/AdminPanel.tsx — formatDateSafe / toISOOrNull 같은 안전 직렬화 유틸 적용(한 곳)
+
+5) 파일별 변경 이유 (각 1–2줄)
+
+routes.ts: 프론트가 호출하는 경로를 그대로 제공하여 404 제거. 초기에는 stub라도 200/빈 배열을 보장해 페이지 렌더를 막지 않음.
+
+storage.ts: 라우트가 의존하는 저장소 함수를 형식만 맞춰 제공해 런타임 에러 방지(실데이터는 차후 교체).
+
+AdminPanel.tsx: 날짜 필드가 비어 있거나 문자열이어도 에러 없이 포맷/전송되도록 안전 직렬화로 치환.
+
+6) 예상 변경 내용 (요약 diff·개념)
+
+routes.ts
+
+router.get('/api/admin/additional-services', requireAdmin, ...) // 내부적으로 기존 /api/additional-services 핸들러 재사용(별칭)
+
+router.post/put/delete('/api/admin/additional-services', requireAdmin, ...)
+
+router.get('/api/document-templates', requireAdmin, (req,res)=> res.json([]))
+
+router.get('/api/worker-stats', requireAdmin, (req,res)=> res.json([]))
+
+모든 응답: Cache-Control: no-store (초기 캐시 오염 방지)
+
+storage.ts
+
+필요 시 getDocumentTemplates(): Promise<any[]> { return []; }
+
+getWorkerStats(): Promise<any[]> { return []; }
+
+AdminPanel.tsx
+
+formatDateSafe(value) / toISOOrNull(value) 유틸 함수 1개 추가
+
+null/undefined/'' → '-'(표시) / null(전송)
+
+Date/dayjs → toISOString()
+
+문자열 날짜 → 파싱 가능 시 ISO, 실패 시 null
+
+7) 핵심 추가/삭제/치환 포인트
+
+추가: 3개 API 라우트(관리자 보호) + 안전 직렬화 유틸
+
+치환 없음: 기존 UI/레이아웃/스타일, 기존 라우트 유지
+
+삭제 없음
+
+8) 리스크와 회피책
+
+Stub 데이터로 인해 당장은 빈 목록일 수 있음 → 에러 없이 렌더가 목적(페이지 접근 가능 상태 보장).
+
+응답 스키마 불일치 위험 → AdminPanel.tsx에서 사용하는 키를 grep으로 확인 후 동일 키로 반환.
+
+예) rg -n "additional-services|document-templates|worker-stats" client/src/pages/AdminPanel.tsx -C 3
+
+9) 롤백 계획
+
+server/routes.ts의 신규 블록 제거
+
+server/storage.ts의 stub 메서드 제거
+
+AdminPanel.tsx 유틸 적용 부분 원복
+
+재빌드 & 재시작(3분 내)
+
+10) 검증 시나리오 & 성공 기준
+
+S1. 관리자 패널 로딩
+
+관리자 로그인 → 관리자 패널 클릭
+
+성공: 빈 화면 사라짐, 섹션/탭 렌더, 콘솔 404 없음, “Invalid time value” 없음
+
+S2. API 직접 호출
+
+/api/admin/additional-services / /api/document-templates / /api/worker-stats
+
+성공: 각각 200 JSON(초기엔 []), 콘솔 에러 0
+
+S3. 기존 기능 회귀 없음
+
+관리자 패널 내 기존 탭(통신사/요금제/대리점 등) 클릭
+
+성공: 모든 API 200, 데이터 표시 정상
+
+S4. 빌드 캐시/브라우저 캐시
+
+서버: rm -rf dist .vite node_modules/.vite && npm run build 후 재시작
+
+브라우저: DevTools Disable cache + “캐시 비우기 및 강력 새로고침”
+
+성공: 캐시 이슈로 이전 오류 재현 없음
+
+11) 추가 메모(중요)
+
+“Invalid time value”는 클라이언트 런타임 에러이므로, 프론트 최소 수정(유틸 적용) 없이는 404를 고쳐도 여전히 빈 화면이 될 수 있습니다.
+
+UI/스타일 변경은 전혀 하지 않고, 값 직렬화/표시 가드만 추가합니다.

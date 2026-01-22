@@ -1,0 +1,140 @@
+수정 목적 (한 줄)
+
+당월 개통 총계와 통신사별 개통 합계가 항상 동일하도록 서버 집계 로직을 단일 조건으로 통합.
+
+현재 증상 / 재현
+
+경로: 대시보드 → 당월 개통 수량
+
+현상: 카드 좌측 총 개통 수와 우측 통신사별 합계가 불일치할 때가 있음.
+
+원인 후보:
+
+총계와 리스트가 다른 필드/상태/기간을 기준으로 집계 (예: uploaded_at vs activated_at, 상태 집합 차이, 타임존 경계)
+
+API를 서로 다른 쿼리로 분리 호출 → 필터/권한 분기 불일치
+
+날짜 경계가 KST/UTC 혼용으로 월말/월초 1일 오차
+
+변경 범위 요약
+
+백엔드만 수정: server/storage.ts, server/routes.ts
+
+프론트엔드 변경 없음(현 UI/스타일/레이아웃 유지)
+
+빌드/재시작만 필요
+
+환경변수/DB 스키마 미변경
+
+요구 작업(정확 지시)
+1) 단일 소스 쿼리로 합계와 목록을 동시에 산출
+
+신규 또는 통합 메서드(예: getMonthlyActivationSummary(user)):
+
+기준 컬럼: activated_at (NULL 제외)
+
+기간: KST 기준 당월 1일 00:00:00 ~ 익월 1일 00:00:00
+
+JS에서 KST 범위를 계산 후 UTC로 변환하여 쿼리에 사용(타임존 경계 문제 차단)
+
+상태 조건: activated_at IS NOT NULL (상태 문자열 불일치 예방)
+
+필요 시 activation_status IN ('개통','개통완료')가 아닌 시간기반으로 고정
+
+권한 필터(기존 정책과 동일):
+
+admin: 전체
+
+sales_manager: 팀 범위
+
+user: 본인 작성/처리건
+
+쿼리(개념):
+
+SELECT carrier, COUNT(*) AS cnt
+FROM documents
+WHERE activated_at >= :startUtc
+  AND activated_at <  :endUtc
+  AND activated_at IS NOT NULL
+  -- + role별 가드(작성자/팀 등)
+GROUP BY carrier
+ORDER BY carrier;
+
+
+총계 = 위 결과의 SUM(cnt) (동일 WHERE)
+
+반환 형태(단일 응답):
+
+{
+  "month": "2025-10",
+  "total": 7,
+  "carriers": [
+    {"carrier": "후불미디어", "count": 2},
+    {"carrier": "후불엠모바일", "count": 1},
+    ...
+  ]
+}
+
+2) 라우트 통합(원샷 응답)
+
+GET /api/dashboard/month-activations (또는 기존 carrier-stats/today-stats 대체)
+
+내부에서 단 한 번의 조건 정의로 합계와 목록을 동시에 생성해 반환
+
+기존 분리 엔드포인트가 남아야 하면, 동일 메서드의 결과를 재사용하도록 위임
+
+3) KST 월 범위 계산 유틸 추가
+
+getKstMonthRange(date = new Date()) → { startUtc: Date, endUtc: Date }
+
+KST(UTC+9) 기준 월 시작/끝 계산 후 UTC로 변환
+
+모든 월 집계에 이 유틸만 사용(중복/오차 제거)
+
+4) 로깅(개발모드)
+
+쿼리 실행 시 startUtc/endUtc/userRole/filterSummary/total 1줄 로그 남겨 재발 시 원인 추적 가능하게
+
+수정 파일 목록
+
+server/storage.ts — getMonthlyActivationSummary(user) 구현
+
+server/routes.ts — GET /api/dashboard/month-activations 라우트 추가(또는 기존 라우트가 이 메서드 사용하도록 리팩터)
+
+리스크와 회피책
+
+성능: 월 집계 Group By 1회. 당월만 조회 + 인덱스(activated_at, carrier)로 충분
+
+권한 분기: 공통 where 빌더 사용(중앙 함수화)로 불일치 방지
+
+상태 문자열 변동: 시간 컬럼(activated_at) 기반으로 탈동기화 방지
+
+롤백 계획
+
+신규 라우트/메서드 제거 후, 기존 분리 로직으로 즉시 복귀
+
+재배포/재시작
+
+검증 시나리오 & 성공 기준
+
+관리자 계정
+
+GET /api/dashboard/month-activations → 200
+
+응답 total === sum(carriers[].count)
+
+UI 카드 좌측 총계 = 우측 리스트 합계
+
+근무자/영업과장 계정
+
+권한 범위 내 데이터로 동일 식 검증
+
+경계 테스트
+
+월초/월말 KST 경계 문서(23:xx/00:xx) 포함 여부 정확
+
+회귀
+
+대시보드 다른 카드 영향 없음, 콘솔/서버 에러 0
+
+성공 조건: 모든 사용자/시점에서 총계와 통신사별 합계가 항상 일치, API 단일 응답으로 재현 불가.

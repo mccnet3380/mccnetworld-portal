@@ -1,0 +1,136 @@
+변경 요청 프롬프트 (기타 신청 = 실판매 POS 자동 매칭)
+
+목표
+기타 신청 페이지에서 실판매 POS(realSalesPOS) 기준으로 자동 매칭하여
+
+해당 POS의 개통방명코드(contact code)를 자동 선택하고,
+
+판매점명(storeName) 을 자동 기입/잠금하도록 수정해 주세요.
+(DB 스키마 변경 없이, 현 테이블 컬럼만 사용)
+
+0) 먼저 소스 위치를 찾아주세요
+
+프론트엔드(기타 신청 폼) 찾기
+
+전역 검색: OtherApplication, 기타 신청, storeName, 개통방명코드, contact code
+
+컨택코드 API 찾기
+
+전역 검색: "/api/contact-codes", "contact-codes", "auto"
+
+자동매칭/목록 조회용 핸들러가 있는 파일(예: server/routes.ts 등)
+
+찾은 파일 경로와 라인을 작업 로그에 남겨주세요.
+
+1) 백엔드: “실판매 POS 자동 매칭” 엔드포인트 추가/보강
+
+새 엔드포인트(또는 기존 보강):
+GET /api/contact-codes/auto-by-pos?carrier=...
+
+쿼리 동작(스키마 변경 금지, 가정 컬럼: carrier, realSalesPOS, dealerName, code, isActive, updatedAt)
+
+carrier와 isActive=true로 후보 조회
+
+각 행에 대해 dealerName/realSalesPOS를 정규화(normalize) 해 키를 만듦
+
+function norm(s:string){return (s||'').toLowerCase().normalize('NFKC').replace(/\s+/g,'').replace(/[.\-(){}\[\]·•‧]/g,'')}
+
+
+우선순위 매칭 규칙
+
+1순위: realSalesPOS 가 동일한 것(아래 프론트에서 전달하는 posHint 있으면 그것으로 우선 매칭)
+
+2순위: 없으면 dealerName 동일로 매칭
+
+동명 다건이면 updatedAt DESC 1건 선택
+
+결과
+
+단일 확정: { matched:true, code, dealerName, realSalesPOS }
+
+다건 후보: { matched:false, reason:"MULTI_POS", options:[{realSalesPOS, dealerName, code, updatedAt}, ...] }
+
+후보 없음: { matched:false, reason:"NO_MATCH" }
+
+로그 강화
+[AutoPOS] carrier=..., candidates=..., posHint=..., final=...
+
+참고: users.dealer_id가 NULL이어도 동작하도록 설계합니다(딜러ID 불필요). posHint만으로 매칭/결정 가능해야 합니다.
+
+2) 프론트엔드: 기타 신청 폼 자동화 로직
+
+대상 파일(예: OtherApplication.tsx)에서 다음을 적용해 주세요.
+
+화면 진입 또는 carrier 선택 시 자동 시도
+
+useEffect에서 carrier가 정해지면 /api/contact-codes/auto-by-pos?carrier=... 호출
+
+가능하면 이전 제출 이력/로컬스토리지에서 posHint(최근 사용한 실판매 POS)도 함께 전달: /auto-by-pos?carrier=...&posHint=...
+
+응답 처리
+
+matched:true →
+
+개통방명코드 드롭다운 값을 해당 code로 자동 선택/잠금
+
+storeName = realSalesPOS || dealerName로 자동 기입/잠금
+
+reason:"MULTI_POS" →
+
+간단한 POS 선택 모달 표시(옵션의 realSalesPOS 리스트)
+
+사용자가 POS 선택 시 동일 API에 posHint로 재호출 → 확정 → 자동 기입/잠금
+
+reason:"NO_MATCH" →
+
+토스트: “실판매 POS 기준 자동매칭 결과가 없습니다. POS 또는 개통방명코드를 수동 선택해 주세요.”
+
+수동 선택 시 동기화
+
+사용자가 드롭다운에서 개통방명코드를 수동 선택한 경우에도, 선택한 항목의 realSalesPOS || dealerName을 storeName에 즉시 반영하고 잠금 유지
+
+UX 세부
+
+자동완료 후 인풋 옆에 배지 표기: 자동매칭: {realSalesPOS || dealerName}
+
+잠금 상태에서도 “수정” 클릭 시 잠금 해제(선택) 가능
+
+최근 선택한 realSalesPOS를 로컬에 저장하여 다음 진입 시 posHint로 전달
+
+3) 예외/정규화 규칙
+
+realSalesPOS/dealerName은 정규화하여 비교(공백/특수문자/대소문자 차이 무시)
+
+undefined, null, - 등 의미 없는 문자열은 무시하고 다른 필드로 대체
+
+4) 수용 기준 (Acceptance Criteria)
+
+ 기타 신청에서 carrier만 선택해도, 단일 POS 환경이면 개통방명코드 자동 선택 + 판매점명 자동 기입/잠금이 된다.
+
+ POS가 여러 개인 딜러는 POS 선택 모달 1회로 확정 가능하다.
+
+ 드롭다운을 수동 선택해도 storeName이 실판매 POS 우선으로 자동 기입된다.
+
+ users.dealer_id 값이 없어도(=NULL) 위 기능이 정상 동작한다.
+
+ 실패 사유가 명확히 토스트로 안내된다(MULTI_POS, NO_MATCH).
+
+ 서버 로그에 posHint, 후보/최종 선택 정보가 남는다.
+
+5) 테스트 시나리오
+
+단일 POS: carrier=미디어, contact_codes에 realSalesPOS="누리" 단일 → 자동 선택/기입 성공
+
+다중 POS: realSalesPOS가 “누리본점/누리지점” 2건 → 모달에서 “누리본점” 선택 → 그 코드로 확정
+
+POS 미기재: realSalesPOS 공백이고 dealerName="누리"만 있음 → dealerName 정규화로 매칭
+
+후보 없음: 필터 결과 0건 → NO_MATCH 토스트 + 수동 선택 유도
+
+수동 선택: 사용자가 다른 코드로 바꾸면 storeName도 즉시 해당 POS로 업데이트
+
+6) 롤백
+
+새 엔드포인트를 AUTO_POS_MATCH_ENABLED 환경 변수로 on/off 가능하게 분기
+
+문제 시 기존 수동 선택 플로우로 즉시 복귀

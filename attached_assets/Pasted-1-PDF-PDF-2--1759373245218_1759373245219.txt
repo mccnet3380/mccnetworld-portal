@@ -1,0 +1,172 @@
+1) 수정 목적 (한 줄)
+
+접수 관리의 문서 팝업에서 미리보기 지원(이미지/PDF)하고, 다운로드 클릭 시 이미지 파일은 PDF로 저장되도록 수정.
+
+2) 현재 증상 / 재현
+
+접수 관리 → 문서 아이콘 클릭 → 팝업(모달) 열림
+
+현상: “이 파일은 미리보기를 지원하지 않습니다”만 표시(첨부 스샷)
+
+기대: 이미지/PDF는 모달 내 미리보기, 그 외 파일은 안내 + 다운로드 버튼
+
+추가 요구: 다운로드 버튼 클릭 시 이미지(.jpg/.png 등)는 PDF로 변환해 저장(PDF/기타파일은 기존처럼 원본 저장)
+
+3) 변경 범위 요약
+
+백엔드 (server/routes.ts)
+
+파일 스트리밍 라우트에 인라인 미리보기 지원: ?disposition=inline
+
+Content-Disposition: inline (기본은 attachment 유지)
+
+Content-Type은 실제 MIME으로 정확히 설정
+
+이미지→PDF 변환 다운로드 지원: ?format=pdf
+
+원본이 image/*이면 단일 페이지 PDF로 변환하여 전송
+
+PDF/기타 타입은 원본 그대로 반환(attachment)
+
+프론트엔드 (client/src/pages/Documents.tsx)
+
+미리보기 모달: 문서 아이콘 클릭 시 ?disposition=inline로 fetch →
+
+Content-Type이 image/*면 <img>로, application/pdf면 <iframe>로 표시
+
+그 외는 “미리보기 불가” + 다운로드 버튼만 노출
+
+다운로드 버튼:
+
+image/* → ?format=pdf로 요청해 PDF로 저장
+
+application/pdf/기타 → 기존 다운로드(attachment)
+
+불변: UI 레이아웃/디자인/CSS/컴포넌트 구조, 환경변수/Secrets, DB 스키마
+
+4) 수정 파일 목록 (최소화)
+
+server/routes.ts — 파일 스트리밍 라우트 보강(인라인/포맷 옵션)
+
+client/src/pages/Documents.tsx — 모달 미리보기/다운로드 분기만 추가
+
+5) 백엔드 상세 지시 (정확)
+
+라우트: GET /api/files/documents/:id
+
+쿼리:
+
+disposition=inline → 미리보기용
+
+format=pdf → 이미지인 경우 PDF 변환 다운로드
+
+처리 로직(개념):
+
+const isInline = req.query.disposition === 'inline';
+const asPdf   = req.query.format === 'pdf';
+
+const filePath = ...;       // 서버 저장 경로
+const fileName = ...;       // 원본 파일명
+const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+
+// ① 이미지→PDF 변환 다운로드
+if (asPdf && mimeType.startsWith('image/')) {
+  // pdfkit 또는 sharp 등 기존 의존성 사용 (없으면 pdfkit 1개만 추가)
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileBaseName)}.pdf"`);
+  // 이미지 한 페이지짜리 PDF로 스트리밍
+  return renderImageAsSinglePagePdf(filePath, res); // 프로젝트 내 util로 구현
+}
+
+// ② 일반 스트림 (인라인/다운로드 선택)
+res.setHeader('Content-Type', mimeType);
+res.setHeader(
+  'Content-Disposition',
+  `${isInline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(fileName)}"`
+);
+res.setHeader('Cache-Control', 'no-store');
+return res.sendFile(filePath);
+
+
+주의:
+
+기본 동작은 attachment 유지(회귀 방지) — 인라인은 쿼리로만 활성화
+
+변환은 이미지일 때만 수행. PDF/기타는 원본 유지
+
+6) 프론트엔드 상세 지시
+
+모달 오픈(문서 아이콘 클릭):
+
+const url = `/api/files/documents/${doc.id}?disposition=inline`;
+const res = await fetch(url, { credentials: 'include' });
+if (!res.ok) { toast.error(await res.text()); return; }
+
+const contentType = res.headers.get('Content-Type')?.split(';')[0] ?? 'application/octet-stream';
+const blob = new Blob([await res.blob()], { type: contentType });
+const objectUrl = URL.createObjectURL(blob);
+
+// contentType 분기
+if (contentType.startsWith('image/')) {
+  // <img src={objectUrl} />
+} else if (contentType === 'application/pdf') {
+  // <iframe src={objectUrl} />
+} else {
+  // 미리보기 불가 UI + 다운로드 버튼만
+}
+// 모달 close 시 URL.revokeObjectURL(objectUrl)
+
+
+다운로드 버튼:
+
+if (contentType.startsWith('image/')) {
+  // 이미지 → PDF로 저장
+  window.location.href = `/api/files/documents/${doc.id}?format=pdf`;
+} else {
+  // 원본 다운로드
+  window.location.href = `/api/files/documents/${doc.id}`;
+}
+
+
+팝업 차단 없음(모달 내 렌더) / credentials:'include' 명시
+
+7) 리스크와 회피책
+
+브라우저가 인라인 미지원 타입: 모달에서 “미리보기 불가” + 다운로드 버튼 제공(현 UI 유지)
+
+MIME 누락: 서버에서 mime.lookup 사용(없으면 application/octet-stream)
+
+성능: 이미지→PDF 변환은 단건 요청 시에만 수행, 스트리밍 처리로 메모리 사용 최소화
+
+8) 롤백 계획
+
+routes.ts의 쿼리 분기(Inline/format) 제거 → 기존 다운로드-only로 즉시 복귀
+
+Documents.tsx에서 모달 분기 제거 → 현 동작으로 복귀
+
+9) 검증 시나리오 & 성공 기준
+
+이미지(JPG/PNG)
+
+문서 아이콘 클릭 → 모달에 이미지 즉시 표시
+
+다운로드 클릭 → PDF 파일 저장(.pdf)
+
+PDF
+
+문서 아이콘 클릭 → 모달에 PDF 뷰어 표시
+
+다운로드 클릭 → 원본 PDF 저장
+
+DOCX/XLSX 등
+
+문서 아이콘 클릭 → “미리보기 불가” + 다운로드 버튼만 노출
+
+다운로드 클릭 → 원본 파일 저장
+
+헤더 확인
+
+인라인: Content-Disposition: inline + Content-Type 정확
+
+다운로드: Content-Disposition: attachment
+성공 기준: 이미지/PDF 미리보기 정상, 이미지 다운로드는 PDF 변환, 기타 파일은 원본 다운로드, 콘솔/네트워크 에러 0.

@@ -1,0 +1,75 @@
+[사전 변경 안내]
+목적(한 줄)
+- ‘접수 신청’ 화면에서 통신사 선택 UI를 “텍스트 입력 + 자동검색(오토컴플리트)”로 통일하고, 통신사 이름 중복을 제거한다. 또한 **요금제 필드는 화면에서 완전히 제거(비노출)** 한다. (UI 최소 수정, 레이아웃 최대 유지)
+
+현 증상
+- 개통방법 코드는 텍스트 입력 + 자동검색(OK)
+- 통신사는 드롭다운 검색 → 흐름 불일치 → 텍스트 입력 자동완성으로 통일 필요
+- 통신사 이름이 중복 노출됨
+- 요금제 필드가 노출되어 있으나, 요구사항은 **접수 신청에서 요금제 자체를 사용하지 않음(비노출)**
+
+변경 범위 (최소)
+- 프론트 전용. 백엔드/DB/전역 스타일/빌드 설정 변경 금지
+- 파일:
+  - client/src/pages/SubmitApplication.tsx (또는 해당 폼/페이지)
+  - 필요 시 공용 컴포넌트 추가: client/src/components/AutocompleteInput.tsx
+
+요구 사항 (절대 준수)
+1) 통신사 필드
+   - 기존 드롭다운 → “텍스트 입력 + 자동완성(오토컴플리트)”으로 교체
+   - 300ms 디바운스, ↑/↓/Enter/ESC 키보드 내비게이션, 마우스 선택 지원
+   - 선택 시 내부적으로 carrierId 저장(표시는 name)
+   - **중복 제거:** 동일 id 1회만, 이름은 trim + 연속 공백 1개로 정규화
+   - 기존 스타일/폭/정렬 유지
+
+2) 요금제 필드 제거(비노출)
+   - ‘접수 신청’ UI에서 요금제 입력/선택 컴포넌트 **완전 제거**
+   - 폼 제출 유효성 검증에서 **planId 관련 로직 삭제**
+   - 요청 페이로드에서 **planId 키 자체를 포함하지 않음**
+   - 빠른 롤백을 위해 기존 요금제 UI/상태/검증 코드는 **주석 처리**로 보관(삭제 아님)
+   - 다른 필드 레이아웃에 영향이 없도록, 필요 시 해당 칼럼/그리드만 깔끔히 정렬
+
+3) 자동완성 공통(통신사)
+   - <AutocompleteInput/> 컴포넌트 사용(신규/기존)
+     Props: value, onChange(text), onSelect({id,name}), fetchOptions(query), placeholder, disabled, loading
+   - “검색 결과 없음” 표시, 접근성(aria-*) 속성 적용
+   - 데이터 소스: 기존 carriers 검색 훅/엔드포인트 재사용 (예: GET /api/carriers?query=)
+   - 유틸:
+     ```ts
+     const normalize = (s:string)=>s.trim().replace(/\s+/g,' ');
+     const uniqById = <T extends {id:any; name:string}>(arr:T[]) =>
+       Array.from(new Map(arr.map(a=>[a.id, {...a, name: normalize(a.name)}])).values());
+     ```
+
+구현 지시 (요약)
+- SubmitApplication.tsx
+  - 통신사 드롭다운 → 아래 형태로 교체:
+    ```tsx
+    <AutocompleteInput
+      placeholder="통신사 검색..."
+      value={carrierName}
+      onChange={(t)=>{ setCarrierName(t); setCarrierId(null); }}
+      onSelect={(opt)=>{ setCarrierId(opt.id); setCarrierName(opt.name); }}
+      fetchOptions={async (q)=> uniqById(await carriersSearch(q))}
+    />
+    ```
+  - **요금제 UI/상태/검증/페이로드 처리 주석화** (완전 비노출)
+    - 예: planName/planId 상태 선언, useEffect, validation, form field JSX, payload 포함부 → 전부 주석
+    - 제출 함수에서 `planId`/`planName` 관련 코드는 제거하고, 페이로드에도 포함하지 말 것
+  - 제출 유효성:
+    - carrierId는 목록에서 선택된 값만 허용(임의 텍스트 제출 시 에러)
+    - planId 관련 검증 항목은 전부 제거
+
+- components/AutocompleteInput.tsx (신규 또는 기존 개선)
+  - 300ms 디바운스, 키보드 내비게이션, 로딩/결과없음 표시, 기존 인풋 스타일 재사용
+
+검증 시나리오 & 성공 기준
+- 통신사: 텍스트 입력 → 자동완성 리스트 → 선택 시 id 저장, **중복 이름 미표시**
+- **요금제:** ‘접수 신청’ 화면에서 **어떠한 형태로도 보이지 않음**, 제출 시 planId 키 없음
+- 레이아웃/스타일: 기존 폼의 배치가 어색하지 않음(요금제 섹션 자리 정리)
+- 제출 유효성: carrierId 미선택 시 에러, 나머지 기존 검증은 유지
+
+롤백 계획
+- 변경 파일만 원복:
+  ```bash
+  git checkout -- client/src/pages/SubmitApplication.tsx client/src/components/AutocompleteInput.tsx

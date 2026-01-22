@@ -1,0 +1,69 @@
+📁 정적 파일 경로: /home/runner/workspace/dist/public
+📄 index.html 경로: /home/runner/workspace/dist/public/index.html
+✅ index.html 존재 여부: true
+📂 /home/runner/workspace/dist/public 내용: [ 'assets', 'index.html' ]
+=== PRODUCTION STARTUP DEBUG ===
+NODE_ENV: development
+REPLIT_DEPLOYMENT: undefined
+__dirname: /home/runner/workspace/server
+Current working directory: /home/runner/workspace
+DB_URL (masked): postgresql://neondb_owner:****@ep-still-term-afo2v7ss.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require
+🔧 Using DEVELOPMENT database
+Environment indicators: {
+  APP_ENV: undefined,
+  NODE_ENV: 'development',
+  REPLIT_DEPLOYMENT: undefined,
+  REPLIT_ENVIRONMENT: 'production',
+  isProduction: false
+}
+단일 PostgreSQL Pool 초기화 중…
+DB_URL (masked): postgresql://neondb_owner:****@ep-still-term-afo2v7ss.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require
+✅ PostgreSQL Pool 초기화 성공
+4:10:13 AM [express] ✅ Server running at http://0.0.0.0:5000 (development)
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Service plans API called - fetching from database
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Service plans API called - fetching from database
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim

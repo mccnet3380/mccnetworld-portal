@@ -1,0 +1,116 @@
+[사전 변경 안내 — 승인 요청]
+목적(한 줄)
+- admins.id(1)와 users.id(1) 충돌로 발생하는 처리자 중복 표기/집계를 해결하기 위해, documents 테이블에 처리자 유형 컬럼을 추가하고 읽기/쓰기 로직을 역할 기반으로 분기한다.
+
+문제 요약
+- documents.activated_by(정수)만으로는 admins/users PK가 같을 때 양쪽에 조인되어 Super Admin ↔ L)수정이 중복 집계됨.
+
+개선 설계(변동 최소)
+1) 스키마: 컬럼 1개 추가
+   - documents.activated_by_role VARCHAR(10)  -- 'admin' | 'user' 저장
+   - 기존 activated_by(INT)는 유지(호환)
+
+2) 쓰기(개통/수정) 로직
+   - 세션 역할이 admin이면: activated_by = session.userId, activated_by_role = 'admin'
+   - 세션 역할이 user/dealer이면: activated_by = session.userId, activated_by_role = 'user'
+   - 기존 activatedBy 보존 로직(이미 개통된 건은 변경 금지)은 그대로 유지
+
+3) 읽기/집계 로직 (중요)
+   - 처리자 조인/표기 시 역할에 따라 분기 조인
+   ```ts
+   // server/storage.ts 예시
+   const isAdmin = sql<boolean>`documents.activated_by_role = 'admin'`;
+   query = db.select({
+     ...docColumns,
+     activatedByName: sql<string>`
+       CASE 
+         WHEN ${isAdmin} THEN ${admins.name}
+         ELSE ${users.name}
+       END
+     `,
+   })
+   .leftJoin(admins, and(eq(documents.activatedBy, admins.id), sql`documents.activated_by_role = 'admin'`))
+   .leftJoin(users,  and(eq(documents.activatedBy, users.id),  sql`documents.activated_by_role = 'user'`));
+통계/대시보드/개통완료 그리드 등 모든 처리자 참조 쿼리에 동일 원칙 적용
+
+마이그레이션(백필)
+
+컬럼 추가
+
+sql
+코드 복사
+ALTER TABLE documents
+  ADD COLUMN activated_by_role VARCHAR(10) NULL;
+자동 백필(충돌 없는 행만)
+
+sql
+코드 복사
+-- admin만 존재
+UPDATE documents d
+   SET activated_by_role = 'admin'
+ WHERE d.activated_by IS NOT NULL
+   AND EXISTS (SELECT 1 FROM admins a WHERE a.id = d.activated_by)
+   AND NOT EXISTS (SELECT 1 FROM users  u WHERE u.id = d.activated_by);
+
+-- user만 존재
+UPDATE documents d
+   SET activated_by_role = 'user'
+ WHERE d.activated_by IS NOT NULL
+   AND EXISTS (SELECT 1 FROM users u WHERE u.id = d.activated_by)
+   AND NOT EXISTS (SELECT 1 FROM admins a WHERE a.id = d.activated_by);
+충돌 리포트(양쪽 모두 존재)
+
+sql
+코드 복사
+SELECT d.id, d.activated_by
+  FROM documents d
+ WHERE d.activated_by IS NOT NULL
+   AND EXISTS (SELECT 1 FROM admins a WHERE a.id = d.activated_by)
+   AND EXISTS (SELECT 1 FROM users  u WHERE u.id = d.activated_by);
+충돌 건은 운영에서 수동 지정(임시 관리 화면 또는 CSV로 처리). 지정 후 activated_by_role 업데이트.
+
+파일/변경 범위
+
+shared/schema.ts: documents에 activated_by_role 추가
+
+server/routes.ts:
+
+PUT /api/documents/:id
+
+PATCH /api/documents/:id/activation-status
+→ 신규 개통/설정 시 activated_by_role을 세션 역할로 세팅(기존 보존 로직은 유지)
+
+server/storage.ts:
+
+getDocuments/getCompletedDocuments/대시보드 통계 등 처리자 조인/표기 로직을 역할 분기 조인으로 변경
+
+검증(수용 기준)
+
+개통완료 목록/대시보드의 처리자 명과 건수가 일치하며, Super Admin ↔ L)수정 중복 표기가 사라진다.
+
+신규/수정 시 올바른 activated_by_role이 저장된다.
+
+충돌로 미확정인 건은 리포트에만 남고, 지정 후 정상 반영된다.
+
+롤백 계획
+
+읽기 로직에서 역할 분기만 제거하면 즉시 구동 가능(구 컬럼 폴백).
+
+문제 발생 시 새 컬럼을 무시하고 이전 조인 방식으로 임시 복귀 가능.
+
+비고
+
+프론트/환경/스타일 변경 없음
+
+스키마·코드 영향 최소, 배포 리스크 낮음
+
+yaml
+코드 복사
+
+---
+
+원하시면 이 방식을 기반으로 **충돌 목록을 한눈에 보고 ‘admin/user’로 클릭 지정하는 간단한 관리자 페이지**까지 포함한 요청 문안도 만들어 드리겠습니다.
+
+
+
+

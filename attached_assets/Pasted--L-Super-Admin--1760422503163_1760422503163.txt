@@ -1,0 +1,98 @@
+[사전 변경 안내 — 승인 요청]
+수정 목적(한 줄)
+- ‘L)수정’으로 처리한 건이 개통완료/대시보드에서 처리자가 Super Admin으로 잡히는 버그를 제거하고, 처리자 표기/집계를 원 처리자 기준으로 일관화한다.
+
+문제 요약/재현
+- ‘업무 진행/개통완료 변경’ 시 Super Admin 계정으로 수정하면, 기존 처리자(예: L)수정)의 실적/표기가 Super Admin으로 덮어씌워짐.
+- 대시보드/개통완료 리스트 모두 Super Admin으로 표시되고 실적도 Super Admin에게 누적.
+
+원인(확인됨)
+- server/routes.ts (PATCH /api/documents/:id/activation-status)
+  ```ts
+  updateData.activatedBy = activatedBy || userId; // 항상 덮어씀 → 기존 처리자 무시
+일부 조회 로직에서 처리자 이름을 users만 JOIN 하거나, activatedBy가 아닌 최근 수정자 기준으로 보여줄 가능성.
+
+변경 범위(최소)
+
+백엔드 2파일만 수정, 프론트/DB/환경 미변경
+
+server/routes.ts : activation-status 핸들러에서 activatedBy 덮어쓰기 금지
+
+server/storage.ts : getDocuments(…includeActivatedBy) 등 처리자 표기 쿼리를 admins+users 양쪽 JOIN 후 COALESCE 로 일원화
+
+수정 파일/구체 패치
+
+[1] server/routes.ts — PATCH /api/documents/:id/activation-status
+// 기존 덮어쓰기 로직을 “신규 개통시에만 설정”으로 변경
+
+ts
+코드 복사
+if (activationStatus && ['개통', '개통완료', '기타완료'].includes(activationStatus)) {
+  const sessionUserId = req.session?.userId;
+  const existingDoc = await getStorage().getDocumentById(id);
+
+  // ✅ 처리자(activatedBy)는 "비어있을 때만" 설정 (신규 개통)
+  if (!existingDoc?.activatedBy) {
+    updateData.activatedBy = activatedBy || sessionUserId;
+  } else {
+    // 보존 로깅(문제 추적)
+    console.info('[activation-status] activatedBy preserved', {
+      docId: id,
+      existing: existingDoc.activatedBy,
+      requested: activatedBy ?? sessionUserId,
+    });
+  }
+
+  // ✅ 개통시각도 비어있을 때만 설정
+  if (!existingDoc?.activatedAt) {
+    updateData.activatedAt = activatedAt || new Date().toISOString();
+  }
+}
+[2] server/storage.ts — 처리자 표기 일관화(이미 적용되어 있지 않다면 아래로 교체)
+// 목록/상세 조회에서 처리자 이름을 admins 우선 → users 보조로 표기
+
+ts
+코드 복사
+// 예: getDocuments(filters?.includeActivatedBy === true 의 경우)
+query = db.select({
+  ...docColumns,
+  activatedByName: sql<string>`COALESCE(${admins.name}, ${users.name})`,
+})
+.leftJoin(admins, eq(documents.activatedBy, admins.id))
+.leftJoin(users,  eq(documents.activatedBy, users.id));
+※ 동일한 패턴을 개통완료/대시보드 통계에 사용하는 내부 쿼리에도 재사용(이미 구현되어 있으면 변경 없음).
+
+검증 시나리오(수용 기준)
+
+기존 개통 문서 수정
+
+activatedBy가 L)수정인 문서를 Super Admin으로 열어 메모/요금제만 변경
+
+기대: 목록/대시보드 모두 처리자 = L)수정(변화 없음), Super Admin 실적 변동 없음
+
+신규 문서 개통(비개통 → 개통완료)
+
+activatedBy 비어 있는 문서를 Super Admin이 개통완료 처리
+
+기대: 처리자 = Super Admin (정상 설정)
+
+개통완료 목록/대시보드 일치
+
+개통완료 그리드의 ‘처리자’와 대시보드 ‘관리자 개통 실적’ 카드는 동일 인원/건수로 일치
+
+로그/모니터링
+
+기존 activatedBy가 있을 때 보존되면 [activation-status] activatedBy preserved 로그 1회 출력
+
+리스크/완화
+
+기존 잘못 집계된 데이터는 그대로 남아 있을 수 있음(코드 수정 이후 신규/수정부터 정상화).
+
+필요하면 운영 DB에서 점검용 쿼리로 Super Admin으로 잘못 덮인 건을 별도 리포트(후속).
+
+롤백 계획
+
+server/routes.ts의 변경 블록만 원복:
+updateData.activatedBy = activatedBy || req.session?.userId;
+
+server/storage.ts의 JOIN 변경 전으로 복귀

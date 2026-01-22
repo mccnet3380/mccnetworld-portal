@@ -1,0 +1,162 @@
+[사전 변경 안내 — 승인 요청]
+수정 목적(한 줄)
+- admins.id(1) 와 users.id(1)가 충돌하여 activatedBy=1 문서가 ‘Super Admin’과 ‘L)수정’으로 중복 매칭되는 문제를 스키마/로직 수준에서 근본 해결한다.
+
+문제 요약
+- documents.activatedBy 가 단일 정수 컬럼이라 admins/users 두 테이블의 동일한 id 값과 동시 매칭 가능.
+- 조회 시 LEFT JOIN admins, LEFT JOIN users + COALESCE 사용 → id 충돌 시 양쪽에 매칭되어 표기/집계가 뒤섞임.
+
+개선 설계(요지)
+1) 스키마 분리(호환 유지):
+   - documents 테이블에 아래 2개 컬럼 추가 (nullable):
+     - activated_by_admin_id INT NULL
+     - activated_by_user_id  INT NULL
+   - 기존 activated_by(INT)는 일단 유지(추후 제거), 읽기/쓰기 모두 “새 컬럼 우선 → 폴백(구 컬럼)” 방식으로 호환.
+
+2) 쓰기(개통/수정) 로직:
+   - 세션 역할이 admin 이면 activated_by_admin_id 에만 기록.
+   - 세션 역할이 user/dealer 이면 activated_by_user_id 에만 기록.
+   - activatedBy(구 컬럼)에는 더 이상 쓰지 않음(옵션: 같은 값 동기 기록 가능, 단 최종 제거 목표).
+
+3) 읽기/집계 로직(중요):
+   - 처리자 표기: COALESCE(admins.name, users.name) 이지만 **조인 조건을 분기**:
+     - LEFT JOIN admins ON admins.id = documents.activated_by_admin_id
+     - LEFT JOIN users  ON users.id  = documents.activated_by_user_id
+   - 즉, **서로 다른 키로 조인**하여 충돌 자체가 불가능하게 함.
+   - 통계/대시보드/리스트 등 모든 처리자 참조 쿼리 동일 원칙 적용.
+
+4) 마이그레이션
+   - 추가 컬럼 생성 후 백필(Backfill):
+     - CASE A: activated_by 가 admins.id 에만 존재하고 users.id 에는 없음 → activated_by_admin_id = activated_by
+     - CASE B: activated_by 가 users.id 에만 존재하고 admins.id 에는 없음 → activated_by_user_id  = activated_by
+     - CASE C: **양쪽 모두 존재(충돌)** → 자동 판별 불가이므로 보류하고 리포트 테이블/CSV로 내보내 수동 지정.
+       (임시로 두 새 컬럼은 NULL 유지, 목록 출력 시 ‘미확정’ 표시 가능)
+   - 이후 신규/수정 건부터는 항상 새 컬럼만 사용 → 충돌 재발 방지.
+
+5) 추가 예방책(선택)
+   - admins/users 각각의 PK 시퀀스를 서로 다른 범위로 격리(예: admins 100000 이상 시작).
+   - 단, 새 설계에서는 조인 키가 분리되어 있어 필수는 아님.
+
+구체 작업(파일/변경)
+[DB 스키마]
+- shared/schema.ts
+  ```ts
+  export const documents = pgTable('documents', {
+    // 기존 필드 …
+    activatedBy: integer('activated_by'), // 구 컬럼(Deprecated, 읽기 폴백만)
+    activatedByAdminId: integer('activated_by_admin_id'), // 신규
+    activatedByUserId:  integer('activated_by_user_id'),  // 신규
+  });
+[서버 쓰기 경로]
+
+server/routes.ts
+
+PUT /api/documents/:id
+
+PATCH /api/documents/:id/activation-status
+변경 요점:
+
+ts
+코드 복사
+const role = req.session?.role; // 'admin' | 'user' 등
+if (settingActivatedBy) {
+  if (role === 'admin') {
+    updateData.activatedByAdminId = req.session.userId;
+    // updateData.activatedBy = req.session.userId; // (선택) 임시 동기
+  } else {
+    updateData.activatedByUserId = req.session.userId;
+    // updateData.activatedBy = req.session.userId; // (선택)
+  }
+}
+// 기존 activatedBy 보존 로직은 그대로 두되, 새 컬럼이 우선
+[서버 읽기/집계 경로]
+
+server/storage.ts
+
+getDocuments(…includeActivatedBy)
+
+getCompletedDocuments / 대시보드 통계 쿼리
+변경 요점:
+
+ts
+코드 복사
+query = db.select({
+  ...docColumns,
+  activatedByName: sql<string>`COALESCE(${admins.name}, ${users.name})`,
+})
+.leftJoin(admins, eq(documents.activatedByAdminId, admins.id))
+.leftJoin(users,  eq(documents.activatedByUserId,  users.id));
+※ 기존 eq(documents.activatedBy, admins.id) 등의 조인은 제거.
+
+[마이그레이션 스크립트]
+
+server/scripts/migrate-activated-by.ts (또는 SQL)
+
+컬럼 추가
+
+sql
+코드 복사
+ALTER TABLE documents
+  ADD COLUMN activated_by_admin_id INT NULL,
+  ADD COLUMN activated_by_user_id  INT NULL;
+백필 로직(한 번 실행)
+
+sql
+코드 복사
+-- Admin만 존재하는 경우
+UPDATE documents d
+  SET activated_by_admin_id = d.activated_by
+WHERE d.activated_by IS NOT NULL
+  AND EXISTS (SELECT 1 FROM admins a WHERE a.id = d.activated_by)
+  AND NOT EXISTS (SELECT 1 FROM users  u WHERE u.id = d.activated_by);
+
+-- User만 존재하는 경우
+UPDATE documents d
+  SET activated_by_user_id = d.activated_by
+WHERE d.activated_by IS NOT NULL
+  AND EXISTS (SELECT 1 FROM users u WHERE u.id = d.activated_by)
+  AND NOT EXISTS (SELECT 1 FROM admins a WHERE a.id = d.activated_by);
+
+-- 충돌 목록 리포트(양쪽 다 존재)
+SELECT d.id, d.activated_by
+  FROM documents d
+ WHERE d.activated_by IS NOT NULL
+   AND EXISTS (SELECT 1 FROM admins a WHERE a.id = d.activated_by)
+   AND EXISTS (SELECT 1 FROM users  u WHERE u.id = d.activated_by);
+충돌건은 운영에서 담당자가 확인 후 수동 지정(한시적 임시 페이지/CSV로 처리 가능).
+
+코드가 안정화되면 documents.activated_by 컬럼 제거(후속).
+
+수용 기준(검증)
+
+개통완료/대시보드의 처리자 표기 및 집계가 서로 완전히 일치한다.
+
+동일 id 값(1 등)이 admins/users에 있어도 충돌 없이 정확히 표기된다.
+
+신규/수정 처리 시 documents.activated_by_* 컬럼만 업데이트되고, activated_by(구 컬럼)는 사용되지 않는다.
+
+기존 데이터 중 충돌건은 리포트로 분리되어 운영에서 식별 가능하다.
+
+롤백 계획
+
+스키마 추가만 하고 읽기/쓰기 분기만 되돌리면 즉시 롤백 가능(구 컬럼 폴백 사용).
+
+문제가 크면 마이그레이션 이전 스냅샷으로 복원 후 재적용.
+
+비고
+
+프론트/환경/스타일 변경 없음(백엔드/스키마만).
+
+성능 영향 경미(조인 조건만 변경).
+
+yaml
+코드 복사
+
+---
+
+### 왜 이 방식이 최선인가요?
+- 단일 정수키(activatedBy)로는 **두 테이블의 동일 PK 값 충돌**을 구조적으로 피할 수 없습니다.  
+- **조인 키를 분리**(admin/user 별 컬럼)하면 충돌이 원천 차단되고, 표기/집계의 일관성이 보장됩니다.  
+- 기존 데이터는 안전하게 백필하고, 충돌건만 리포트로 분리하여 **정확하게 수동 확정**할 수 있습니다.
+
+필요하시면, 충돌 목록을 **관리자 전용 페이지**에서 확인/선택해 일괄 확정하는 간단한 UI까지 요청 문안에

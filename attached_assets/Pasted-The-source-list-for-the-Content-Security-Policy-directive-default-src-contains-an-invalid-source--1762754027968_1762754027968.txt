@@ -1,0 +1,280 @@
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+MCCNETWORLD:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+MCCNETWORLD:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+MCCNETWORLD:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+0fe51ea49a375848.js:2 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+0fe51ea49a375848.js:2 Download the Apollo DevTools for a better development experience: https://chrome.google.com/webstore/detail/apollo-client-developer-t/jdkknkkbebbapilgoeccciglkfbmbnfm
+0fe51ea49a375848.js:2 [LaunchDarkly] LaunchDarkly client initialized
+ed1e693c96a75807.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'ambient-light-sensor'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'battery'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'execution-while-not-rendered'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'execution-while-out-of-viewport'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'layout-animations'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'legacy-image-formats'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'navigation-override'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'oversized-images'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'publickey-credentials'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'speaker-selection'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'unoptimized-images'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'unsized-media'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'pointer-lock'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Allow attribute will take precedence over 'allowfullscreen'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Allow attribute will take precedence over 'allowpaymentrequest'.
+z @ ed1e693c96a75807.js:2
+(익명) @ ed1e693c96a75807.js:2
+iA @ ed1e693c96a75807.js:2
+iV @ ed1e693c96a75807.js:2
+iU @ ed1e693c96a75807.js:2
+i_ @ ed1e693c96a75807.js:2
+C @ ed1e693c96a75807.js:2
+M @ ed1e693c96a75807.js:2
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'ambient-light-sensor'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'battery'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'execution-while-not-rendered'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'execution-while-out-of-viewport'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'layout-animations'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'legacy-image-formats'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'navigation-override'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'oversized-images'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'publickey-credentials'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'speaker-selection'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'unoptimized-images'.
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Unrecognized feature: 'unsized-media'.
+workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Allow attribute will take precedence over 'allowfullscreen'.
+workspace_iframe.html?initialPath=%2F&id=%3Ar36%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.
+injected.js:27 Rehydrating auth state - verifying session
+injected.js:27 Checking auth with sessionId: exists
+injected.js:27 Checking auth with sessionId: exists
+injected.js:27 Auth check response: 200 true
+injected.js:27 Auth check data: {success: true, user: {…}}
+injected.js:27 [DealerDashboard] mount
+injected.js:27 [DealerDashboard] query status: {isLoading: true, hasError: false, dataReceived: false, count: 0}
+injected.js:27 Auth check response: 200 true
+injected.js:27 Auth check data: {success: true, user: {…}}
+injected.js:27 [DealerDashboard] mount
+injected.js:27 [DealerDashboard] query status: {isLoading: true, hasError: false, dataReceived: false, count: 0}
+injected.js:27 [DealerDashboard] mount
+injected.js:27 [DealerDashboard] query status: {isLoading: false, hasError: true, dataReceived: false, count: 0}
+injected.js:27 [DealerDashboard] query error: Error: Missing queryFn: '["/api/dealer/applications"]'
+    at index-LPWceXQR.js:48:7268
+    at Object.i [as fn] (index-LPWceXQR.js:48:14922)
+    at w (index-LPWceXQR.js:48:10275)
+    at index-LPWceXQR.js:48:10613
+(익명) @ injected.js:27
+E7 @ index-LPWceXQR.js:406
+Ey @ index-LPWceXQR.js:38
+Kx @ index-LPWceXQR.js:40
+pk @ index-LPWceXQR.js:40
+mk @ index-LPWceXQR.js:40
+YO @ index-LPWceXQR.js:40
+fh @ index-LPWceXQR.js:40
+Sj @ index-LPWceXQR.js:40
+Ki @ index-LPWceXQR.js:38
+(익명) @ index-LPWceXQR.js:40
+setTimeout
+QF @ index-LPWceXQR.js:48
+o @ index-LPWceXQR.js:48
+batch @ index-LPWceXQR.js:48
+wa @ index-LPWceXQR.js:48
+c @ index-LPWceXQR.js:48
+x @ index-LPWceXQR.js:48
+(익명) @ index-LPWceXQR.js:48
+Promise.catch
+w @ index-LPWceXQR.js:48
+(익명) @ index-LPWceXQR.js:48
+Promise.then
+(익명) @ index-LPWceXQR.js:48
+Promise.catch
+w @ index-LPWceXQR.js:48
+start @ index-LPWceXQR.js:48
+fetch @ index-LPWceXQR.js:48
+Yc @ index-LPWceXQR.js:48
+onSubscribe @ index-LPWceXQR.js:48
+subscribe @ index-LPWceXQR.js:48
+(익명) @ index-LPWceXQR.js:48
+AP @ index-LPWceXQR.js:38
+rf @ index-LPWceXQR.js:40
+Tl @ index-LPWceXQR.js:40
+JO @ index-LPWceXQR.js:40
+so @ index-LPWceXQR.js:40
+Sj @ index-LPWceXQR.js:40
+Ki @ index-LPWceXQR.js:38
+JO @ index-LPWceXQR.js:40
+so @ index-LPWceXQR.js:40
+ck @ index-LPWceXQR.js:40
+C @ index-LPWceXQR.js:25
+$ @ index-LPWceXQR.js:25

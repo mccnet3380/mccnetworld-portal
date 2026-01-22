@@ -1,0 +1,65 @@
+[사전 변경 안내]
+수정 목적(한 줄)
+- 운영서버(mccnetworld.com)에서 기타업무통신사 생성 시 발생하는 “등록 실패”의 근본 원인인 DB 헬스체크 실패를 해결하기 위해, SSL 설정 조회 로직을 안전하게 변경합니다. 코드 영향 최소화(단일 함수 수정), 환경변수/스키마/UI 변경 없음.
+
+해결할 오류 / 재현 절차
+- 오류: requireDbHealthy → DB 헬스체크 실패 → 503 → 프런트 “등록 실패”
+- 재현: mccnetworld.com → 관리자 → 기타업무통신사 생성 시도 → 실패
+- 원인 추정: db 헬스체크 쿼리의 `current_setting('ssl')` 호출이 Render PostgreSQL에서 실패 가능
+
+변경 범위 요약
+- 백엔드: `server/db.ts` 내 DB 헬스체크 함수(예: `checkPostgreSQLHealth`)만 수정
+- 프런트/빌드/배포/환경변수/스키마: 변경 없음
+
+요구 사항(절대 준수)
+- 기존 반환 구조/타입은 유지
+- SSL 설정 조회 실패가 전체 헬스체크 실패로 이어지지 않도록 try/catch와 NULL 안전 COALESCE 적용
+- 다른 부분 로직/쿼리/미들웨어는 수정 금지
+
+[수정 지시]
+파일: server/db.ts
+
+1) `checkPostgreSQLHealth`(이름이 다를 수 있음) 함수에서 DB 상태를 조회하는 쿼리를 다음 가이드로 수정:
+- 기존(문제): `current_setting('ssl') as ssl_is_on` → 일부 환경에서 예외 발생 시 전체 실패
+- 수정(안전):
+  - 1안: NULL 안전 파라미터 사용 후 COALESCE
+    ```sql
+    COALESCE(current_setting('ssl', true), 'off') as ssl_is_on
+    ```
+  - 2안(보강): SSL 조회 블록만 별도 try/catch로 감싸고, 실패 시 `'unknown'`으로 대체
+
+2) 타입스크립트 예시(참고용) — 쿼리 템플릿은 프로젝트 DB 클라이언트(pg/prisma/drizzle)에 맞게 적용:
+```ts
+export async function checkPostgreSQLHealth(db: any) {
+  try {
+    // 핵심: SSL 설정 조회가 실패해도 전체 헬스체크는 통과해야 함
+    const sql = `
+      SELECT
+        1 as health_check,
+        inet_server_addr()::text as host,
+        inet_server_port() as port,
+        current_database() as db,
+        current_user as user,
+        COALESCE(current_setting('ssl', true), 'off') as ssl_is_on
+    `;
+    const row = (await db.query(sql)).rows?.[0];
+
+    return {
+      ok: true,
+      host: row?.host ?? null,
+      port: row?.port ?? null,
+      db: row?.db ?? null,
+      user: row?.user ?? null,
+      ssl: row?.ssl_is_on ?? 'off',
+    };
+  } catch (e) {
+    // 만약 위 쿼리가 환경에 따라 실패하면, 최소 헬스만 재확인(폴백)
+    try {
+      const minimal = (await db.query(`SELECT 1 as health_check`)).rows?.[0];
+      if (minimal?.health_check === 1) {
+        return { ok: true, host: null, port: null, db: null, user: null, ssl: 'unknown' };
+      }
+    } catch {}
+    return { ok: false, error: String(e) };
+  }
+}

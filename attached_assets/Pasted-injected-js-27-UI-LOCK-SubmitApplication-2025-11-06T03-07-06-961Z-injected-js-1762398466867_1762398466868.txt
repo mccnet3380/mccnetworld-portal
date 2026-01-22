@@ -1,0 +1,51 @@
+injected.js:27 [UI_LOCK] SubmitApplication 컴포넌트 렌더링 시작 - 2025-11-06T03:07:06.961Z
+(익명) @ injected.js:27이 경고 이해하기
+injected.js:27 [UI_LOCK] 컴포넌트 UI Version: dev-20251015-v3
+(익명) @ injected.js:27이 경고 이해하기
+injected.js:27 Active carriers: 3 Array(3)
+injected.js:27 Active other carriers: 3 Array(3)
+injected.js:27 Total carriers: 6 Array(6)
+injected.js:27 Service Plans Debug: Object
+injected.js:27 submitForm - FormData keys:
+injected.js:27   customerName: 테스트123
+injected.js:27   customerPhone: 1
+injected.js:27   customerEmail: 
+injected.js:27   contactCode: 742813
+injected.js:27   storeName: 
+injected.js:27   carrier: 선불)프리티LG
+injected.js:27   previousCarrier: 
+injected.js:27   bundleNumber: 
+injected.js:27   bundleCarrier: 
+injected.js:27   customerType: new
+injected.js:27   desiredNumber: 
+injected.js:27   notes: 
+injected.js:27 Upload mutation - files: Array(0)
+injected.js:27 Upload mutation - files count: 0
+injected.js:27 Upload mutation - fields: Object
+injected.js:27 [UI_LOCK] SubmitApplication 컴포넌트 렌더링 시작 - 2025-11-06T03:07:14.741Z
+(익명) @ injected.js:27이 경고 이해하기
+injected.js:27 [UI_LOCK] 컴포넌트 UI Version: dev-20251015-v3
+(익명) @ injected.js:27이 경고 이해하기
+injected.js:27 Active carriers: 3 Array(3)
+injected.js:27 Active other carriers: 3 Array(3)
+injected.js:27 Total carriers: 6 Array(6)
+injected.js:27 Service Plans Debug: Object
+injected.js:27 [UI_LOCK] SubmitApplication 컴포넌트 렌더링 시작 - 2025-11-06T03:07:14.853Z
+(익명) @ injected.js:27이 경고 이해하기
+injected.js:27 [UI_LOCK] 컴포넌트 UI Version: dev-20251015-v3
+(익명) @ injected.js:27이 경고 이해하기
+injected.js:27 Active carriers: 3 Array(3)
+injected.js:27 Active other carriers: 3 Array(3)
+injected.js:27 Total carriers: 6 Array(6)
+injected.js:27 Service Plans Debug: Object
+injected.js:27 [UI_LOCK] SubmitApplication 컴포넌트 렌더링 시작 - 2025-11-06T03:07:16.812Z
+(익명) @ injected.js:27이 경고 이해하기
+injected.js:27 [UI_LOCK] 컴포넌트 UI Version: dev-20251015-v3
+(익명) @ injected.js:27이 경고 이해하기
+injected.js:27 Active carriers: 3 Array(3)
+injected.js:27 Active other carriers: 3 Array(3)
+injected.js:27 Total carriers: 6 Array(6)
+injected.js:27 Service Plans Debug: Object
+injected.js:27 Service plans data: Object
+injected.js:27 API Response: Object
+injected.js:27 Service plans data: Object

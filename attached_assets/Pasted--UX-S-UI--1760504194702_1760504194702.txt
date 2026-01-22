@@ -1,0 +1,67 @@
+[사전 변경 안내 — 접수 폼 마무리 UX 수정 요청]
+
+목적(한 줄)
+- 접수 폼에서 접점코드 접두어 뱃지(예: “S텔”)를 UI에서 숨기고, 토스트 알림을 사용하지 않으며, 고객명/연락처 필드가 정상 입력되도록 버그를 수정합니다. (기능은 유지, 표현/검증만 조정)
+
+변경 범위
+- 프론트엔드: client/src/pages/SubmitApplication.tsx (+ 사용 중인 CodeInput/Toast/Field 컴포넌트)
+- 백엔드/DB: 변경 없음
+
+요청 상세
+1) 접두어 뱃지 숨김
+- 현재 코드 입력 영역의 접두어 표시(예: ‘S텔’)를 UI에서 비노출 처리.
+- 내부 로직(접두어 자동 고정 + 뒤자리 입력 + 단건조회)은 그대로 유지.
+- 전체 코드 표시도 숨김(“전체 코드: S텔24159” 같은 서브텍스트 삭제).
+- 시각적으로는 일반 단일 인풋처럼 보이되, 내부적으로 prefix + suffix를 결합.
+
+구현 가이드(예시)
+- CodeInput 컴포넌트에서 prefix Badge/Adornment 제거:
+  - `<PrefixBadge/>`, `<InputAdornment position="start">` 등 제거
+  - prefix는 hidden input 또는 상태로만 보관
+- placeholder는 “코드 뒤자리 입력(숫자만)”과 같은 안내 문구로 대체.
+
+2) 토스트 알림 제거 → 인라인 에러 메시지로 대체
+- 접점코드 미조회/검증 실패 등 모든 경고/오류 상황에서
+  - Toast/Toaster/Snackbar 호출 제거
+  - 코드 입력 필드 하단에 작은 인라인 에러 텍스트로 표시
+    예) “해당 코드가 없습니다. 코드를 확인해주세요.”
+- 필요 시 입력창 테두리 error 스타일만 적용.
+- 예외용 “검색 열기” 버튼은 인라인 링크/아이콘으로만 노출(토스트/모달 자동 표시 금지).
+
+수정 포인트
+- `useToast()` / `<Toaster/>` 사용 제거
+- `onError`에서 `setFieldError('contactCode', '메시지')`로 대체
+
+3) 고객명 / 연락처 입력 불가 버그 수정
+- 현 증상: 고객명, 연락처 인풋에 타이핑이 되지 않음(포커스/입력 차단).
+- 점검 및 수정 항목:
+  - 두 필드에 `disabled`/`readOnly`/`pointer-events: none`가 적용되어 있지 않은지 확인
+  - 상위 Card/Section에 의해 이벤트가 차단되는 overlay/z-index 문제 여부 확인
+  - `value`와 `onChange`가 불일치(제어컴포넌트인데 상태 미연결)인지 확인
+  - form-level `autoComplete`, `autoCorrect`, `spellCheck` 등은 OFF 유지하되 입력은 가능해야 함
+  - `inputMode` 적절 지정: 연락처는 `inputMode="tel"`, 고객명은 기본 text
+- 수정 후 두 필드 모두 정상 타이핑 가능해야 함.
+
+4) 접근성/자동저장 관련 기존 정책 유지
+- `<form autoComplete="off" aria-autocomplete="none">` 유지
+- 각 인풋 `autoComplete="off"` 및 `data-lpignore="true"`, `data-1p-ignore="true"` 유지
+- 로컬 드래프트 저장(localStorage/sessionStorage) 사용 금지
+
+수정 파일 (예상)
+- client/src/pages/SubmitApplication.tsx
+  - 접두어 UI 제거, 인라인 에러 노출, 고객명/연락처 입력 버그 수정
+- client/src/components/CodeInput.tsx (있는 경우)
+  - Prefix Badge/Adornment/전체코드 텍스트 제거
+  - onError → setFieldError로 변경
+- client/src/components/Toast.tsx (있는 경우)
+  - 본 페이지에서 호출 제거(컴포넌트 자체 삭제는 불필요)
+
+검증 시나리오 & 성공 기준
+- 접점코드 입력 영역에 접두어(“S텔” 등)가 더 이상 보이지 않음.
+- 코드가 없거나 잘못된 경우, 토스트 대신 해당 인풋 하단에 인라인 에러 텍스트만 표시.
+- 고객명/연락처 필드에 정상적으로 타이핑 가능(포커스/입력/삭제 모두 동작).
+- 단건 조회 성공 시 판매점명이 자동으로 채워지고 추가 토스트/팝업은 나타나지 않음.
+- 모바일/데스크톱(Chrome/Edge/Safari)에서 동일 동작.
+
+롤백 계획
+- 필요 시 CodeInput에서 prefix 뱃지 렌더를 다시 켜고, 인라인 에러 대신 토스트를 복구할 수 있음(기능 로직은 변경하지 않았으므로 UI만 롤백 가능).

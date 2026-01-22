@@ -1,0 +1,127 @@
+수정 목적(한 줄)
+
+운영서버(mccnetworld.com) 접속 시 세션 검증 없이 진입되는 문제를 제거하고, 항상 유효 세션 확인 후 로그인 페이지로 리다이렉트.
+
+해결할 오류 / 재현 절차(간단)
+
+현재: https://mccnetworld.com/ 직접 접속 시 로그인 없이 대시보드/메인 접근됨.
+
+원인 가설: 클라이언트가 localStorage 상태만 보고 라우팅(낙관 진입) → 서버 세션 검증 이전에 화면 진입.
+
+재현: 시크릿 모드에서 접속해도 대시보드가 보임(또는 잠깐 보였다가 튕김).
+
+기대 결과
+
+미로그인/무효 세션: 즉시 /login으로 이동.
+
+유효 세션: 대시보드 정상 표시.
+
+변경 범위 요약
+
+프론트엔드(필수): client/src/lib/AuthProvider.tsx
+
+앱 시작 시 /api/check-auth 실호출 + 결과 대기 → 무효면 자동 로그아웃 + /login 이동.
+
+요청 시 **credentials: 'include'**로 세션 쿠키 포함 전송.
+
+라우팅 결정은 검증 완료 후에만 실행(초기 “unknown” 상태 게이트, 기존 레이아웃/스타일 변경 없음).
+
+백엔드(선택/확인): server/routes.ts
+
+/api/check-auth가 무효 세션에 401을 반환하는지 확인.
+
+캐시 금지 헤더 추가: Cache-Control: no-store, Vary: Cookie (CDN/프록시/서비스워커 캐시로 인한 “가짜 200” 방지).
+
+빌드/배포: 기존 파이프라인 그대로.
+
+불변: 환경변수/Secrets, DB 스키마, UI(레이아웃/디자인/스타일/컴포넌트 구조) 전부 미변경.
+
+수정 파일 목록(최소화)
+
+client/src/lib/AuthProvider.tsx (필수)
+
+server/routes.ts (선택: /api/check-auth 동작 확인/필요 시 헤더만 보강)
+
+파일별 변경 이유 (1–2줄)
+
+AuthProvider.tsx: 앱 시작 즉시/탭 재진입 시 서버에 세션 실검증(401/403이면 자동 로그아웃). credentials: 'include'로 세션 쿠키 포함. 검증 완료 전에는 라우팅 결정을 보류(화면 구조 변화 없음).
+
+routes.ts: /api/check-auth에서 무효 세션 401, 유효 시 200 + 최소 사용자 정보. 캐시 무력화 헤더로 오탑착 200 차단.
+
+예상 변경 내용(요약 diff)
+
+프론트
+
+useEffect(() => { checkAuthStatus(); }, [])
+
+await fetch('/api/check-auth', { credentials: 'include' })
+
+if (!res.ok) logout(); // localStorage/상태 초기화 + /login로 이동
+
+초기 상태 authChecked=false → 체크 완료 시 true로 전환(라우팅 게이트)
+
+백엔드(확인/보강)
+
+GET /api/check-auth
+
+!req.session?.userId → res.status(401).json({ success:false })
+
+유효 시 res.status(200).json({ success:true, user:{...} })
+
+헤더: Cache-Control: no-store, Vary: Cookie
+
+핵심 추가/삭제/치환 포인트
+
+추가: 앱 시작 시 세션 검증 useEffect(AuthProvider).
+
+치환: checkAuthStatus에서 401/403 → 자동 로그아웃 로직 강화.
+
+유지: 라우트/컴포넌트/스타일/스키마/환경 그대로.
+
+확인: /api/check-auth가 반드시 401을 내는지 + 캐시 금지 헤더.
+
+리스크와 회피책
+
+호환: 유효 세션을 잘못 무효로 판단할 위험
+
+회피: 서버 200일 때만 로그인 유지, 401/403에서만 로그아웃.
+
+성능: 첫 로드 때 API 1회 증가(미미)
+
+회피: 결과 캐시 금지이지만 경량 JSON만 반환.
+
+롤백 계획
+
+대상 파일: client/src/lib/AuthProvider.tsx, (선택)server/routes.ts
+
+방법: 수정 전 버전으로 복원 또는 git revert 1커밋 → 서버 재시작.
+
+검증 시나리오 & 성공 기준
+
+S1. 로그인 전 접속
+
+시크릿 모드로 https://mccnetworld.com/ 접근
+
+성공: 즉시 /login으로 이동, 로그인 폼 표시. /api/check-auth 401.
+
+S2. 유효 세션 접속
+
+로그인 후 새 탭에서 루트 접근
+
+성공: 대시보드 노출, /api/check-auth 200 + 사용자 정보.
+
+S3. 만료 세션
+
+로그인 → 서버에서 세션 만료 → 새로고침
+
+성공: 자동 로그아웃, /login 이동, /api/check-auth 401, localStorage 정리.
+
+S4. 운영 동등 검증
+
+테스트 통과 후 운영에서 S1~S3 동일 결과.
+
+추가 권고(코드 변경 없이 점검)
+
+서비스 워커/프록시 캐시가 /api/check-auth를 캐싱하지 않는지 확인(DevTools Network → “Disable cache” 체크 후 재현).
+
+쿠키 설정 확인: 세션 쿠키 SameSite, 도메인, 경로가 운영 도메인에서 정상 전송되는지(요청에 쿠키 동봉 확인).

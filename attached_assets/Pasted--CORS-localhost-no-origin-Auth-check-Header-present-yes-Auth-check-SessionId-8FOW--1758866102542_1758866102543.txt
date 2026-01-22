@@ -1,0 +1,273 @@
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-allowlist): https://64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+Updating activation status for document 27: {
+  activationStatus: '개통',
+  notes: '',
+  supplementNotes: '',
+  dealerNotes: '',
+  deviceModel: '',
+  simNumber: '',
+  subscriptionNumber: '',
+  registrationFeePrepaid: false,
+  registrationFeePostpaid: false,
+  registrationFeeInstallment: false,
+  simFeePrepaid: false,
+  simFeePostpaid: false,
+  bundleApplied: false,
+  bundleNotApplied: false,
+  discardReason: ''
+}
+Activation status update error: TypeError: getStorage(...).updateDocumentActivationStatus is not a function
+    at <anonymous> (/home/runner/workspace/server/routes.ts:923:41)
+    at Layer.handle [as handle_request] (/home/runner/workspace/node_modules/express/lib/router/layer.js:95:5)
+    at next (/home/runner/workspace/node_modules/express/lib/router/route.js:149:13)
+    at requireAuth (/home/runner/workspace/server/routes.ts:167:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+Documents API request: {
+  status: undefined,
+  activationStatus: '개통',
+  search: undefined,
+  contactCode: undefined,
+  startDate: undefined,
+  endDate: undefined,
+  carrier: undefined,
+  allWorkers: 'true',
+  includeActivatedBy: 'true'
+}
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-allowlist): https://64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev
+✅ CORS 허용 (개발-allowlist): https://64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev
+✅ CORS 허용 (개발-localhost): no-origin
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+Documents API request: {
+  status: undefined,
+  activationStatus: '대기,진행중',
+  search: undefined,
+  contactCode: undefined,
+  startDate: undefined,
+  endDate: undefined,
+  carrier: undefined,
+  allWorkers: 'true',
+  includeActivatedBy: undefined
+}
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+Documents API request: {
+  status: undefined,
+  activationStatus: '기타완료',
+  search: undefined,
+  contactCode: undefined,
+  startDate: undefined,
+  endDate: undefined,
+  carrier: undefined,
+  allWorkers: undefined,
+  includeActivatedBy: undefined
+}
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+✅ CORS 허용 (개발-localhost): no-origin
+Service plans API called - fetching from database
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+🔍 데이터베이스 헬스체크 요청 수신
+✅ PostgreSQL 헬스체크 성공: {
+  latencyMs: 70,
+  ssl: false,
+  backendPid: 1107,
+  time: 2025-09-26T05:54:09.025Z
+}
+✅ 헬스체크 결과: healthy (200)
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-localhost): no-origin
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-allowlist): https://64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+✅ CORS 허용 (개발-allowlist): https://64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev
+Auth check - Header present: yes
+Auth check - SessionId: 8FOW***90c9
+✅ Valid signed session: 8FOW***90c9 (expires at 2025-09-27T05:13:57.797Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: 8FOW***90c9
+Document upload error: error: null value in column "user_id" of relation "documents" violates not-null constraint
+    at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:104:19)
+    at async <anonymous> (/home/runner/workspace/server/storage.ts:412:22)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:781:22) {
+  length: 568,
+  severity: 'ERROR',
+  code: '23502',
+  detail: 'Failing row contains (33, null, null, null, 김광섭, 01033333333, null, L미420829, 후불)프리티SK, KT, 접수, 대기, null, null, null, 2025-09-26 05:54:52.145285, 2025-09-26 05:54:52.145285, null, null, null, , null, null, null, null, null, null, null, null, null, null, f, f, f, f, f, f, f, null, null, null, null, null, null, null, null, null, null, null, port-in, , , null, null).',
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: 'public',
+  table: 'documents',
+  column: 'user_id',
+  dataType: undefined,
+  constraint: undefined,
+  file: 'execMain.c',
+  line: '2021',
+  routine: 'ExecConstraints'
+}

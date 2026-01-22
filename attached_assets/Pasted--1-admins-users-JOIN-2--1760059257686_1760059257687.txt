@@ -1,0 +1,136 @@
+[사전 변경 안내]
+수정 목적(한 줄)
+- (1) 개통완료/기타완료 처리 시 처리자 이름 오표시 문제 수정 (admins/users 동시 JOIN)
+- (2) 접수 신청 시 파일 중복 생성 방지 (버튼 중복 클릭/중복 mutation 차단)
+
+해결할 오류
+- 문제 1: 관리자 처리 시 처리자 컬럼에 “L)수정”, “나수정” 등 잘못된 이름 표시
+  · 원인: documents.activatedBy 값에 관리자/사용자 ID가 혼재하나 users만 JOIN하여 잘못 매칭
+- 문제 2: 파일 1개 업로드 → 문서가 여러 개 생성
+  · 원인: 네트워크 지연/버튼 연타/중복 mutation으로 동일 요청이 반복 전송
+
+변경 범위 요약 (코드 최소 변경)
+- 백엔드: server/storage.ts
+  · getDocuments()의 includeActivatedBy 분기에서 admins LEFT JOIN 추가
+  · activatedByName = COALESCE(admins.name, users.name)
+- 프론트엔드: client/src/pages/SubmitApplication.tsx
+  · 제출 버튼을 mutation 진행 중(isPending)에는 비활성화
+  · onSubmit 핸들러에서 가드(진행 중이면 조기 return)
+
+수정 파일 목록
+- server/storage.ts
+- client/src/pages/SubmitApplication.tsx
+
+요구 사항(절대 준수)
+- 반환 필드명/타입 변경 금지(activatedByName 유지)
+- 기존 SELECT 컬럼/다른 JOIN(contactCodes 등) 수정 금지, 신규 JOIN은 LEFT JOIN
+- 프론트 버튼 레이블/스타일 유지, disabled만 추가 (필요 시 aria-busy)
+- 환경변수/DB 스키마/UI 레이아웃 변경 없음
+
+[수정 지시]
+
+1) 백엔드: server/storage.ts
+- 상단 import 보강(중복 import 금지)
+----------------------------------------------------------------
+import { sql, eq } from "drizzle-orm";
+import { admins, users, documents, contactCodes } from "@/server/db/schema"; // 실제 경로에 맞게 유지
+----------------------------------------------------------------
+
+- getDocuments() 내 includeActivatedBy 분기 교체(핵심만 예시, 나머지 select 필드는 기존 유지)
+----------------------------------------------------------------
+// 기존(예: users만 JOIN)
+// if (filters?.includeActivatedBy) {
+//   query = db.select({
+//     ...docColumns,
+//     dealerName: contactCodes.dealerName,
+//     activatedByName: users.name,
+//   })
+//   .from(documents)
+//   .leftJoin(contactCodes, eq(documents.contactCodeId, contactCodes.id))
+//   .leftJoin(users, eq(documents.activatedBy, users.id));
+// }
+
+// 수정: admins + users 모두 LEFT JOIN, 관리자 이름 우선
+if (filters?.includeActivatedBy) {
+  query = db.select({
+    ...docColumns,
+    dealerName: contactCodes.dealerName,
+    activatedByName: sql<string>`COALESCE(${admins.name}, ${users.name})`,
+  })
+  .from(documents)
+  .leftJoin(contactCodes, eq(documents.contactCodeId, contactCodes.id))
+  .leftJoin(admins, eq(documents.activatedBy, admins.id))
+  .leftJoin(users, eq(documents.activatedBy, users.id));
+}
+----------------------------------------------------------------
+
+2) 프론트엔드: client/src/pages/SubmitApplication.tsx
+- 제출 버튼과 onSubmit 핸들러에 “중복 제출 가드” 적용
+- 아래 패턴을 참고해 현재 파일의 동일 위치에 반영(이미 uploadMutation이 있다면 그대로 사용)
+
+----------------------------------------------------------------
+/** 가드 추가: 진행 중에는 중복 제출 차단 */
+const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  if (uploadMutation.isPending /* 또는 isLoading */) return; // 🔒 진행 중 가드
+
+  const formData = new FormData(e.currentTarget);
+  // ... 기존 유효성 검사/데이터 준비
+  uploadMutation.mutate(formData);
+};
+
+/** 버튼 비활성화: 진행 중일 때 클릭 불가 */
+<Button type="submit" onClick={() => {}} disabled={uploadMutation.isPending}>
+  접수 신청
+</Button>
+----------------------------------------------------------------
+
+- 만약 onSubmit을 form에 바인딩하고 있다면 form에도 동일 가드를 적용
+----------------------------------------------------------------
+<form onSubmit={handleSubmit}>
+  {/* ...fields... */}
+  <Button type="submit" disabled={uploadMutation.isPending} aria-busy={uploadMutation.isPending}>
+    접수 신청
+  </Button>
+</form>
+----------------------------------------------------------------
+
+- (선택 권장) 중복 전송을 더 강하게 막기 위한 추가 보강
+  · 버튼에 keydown/keyup으로 엔터 연타 방지(필요 시)
+  · 요청에 idempotency 키를 헤더로 첨부(백엔드에서 같은 키의 중복 요청 무시)
+  예) 헤더 추가:
+  ----------------------------------------------------------------
+  uploadMutation.mutate(formData, {
+    onMutate() {
+      // ex) window.crypto.randomUUID()
+      formData.append("X-Idempotency-Key", crypto.randomUUID());
+    }
+  });
+  ----------------------------------------------------------------
+  (백엔드에서 해당 키를 메모리/DB에 기록해 일정 시간 내 동일 키 중복 생성 차단 — 별도 변경으로 분리)
+
+[검증 시나리오 & 성공 기준]
+- 처리자 표시
+  1) 관리자 계정으로 기타완료/개통완료 처리 → 목록의 처리자 컬럼에 관리자 이름 정확 표기
+  2) 근무자 계정으로 처리 → 근무자 이름 정확 표기
+  ✅ 성공: “L)수정”, “나수정” 등 잘못된 문자열 미표시
+
+- 중복 생성 방지
+  1) 파일 1개 선택 후 접수 버튼 연타/더블클릭 시도
+  2) 네트워크 지연 상황(DevTools throttling)에서도 결과는 문서 1건만 생성
+  ✅ 성공: 버튼이 진행 중 비활성화, 생성 건수 1건 유지
+
+리스크/회피책
+- 서버 쿼리: LEFT JOIN 1건 추가로 미미한 성능 영향(무시 가능)
+- 프론트: disabled 적용에 따른 접근성 개선(aria-busy=true)
+
+롤백 계획
+- server/storage.ts와 SubmitApplication.tsx 변경분만 원복: 
+  git checkout -- server/storage.ts client/src/pages/SubmitApplication.tsx
+- 서버 재시작 후 기존 동작으로 복귀
+
+[마지막 보고]
+- storage.ts activatedByName SELECT 변경 diff
+- SubmitApplication.tsx disabled/가드 추가 diff
+- 관리자 처리 후 처리자명 정상 표시 캡처
+- 동일 파일로 연타 테스트 결과(문서 1건만 생성) 캡처

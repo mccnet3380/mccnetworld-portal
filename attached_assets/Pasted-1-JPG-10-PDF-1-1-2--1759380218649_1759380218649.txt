@@ -1,0 +1,154 @@
+1) 수정 목적 (한 줄)
+
+여러 파일(JPG 최대 10, PDF 1)을 올려도 접수 관리에 1건으로만 보이도록 서버/조회 로직을 보완(스키마 불변).
+
+2) 현재 문제
+
+업로드 시 파일 수만큼 documents 행이 생성되어 접수 관리에 N행으로 보임.
+
+이유: documents 테이블이 단일 파일 필드(filePath) 중심 설계라 서버가 파일마다 별도 문서를 만들고 있음.
+
+3) 변경 범위 요약
+
+백엔드만 로직 수정(UI/스타일/컴포넌트 구조 불변)
+
+프론트는 다중 파일 업로드(이미 적용 예정: JPG≤10, PDF=1)만 유지
+
+DB/스키마/환경변수 변경 없음
+
+4) 수정 파일 (최소)
+
+server/routes.ts
+
+POST /api/documents(접수 생성)
+
+GET /api/documents(목록 조회)
+
+(필요 시) GET /api/files/documents/:id(미리보기/다운로드)
+
+server/storage.ts
+
+getDocuments() 조회 결과 그룹화 보강(아래 내용)
+
+(프론트 변경 없음 또는 아주 최소: 표시만)
+
+5) 구현 개념(스키마 무변경)
+A) 업로드 시 “배치 키”로 묶기
+
+서버가 접수 처리 시 배치 ID(batchId, UUID) 를 생성.
+
+최초 파일로 생성한 대표 문서에는 notes JSON에
+
+{ "batchId": "<uuid>", "isChild": false, "fileCount": N }
+
+
+나머지 파일은 기존처럼 문서를 만들되, 자식 플래그만 표시:
+
+{ "batchId": "<uuid>", "isChild": true }
+
+
+즉, 스키마는 그대로 두고 notes(텍스트/JSON)만 활용.
+
+B) 목록 조회 시 그룹화(겉으로 1행만)
+
+getDocuments()에서 가져온 rows를 notes.batchId 기준으로 묶음.
+
+같은 batchId에서 isChild=true 인 행은 목록에는 숨김(대표 1행만 노출).
+
+대표 행에는 첨부 개수(fileCount) 와 첨부 파일 목록(id, fileName, filePath)을 서버에서 합쳐서 내려줌.
+
+방법: 메모리 그룹화로 대표행에 attachments: [{id, fileName, filePath, mime, size}] 추가
+
+프론트는 기존 열 구성 유지. (첨부 개수만 간단히 보여주거나, 기존 팝업에서 attachments 사용)
+
+C) 미리보기/다운로드
+
+미리보기 팝업은 대표 문서의 attachments 배열을 사용해 파일 선택/전환
+
+다운로드도 해당 자식 문서 id를 그대로 호출 → 기존 라우트 유지
+
+장점: 코드 변경만으로 효과 / 기존 데이터도 추가 백필 없이 동작(새로 들어오는 건은 batchId로 묶임)
+
+6) 예상 변경(요약 diff 개념)
+
+POST /api/documents
+
+업로드 시작 시 const batchId = uuid()
+
+파일들 순회하며: 첫 파일 → isChild:false, 나머지 → isChild:true 를 notes에 저장
+
+대표 문서에는 fileCount 기록
+
+GET /api/documents
+
+DB rows → try { const meta = JSON.parse(row.notes) }
+
+batchId 기준으로 map/group
+
+isChild:true는 목록에서 제외, 대표에 attachments 배열로 병합
+
+7) 리스크·회피책
+
+과거 데이터: batchId가 없는 단일 파일 문서는 그대로 1건 표시(회귀 없음)
+
+성능: 당일/당월 등 페이지네이션 범위 내에서의 메모리 그룹화 → 영향 경미
+
+JSON 파싱 실패: try/catch로 무시하고 단일 문서로 취급
+
+8) 롤백 계획
+
+routes.ts와 storage.ts의 batchId/그룹화 로직 제거 → 기존 동작으로 즉시 복귀
+
+배포 후 문제 시 이전 커밋으로 revert
+
+9) 검증 시나리오 & 성공 기준
+
+JPG 5장 업로드
+
+서버 생성: 대표 1 + 자식 4 (notes에 batchId)
+
+접수 관리: 1행만 표시, 첨부 개수=5, 팝업에서 5개 파일 전환 가능
+
+PDF 1개 업로드
+
+1행 표시(첨부=1)
+
+대시보드/통계
+
+대표 문서만 집계 대상(자식 제외) → 건수 정확
+
+과거 단일 문서
+
+그대로 1행 표시
+성공 조건: 여러 파일 업로드해도 접수 관리엔 1행, 조회/미리보기/다운로드 정상, 에러 0.
+
+🧩 (참고) DB 스키마 변경 제안 — “설명만”
+
+현재는 적용하지 않습니다. 필요 시 향후 검토용 제안입니다.
+
+옵션 1) documents에 JSONB 필드 추가
+
+file_paths, file_mimetypes, file_sizes, original_filenames (JSON 배열)
+
+장점: 빠르게 구현, 한 테이블 유지
+
+단점: JSON 업데이트/검색이 늘어나고 정규화가 떨어짐
+
+옵션 2) document_files 보조 테이블(정규화)
+CREATE TABLE document_files (
+  id SERIAL PRIMARY KEY,
+  document_id INTEGER REFERENCES documents(id) NOT NULL,
+  file_path VARCHAR(500) NOT NULL,
+  original_filename VARCHAR(255),
+  file_size INTEGER,
+  file_mimetype VARCHAR(100),
+  upload_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+장점: 1:N 구조로 깔끔, 검색/통계 유리
+
+단점: 마이그레이션·조인 추가 필요
+
+추천: 지금은 스키마 변경 없이(배치키/그룹화) 운영 안정화 → 추후 트래픽·요구에 맞춰 옵션 2 단계적 도입.

@@ -1,0 +1,320 @@
+﻿요금제명,통신사,요금제유형,데이터제공량,월요금(원),활성여부
+ 절약 ,선불)프리티SK,LTE,22.53원,"4,950 ",TRUE
+ 통화할인 ,선불)프리티SK,LTE,22.53원,"9,900 ",TRUE
+ 선불데이터11G ,선불)프리티SK,LTE,11GB + 3Mbps 무제한,"59,900 ",TRUE
+ 선불데이터안심/1개월 ,선불)프리티SK,LTE,300MB + 3Mbps 무제한,"36,000 ",TRUE
+ 선불데이터안심/2개월 ,선불)프리티SK,LTE,300MB + 3Mbps 무제한,"36,000 ",TRUE
+ 선불데이터안심/3개월 ,선불)프리티SK,LTE,300MB + 3Mbps 무제한,"36,000 ",TRUE
+ 선불데이터300M/1개월 ,선불)프리티LG,LTE,300MB + 3Mbps 무제한,"36,300 ",TRUE
+ 선불데이터300M/2개월 ,선불)프리티LG,LTE,300MB + 3Mbps 무제한,"36,300 ",TRUE
+ 선불데이터10.3G ,선불)프리티LG,LTE,10.3GB + 3Mbps 무제한,"38,300 ",TRUE
+ 선불데이터300M/3개월 ,선불)프리티LG,LTE,300MB + 3Mbps 무제한,"36,300 ",TRUE
+ 선불 300M/1개월 ,선불)코드KT,LTE,300MB + 3Mbps 무제한,"36,300 ",TRUE
+ 밸류 363 ,선불)밸류컴,LTE,300MB + 3Mbps 무제한,"36,300 ",TRUE
+ 밸류 383 ,선불)밸류컴,LTE,10GB + 300MB + 3Mbps 무제한,"38,300 ",TRUE
+" 밸류 G 407 
+(국제전화) ",선불)밸류컴,LTE,300MB + 3Mbps 무제한,"40,700 ",TRUE
+ 밸류 363/2개월 ,선불)밸류컴,LTE,300MB + 3Mbps 무제한,"36,300 ",TRUE
+ 핀다이렉트 Z mini (7GB) ,후불)카카오SK,LTE,7GB+1Mbps 무제한,"20,240",TRUE
+ 핀다이렉트 Z (11GB) ,후불)카카오SK,LTE,11GB+일2GB+3Mbps 무제한,"37,510",TRUE
+ Z mini + 밀리의서재 ,후불)카카오KT,LTE,7GB + 10GB + 1Mbps 무제한,"19,800",TRUE
+ 핀다이렉트Z Mini(10GB) ,후불)카카오KT,LTE,10GB+1Mbps 무제한,"18,700",TRUE
+ Z + 밀리의서재 ,후불)카카오KT,LTE,11GB+일2GB+3Mbps 무제한,"38,280",TRUE
+ 핀다이렉트Z Max(100GB) ,후불)카카오KT,LTE,100GB+5Mbps 무제한,"38,500",TRUE
+ LTE 알뜰 (100GB+/통화맘껏) ,후불)텔링크SK,LTE,100GB + 5Mbps 무제한,"42,790",TRUE
+ LTE 알뜰 (11GB+/통화맘껏) ,후불)텔링크SK,LTE,11GB+일2GB+3Mbps 무제한,"36,140",TRUE
+ LTE 알뜰 (15GB+/100분) ,후불)텔링크SK,LTE,15GB + 3Mbps 무제한,"25,740",TRUE
+ LTE 알뜰 (10GB+/통화맘껏) ,후불)텔링크SK,LTE,10GB + 1Mbps 무제한,"19,640",TRUE
+ LTE 알뜰 (7GB+/통화맘껏) ,후불)텔링크SK,LTE,7GB + 1Mbps 무제한,"19,140",TRUE
+ LTE 알뜰 (25GB/100분) ,후불)텔링크SK,LTE,25GB,"24,550",TRUE
+ LTE 알뜰 (3GB+/200분) ,후불)텔링크SK,LTE,3GB + 1Mbps 무제한,"14,340",TRUE
+ LTE 알뜰 (1GB+/통화맘껏) ,후불)텔링크SK,LTE,1GB + 1Mbps 무제한,"13,340",TRUE
+ LTE 알뜰 (15GB/200분) ,후불)텔링크SK,LTE,15GB,"15,750",TRUE
+ LTE 알뜰 (8GB/2000분) ,후불)텔링크SK,LTE,8GB,"12,210",TRUE
+ LTE 알뜰 (6GB/2000분) ,후불)텔링크SK,LTE,6GB,"10,780",TRUE
+ LTE 알뜰 (4GB/2000분) ,후불)텔링크SK,LTE,4GB,"10,340",TRUE
+ LTE 알뜰 (2GB/2000분) ,후불)텔링크SK,LTE,2GB,"6,820",TRUE
+ CMLink (100GB+) ,후불)텔링크SK,LTE(중국인전용),100GB + 5Mbps 무제한,"47,850",TRUE
+ CMLink (11GB+) ,후불)텔링크SK,LTE(중국인전용),11GB+일2GB+3Mbps 무제한,"41,200",TRUE
+ CMLink (15GB+) ,후불)텔링크SK,LTE(중국인전용),15GB + 3Mbps 무제한,"30,800",TRUE
+ CMLink (7GB+) ,후불)텔링크SK,LTE(중국인전용),7GB + 1Mbps 무제한,"24,200",TRUE
+ CMLink (10GB+) ,후불)텔링크SK,LTE(중국인전용),10GB + 1Mbps 무제한,"24,700",TRUE
+ CMLink (1GB+) ,후불)텔링크SK,LTE(중국인전용),1GB + 1Mbps 무제한,"18,400",TRUE
+ freeT음성기본7G+1M ,후불)프리티SK,LTE,7GB+1Mbps 무제한,"29,700",TRUE
+ 음성기본1G+1M ,후불)프리티SK,LTE,1GB+1Mbps 무제한,"22,000",TRUE
+ freeT데이터안심10G+1M ,후불)프리티SK,LTE,10GB+1Mbps 무제한,"31,900",TRUE
+ freeT데이터안심100분15G+ ,후불)프리티SK,LTE,15GB+3Mbps 무제한,"30,800",TRUE
+ freeT데이터안심300분15G+ ,후불)프리티SK,LTE,15GB+3Mbps 무제한,"46,200",TRUE
+ freeT데이터중심11G+ ,후불)프리티SK,LTE,11GB+일2G+3Mbps 무제한,"49,390",TRUE
+ freeT데이터팡팡100G+ ,후불)프리티SK,LTE,100GB+5Mbps 무제한,"53,000",TRUE
+ 5G더빠른200G ,후불)프리티SK,5G, 200GB+5Mbps 무제한,"59,000",TRUE
+ CM Link 1G+1M ,후불)프리티SK,LTE(중국인전용),1GB+1Mbps 무제한,"27,500",TRUE
+ CM Link 7G+1M ,후불)프리티SK,LTE(중국인전용),7GB+1Mbps 무제한,"29,700",TRUE
+ CM Link 10G+1M ,후불)프리티SK,LTE(중국인전용),10GB+1Mbps 무제한,"31,900",TRUE
+ CM Link 15G+ ,후불)프리티SK,LTE(중국인전용),15GB+3Mbps 무제한,"36,300",TRUE
+ CM Link 100G+ ,후불)프리티SK,LTE(중국인전용),100GB+5Mbps 무제한,"58,300",TRUE
+ CM Link 11G+ ,후불)프리티SK,LTE(중국인전용),11GB+일2GB+3Mbps 무제한,"45,100",TRUE
+ 데이터안심무제한7G+ ,후불)프리티LG,LTE,7GB+1Mbps 무제한,"29,700",TRUE
+ FreeT안심10G+1M ,후불)프리티LG,LTE,10GB+1Mbps 무제한,"35,200",TRUE
+ FreeT안심15G+1M ,후불)프리티LG,LTE,15G+1Mbps 무제한,"37,840",TRUE
+ 데이터안심300분15G+ ,후불)프리티LG,LTE,15GB+3Mbps 무제한,"46,200",TRUE
+ 유심프리티데이터중심11G+ ,후불)프리티LG,LTE,11GB+일2GB+3Mbps 무제한,"49,390",TRUE
+ 데이터팡팡 ,후불)프리티LG,LTE,일5GB+5Mbps 무제한,"52,700",TRUE
+ M 알뜰 1.5GB 100분 ,후불)엠모바일,LTE,1.5GB,"5,500",TRUE
+ M 알뜰 안심 ,후불)엠모바일,LTE,400kbps 무제한,"7,500",TRUE
+ M 알뜰 2.5GB ,후불)엠모바일,LTE,2.5GB,"6,500",TRUE
+ 통화 맘껏 4.5GB ,후불)엠모바일,LTE,4.5GB,"6,900",TRUE
+ M 알뜰 안심 2.5GB ,후불)엠모바일,LTE,2.5GB + 400kbps 무제한,"9,500",TRUE
+ M 라이트 6GB 플러스 ,후불)엠모바일,LTE,6GB + 400kbps 무제한,"13,000",TRUE
+ M 라이트 10GB 플러스 ,후불)엠모바일,LTE,10GB + 400kbps 무제한,"16,000",TRUE
+ M 스페셜 2.2GB 100분 ,후불)엠모바일,LTE,2.2GB + 1Mbps 무제한,"13,900",TRUE
+ 통화 맘껏 10GB ,후불)엠모바일,LTE,10GB,"12,900",TRUE
+ M 스페셜 5GB 100분 ,후불)엠모바일,LTE,5GB + 1Mbps 무제한,"16,000",TRUE
+ 통화 맘껏 15GB ,후불)엠모바일,LTE,15GB,"15,900",TRUE
+ 데이터 맘껏 10GB+/180분 ,후불)엠모바일,LTE,10GB + 1Mbps 무제한,"18,000",TRUE
+ M 스페셜 10GB 플러스 ,후불)엠모바일,LTE,10GB + 1Mbps 무제한,"19,400",TRUE
+ M 스페셜 7GB 플러스 ,후불)엠모바일,LTE,7GB + 1Mbps 무제한,"17,400",TRUE
+ M 라이트 7GB 플러스 ,후불)엠모바일,LTE,7GB + 400Kbps 무제한,"14,000",TRUE
+ M 스페셜 7GB(밀리의서재) ,후불)엠모바일,LTE,7GB + 1Mbps 무제한,"17,900",TRUE
+ M 스페셜 7GB(지니뮤직) ,후불)엠모바일,LTE,7GB + 1Mbps 무제한,"20,200",TRUE
+ M 스페셜 10GB(밀리의서재) ,후불)엠모바일,LTE,10GB + 1Mbps 무제한,"19,900",TRUE
+ M 스페셜 10GB(CU 20%할인) ,후불)엠모바일,LTE,10GB + 1Mbps 무제한,"20,400",TRUE
+ M 스페셜 15GB 플러스 ,후불)엠모바일,LTE,15GB + 1Mbps 무제한,"21,900",TRUE
+ M 스페셜 15GB(CU 20%할인) ,후불)엠모바일,LTE,15GB + 1Mbps 무제한,"22,400",TRUE
+ M 스페셜 15GB(밀리의서재) ,후불)엠모바일,LTE,15GB + 1Mbps 무제한,"22,400",TRUE
+ M 프리미엄 15GB 100분 ,후불)엠모바일,LTE,15GB + 3Mbps 무제한,"25,900",TRUE
+ M 프리미엄 15GB 100분(밀리의서재) ,후불)엠모바일,LTE,15GB + 3Mbps 무제한,"26,400",TRUE
+ M 프리미엄 15GB 100분(CU 20%할인) ,후불)엠모바일,LTE,15GB + 3Mbps 무제한,"26,400",TRUE
+ M 프리미엄 15GB 100분(지니뮤직) ,후불)엠모바일,LTE,15GB + 3Mbps 무제한,"28,900",TRUE
+ M 프리미엄 15GB 300분(CU 20%할인) ,후불)엠모바일,LTE,15GB + 1Mbps 무제한,"29,000",TRUE
+ M 프리미엄 11GB ,후불)엠모바일,LTE,11GB + 일2GB + 3Mbps 무제한,"33,500",TRUE
+ M 프리미엄 11GB(밀리의서재) ,후불)엠모바일,LTE,11GB + 일2GB + 3Mbps 무제한,"34,000",TRUE
+ M 프리미엄 11GB(지니뮤직) ,후불)엠모바일,LTE,11GB + 일2GB + 3Mbps 무제한,"36,900",TRUE
+ 모두다 맘껏 11GB+(메가박스 FREE) ,후불)엠모바일,LTE,11GB + 일2GB + 3Mbps 무제한,"38,600",TRUE
+ M 프리미엄 11GB(CU 20%할인) ,후불)엠모바일,LTE,11GB + 일2GB + 3Mbps 무제한,"34,000",TRUE
+ M 프리미엄 일5GB ,후불)엠모바일,LTE,매일5GB + 5Mbps,"39,400",TRUE
+ M 프리미엄 100GB ,후불)엠모바일,LTE,100GB + 5Mbps 무제한,"39,400",TRUE
+ M 프리미엄 100GB(CU 20%할인) ,후불)엠모바일,LTE,100GB + 5Mbps 무제한,"39,900",TRUE
+ M 프리미엄 100GB(밀리의서재) ,후불)엠모바일,LTE,100GB + 5Mbps 무제한,"39,900",TRUE
+ 5G M 알뜰 10GB ,후불)엠모바일,5G,10GB,"18,900",TRUE
+ 5G M 스페셜 30GB ,후불)엠모바일,5G,30GB + 1Mbps 무제한,"41,700",TRUE
+ 5G M 프리미엄 110GB ,후불)엠모바일,5G,110GB + 5Mbps 무제한,"46,900",TRUE
+ 5G M 프리미엄 200GB ,후불)엠모바일,5G,200GB + 10Mbps 무제한,"53,900",TRUE
+ 슬림 1.5GB/150분 ,후불)스카이,LTE,1.5GB,"5,000 ",TRUE
+ 슬림 3GB/300분 ,후불)스카이,LTE,3GB,"6,900 ",TRUE
+ 통화 충분 10GB ,후불)스카이,LTE,10GB,"13,900 ",TRUE
+ 스쿨 4GB+ ,후불)스카이,LTE,4GB+400Kbps,"10,900 ",TRUE
+ 스쿨 8GB+ ,후불)스카이,LTE,8GB+400Kbps,"14,900 ",TRUE
+ 스쿨 7GB+(밀리의 서재) ,후불)스카이,LTE,7GB+1Mbps,"16,200 ",TRUE
+ 골드 4.0GB+ ,후불)스카이,LTE,4GB+1Mbps,"9,900 ",TRUE
+ 골드 8.0GB+ ,후불)스카이,LTE,8GB+1Mbps,"13,900 ",TRUE
+ 모두 충분 2.5GB+ ,후불)스카이,LTE,2.5GB+400Kbps,"11,800 ",TRUE
+ 모두 충분 7GB+(밀리의서재) ,후불)스카이,LTE,7GB+1Mbps,"16,200 ",TRUE
+ 모두 충분 11GB+(밀리의서재) ,후불)스카이,LTE,11GB+일2GB+3Mbps,"33,100 ",TRUE
+ 이동의즐거움 K-패스 (100GB+/통화기본) ,후불)미디어,LTE,100GB+5Mbps무제한,"41,900",TRUE
+ 이동의즐거움 K-패스 (71GB+/통화기본) ,후불)미디어,LTE,11GB+일2GB+3Mbps무제한,"34,900",TRUE
+ 이동의즐거움 K-패스 (7GB+/통화기본) ,후불)미디어,LTE,7GB+1Mbps무제한,"18,600",TRUE
+ 이동의즐거움 K-패스 (1GB+/통화기본) ,후불)미디어,LTE,1GB+1Mbps무제한,"13,400",TRUE
+ LTE 스페셜 플러스 N ,후불)미디어,LTE,100GB+5Mbps무제한,"41,900",TRUE
+ LTE 스페셜 [약정형] ,후불)미디어,LTE,11GB+일2GB+3Mbps무제한,"32,990",TRUE
+ LTE (7GB+/통화기본) [약정형] ,후불)미디어,LTE,7GB+1Mbps무제한,"15,900",TRUE
+ LTE (1GB+/통화기본) [약정형] ,후불)미디어,LTE,1GB+1Mbps무제한,"9,900",TRUE
+ LTE 스페셜 프로 ,후불)미디어,LTE,일5GB+5Mbps무제한,"41,900",TRUE
+ LTE 스페셜 ,후불)미디어,LTE,11GB+일2GB+3Mbps무제한,"34,900",TRUE
+ LTE (15GB+/100분) ,후불)미디어,LTE,15GB+3Mbps무제한,"26,500",TRUE
+ 데이터플러스 (15GB+/100분) ,후불)미디어,LTE,15GB+10GB+3Mbps무제한,"29,500",TRUE
+ LTE (10GB+/통화기본) ,후불)미디어,LTE,10GB+1Mbps무제한,"22,900",TRUE
+ LTE (7GB+/통화기본) ,후불)미디어,LTE,7GB+1Mbps무제한,"18,600",TRUE
+ LTE (6GB+/통화기본) ,후불)미디어,LTE,6GB+1Mbps무제한,"17,600",TRUE
+ LTE (9GB/3000분) ,후불)미디어,LTE,9GB,"15,900",TRUE
+ LTE (5GB+/200분) ,후불)미디어,LTE,5GB+1Mbps무제한,"14,900",TRUE
+ LTE (1GB+/통화기본) ,후불)미디어,LTE,1GB+1Mbps무제한,"13,400",TRUE
+ LTE (1.5GB/통화기본) ,후불)미디어,LTE,1.5GB,"7,900",TRUE
+ LTE (2.5GB/통화기본) ,후불)미디어,LTE,2.5GB,"9,500",TRUE
+ LTE (4GB/통화기본) ,후불)미디어,LTE,4GB,"10,900",TRUE
+ LTE (4.5GB+/통화기본) ,후불)미디어,LTE,4.5GB+1Mbps무제한,"15,900",TRUE
+ LTE (6GB/통화기본) ,후불)미디어,LTE,6GB,"11,500",TRUE
+ LTE (1GB+/100분) ,후불)미디어,LTE,1GB+1Mbps무제한,"9,900",TRUE
+ LTE (1.5GB/150분) ,후불)미디어,LTE,1.5GB,"6,500",TRUE
+ LTE (2.5GB/200분) ,후불)미디어,LTE,2.5GB,"6,900",TRUE
+ LTE (2.5GB+/200분) ,후불)미디어,LTE,2.5GB+1Mbps무제한,"12,900",TRUE
+ 5G (5GB/통화기본) ,후불)미디어,5G,5GB,"10,900",TRUE
+ 5G (5GB/200분) ,후불)미디어,5G,5GB,"8,900",TRUE
+ 5G (31GB+/통화기본) ,후불)미디어,5G,31GB+1Mbps무제한,"36,650",TRUE
+ 슬림 유심 500MB 50분 ,후불)헬로,LTE, 500MB ,"3,300",TRUE
+ 슬림 유심 1GB 50분 ,후불)헬로,LTE, 1GB ,"4,950",TRUE
+ 슬림 유심 1GB 100분 ,후불)헬로,LTE, 1GB ,"5,170",TRUE
+ 슬림 유심 2GB 200분 ,후불)헬로,LTE, 2GB ,"6,600",TRUE
+ 보편 유심 5GB 200분 ,후불)헬로,LTE, 5GB ,"9,900",TRUE
+ DATA 걱정없는 유심 1GB ,후불)헬로,LTE, 1GB+1Mbps무제한 ,"12,900",TRUE
+ DATA 걱정없는 유심 4.5GB ,후불)헬로,LTE, 4.5GB+1Mbps무제한 ,"14,500",TRUE
+ DATA 걱정없는 유심 5GB ,후불)헬로,LTE, 5GB+1Mbps무제한 ,"17,500",TRUE
+ DATA 걱정없는 유심 7GB ,후불)헬로,LTE, 7GB+1Mbps무제한 ,"18,500",TRUE
+ DATA 걱정없는 유심 10GB ,후불)헬로,LTE, 10GB+1Mbps무제한 ,"25,000",TRUE
+ 데이터 더주는 유심 일5GB ,후불)헬로,LTE, 일5GB+10GB+5Mbps ,"44,500",TRUE
+ 데이터 더주는 유심 7GB ,후불)헬로,LTE, 7GB+10GB+1Mbps ,"21,500",TRUE
+ 데이터 더주는 유심 10GB ,후불)헬로,LTE, 10GB+10GB+1Mbps ,"28,000",TRUE
+ 데이터 더주는 유심 15GB ,후불)헬로,LTE, 15GB+10GB+1Mbps ,"32,700",TRUE
+ 데이터 더주는 유심 11GB ,후불)헬로,LTE, 11GB+10GB+일2GB+3Mbps무제한 ,"36,990",TRUE
+ 데이터 더주는 유심 15GB 100분 ,후불)헬로,LTE, 15GB+10GB+3Mbps ,"31,820",TRUE
+ 보편 안심 유심 1GB 100분 ,후불)헬로,LTE, 1GB+1Mbps무제한 ,"22,000",TRUE
+ 보편 안심 유심 3GB 200분 ,후불)헬로,LTE, 3GB+400Kbps무제한 ,"13,900",TRUE
+ 보편 안심 유심 5GB 200분 ,후불)헬로,LTE, 5GB+1Mbps무제한 ,"14,400",TRUE
+ 보편 안심 유심 6GB 200분 ,후불)헬로,LTE, 6GB+1Mbps무제한 ,"35,000",TRUE
+ 보편 안심 유심 15GB 100분 ,후불)헬로,LTE, 15GB+망내1회선+3Mbps무제한 ,"28,820",TRUE
+ The 착한 데이터 유심 0GB ,후불)헬로,LTE, 0GB(데이터차단) ,"7,500",TRUE
+ The 착한 데이터 유심 1.3GB ,후불)헬로,LTE, 1.3GB ,"7,900",TRUE
+ The 착한 데이터 유심 2.5GB ,후불)헬로,LTE, 2.5GB ,"8,500",TRUE
+ The 착한 데이터 유심 3.6GB ,후불)헬로,LTE, 3.6GB ,"10,800",TRUE
+ The 착한 데이터 유심 9GB 3000분 ,후불)헬로,LTE, 9GB ,"17,000",TRUE
+ The 착한 데이터 유심 11GB ,후불)헬로,LTE, 11.0GB+일2GB+3Mbps무제한 ,"33,990",TRUE
+ LTE (2GB/120분) ,단말)미디어,LTE, 2GB ,"20,900",TRUE
+ LTE (4GB/200분) ,단말)미디어,LTE, 4GB ,"29,900",TRUE
+ LTE (10GB+/200분) ,단말)미디어,LTE, 10GB+1Mbps ,"36,900",TRUE
+ LTE (1.5GB/통화기본) ,단말)미디어,LTE, 1.5GB ,"25,900",TRUE
+ LTE (4.5GB+/통화기본) ,단말)미디어,LTE, 4.5GB+1Mbps ,"34,900",TRUE
+ LTE (6GB+/통화기본) ,단말)미디어,LTE, 6GB+1Mbps ,"34,900",TRUE
+ LTE (15GB+/100분) ,단말)미디어,LTE, 15GB+3Mbps ,"45,900",TRUE
+ LTE 스페셜 ,단말)미디어,LTE," 11GB
++일2GB
++3Mbps ","49,000",TRUE
+ 알뜰한(300MB/90분) ,단말)미디어,LTE, 300MB ,"18,500",TRUE
+ 알뜰한(1GB/120분) ,단말)미디어,LTE, 1GB ,"24,500",TRUE
+ 알뜰한(1GB+/통화기본) ,단말)미디어,LTE, 1GB+1Mbps ,"30,900",TRUE
+ 데이터 차단 ,단말)미디어,LTE, 0GB ,"27,900",TRUE
+ 알뜰한(2GB/200분) ,단말)미디어,LTE, 2GB ,"29,500",TRUE
+ LTE (7GB+/통화기본) ,단말)미디어,LTE, 7GB+1Mbps ,"39,900",TRUE
+ LTE 통화 맘껏 2.5GB (M) ,단말)KT,LTE, 2.5GB ,"29,200 ",TRUE
+ LTE 통화 맘껏 4.5GB (M) ,단말)KT,LTE, 4.5GB ,"32,400 ",TRUE
+ LTE 데이터 충분 3GB/100분 ,단말)KT,LTE, 3GB ,"26,400 ",TRUE
+ LTE 안심차단 2.5GB/100분 ,단말)KT,LTE," 2.5GB 
+(안심차단) ","28,600 ",TRUE
+ LTE 데이터 충분 5GB/150분 ,단말)KT,LTE, 5GB ,"28,600 ",TRUE
+ LTE 데이터 충분 3GB/200분 ,단말)KT,LTE, 3GB ,"28,600 ",TRUE
+ LTE 데이터 충분 3GB/300분 ,단말)KT,LTE, 3GB ,"30,800 ",TRUE
+ M 알뜰 안심 단말 통화맘껏 2GB ,단말)KT,LTE," 2GB
++400Kbps ","28,000 ",TRUE
+ 시니어 안심 4GB+ ,단말)KT,LTE," 4GB
++400Kbps ","35,000 ",TRUE
+ LTE 데이터 실속 5GB/200분 ,단말)KT,LTE, 5GB ,"27,000 ",TRUE
+ M 알뜰 단말 통화맘껏 2GB ,단말)KT,LTE, 2GB ,"25,000 ",TRUE
+ LTE 시니어 안심 2GB+ ,단말)KT,LTE," 2GB
++400Kbps ","28,000 ",TRUE
+ LTE 데이터 실속 3GB/300분 ,단말)KT,LTE, 3GB ,"25,100 ",TRUE
+ LTE 데이터 실속 5GB/100분 ,단말)KT,LTE, 5GB ,"25,000 ",TRUE
+ LTE 데이터 실속 2GB/300분 ,단말)KT,LTE, 2GB ,"23,100 ",TRUE
+ LTE 데이터 실속 3GB/200분 ,단말)KT,LTE, 3GB ,"23,100 ",TRUE
+ LTE 데이터 실속 5GB/60분 ,단말)KT,LTE, 5GB ,"24,000 ",TRUE
+ M 알뜰 단말 통화맘껏 30MB ,단말)KT,LTE, 30MB ,"22,000 ",TRUE
+ LTE 데이터 실속 2GB/200분 ,단말)KT,LTE, 2GB ,"21,000 ",TRUE
+ LTE 데이터 실속 3GB/100분 ,단말)KT,LTE, 3GB ,"21,000 ",TRUE
+ LTE 데이터 실속 2GB/60분 ,단말)KT,LTE, 2GB ,"18,000 ",TRUE
+ LTE 데이터 실속 2GB/100분 ,단말)KT,LTE, 2GB ,"19,000 ",TRUE
+ LTE 데이터 실속 3GB/60분 ,단말)KT,LTE, 3GB ,"20,000 ",TRUE
+ M 알뜰 단말 300분 30MB ,단말)KT,LTE, 30MB ,"16,000 ",TRUE
+ 시니어 세이브 100분/500MB ,단말)KT,LTE, 500MB ,"18,000 ",TRUE
+ 알뜰 80분/500건 ,단말)KT,LTE,  ,"17,600 ",TRUE
+ M 알뜰 단말 200분 30MB ,단말)KT,LTE, 30MB ,"14,000 ",TRUE
+ 시니어 VIP 미디엄(LTE) ,단말)KT,LTE, 700MB ,"16,500 ",TRUE
+ M 알뜰 단말 100분 30MB ,단말)KT,LTE, 30MB ,"11,900 ",TRUE
+ M 알뜰 단말 30분 30MB ,단말)KT,LTE, 30MB ,"9,000 ",TRUE
+ 복지 50분/0MB ,단말)KT,LTE,  ,"8,800 ",TRUE
+중K)37K-5G 슬림 7GB,후불)중고KT,5G,,,TRUE
+중K)37K-5G 슬림(이월) 7GB,후불)중고KT,5G,,,TRUE
+중K)37K-5G 세이브(군인),후불)중고KT,5G,,,TRUE
+중K)37K-5G 주니어 슬림,후불)중고KT,5G,,,TRUE
+중K)37K-5G 슬림 4GB,후불)중고KT,5G,,,TRUE
+중K)37K-5G 슬림 4GB(이월),후불)중고KT,5G,,,TRUE
+중K)37K-순 골든20(LTE),후불)중고KT,5G,,,TRUE
+중K)37K-Y틴 ON,후불)중고KT,5G,,,TRUE
+중K)37K-Y 군인 33,후불)중고KT,5G,,,TRUE
+중K)37K-시니어 베이직,후불)중고KT,5G,,,TRUE
+중K)37K-나눔 베이직,후불)중고KT,5G,,,TRUE
+중K)37K-Y틴 27(LTE),후불)중고KT,5G,,,TRUE
+중K)37K-Y주니어 ON,후불)중고KT,5G,,,TRUE
+중K)37K-Y주니어 19.8(LTE),후불)중고KT,5G,,,TRUE
+중K)49K-5G 슬림 10GB,후불)중고KT,5G,,,TRUE
+중K)49K-5G 슬림 10GB(이월),후불)중고KT,5G,,,TRUE
+중K)49K-데이터ON 나눔,후불)중고KT,5G,,,TRUE
+중K)55K-5G 슬림 14GB,후불)중고KT,5G,,,TRUE
+중K)55K-5G 슬림 14GB(이월),후불)중고KT,5G,,,TRUE
+중K)55K-5G 슬림 14GB(군인),후불)중고KT,5G,,,TRUE
+중K)55K-5G Y슬림,후불)중고KT,5G,,,TRUE
+중K)55K-5G Y슬림(군인),후불)중고KT,5G,,,TRUE
+중K)55K-5G 슬림 복지,후불)중고KT,5G,,,TRUE
+중K)55K-5G 슬림 복지(군인),후불)중고KT,5G,,,TRUE
+중K)55K-5G 시니어 A형,후불)중고KT,5G,,,TRUE
+중K)55K-5G 시니어 B형,후불)중고KT,5G,,,TRUE
+중K)55K-5G 시니어 C형,후불)중고KT,5G,,,TRUE
+중K)55K-5G 슬림 21GB,후불)중고KT,5G,,,TRUE
+중K)55K-5G 슬림 21GB(이월),후불)중고KT,5G,,,TRUE
+중K)55K-Y 군인 55 Plus(미디어팩),후불)중고KT,5G,,,TRUE
+중K)55K-Y 군인 55 Plus,후불)중고KT,5G,,,TRUE
+중K)61K-5G 심플 110GB,후불)중고KT,5G,,,TRUE
+중K)61K-5G 심플 90GB,후불)중고KT,5G,,,TRUE
+중K)61K-5G 심플 70GB,후불)중고KT,5G,,,TRUE
+중K)61K-5G 심플 50GB,후불)중고KT,5G,,,TRUE
+중K)61K-5G Y틴,후불)중고KT,5G,,,TRUE
+중K)61K-5G 심플 복지,후불)중고KT,5G,,,TRUE
+중K)61K-5G 심플 30GB,후불)중고KT,5G,,,TRUE
+중K)61K-5G 주니어,후불)중고KT,5G,,,TRUE
+중K)61K-5G 시니어 베이직,후불)중고KT,5G,,,TRUE
+중K)61K-데이터 ON 비디오 플러스,후불)중고KT,5G,,,TRUE
+중K)61K-Y 데이터 ON 비디오 플러스,후불)중고KT,5G,,,TRUE
+중K)61K-Y 군인 77 Plus,후불)중고KT,5G,,,TRUE
+중K)80K-베이직,후불)중고KT,5G,,,TRUE
+중K)80K-5G Y 베이직,후불)중고KT,5G,,,TRUE
+중K)80K-5G 베이직 복지,후불)중고KT,5G,,,TRUE
+중K)90K-넷플릭스 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-현대카드 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-디즈니+ 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-삼성 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-우리카드 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-(유튜브 프리미엄) 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-디바이스 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-BC바로 카드 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-티빙/지니/밀리 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-폰케어 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-소상공인 초이스 베이직,후불)중고KT,5G,,,TRUE
+중K)90K-데이터 ON 프리미엄,후불)중고KT,5G,,,TRUE
+중K)90K-Y데이터 ON 프리미엄,후불)중고KT,5G,,,TRUE
+중K)100K-스페셜,후불)중고KT,5G,,,TRUE
+중K)100K-5G Y 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-넷플릭스 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-넷플릭스 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-현대카드 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-현대카드 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-디즈니+ 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-디즈니+ 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-삼성 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-삼성 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-우리카드 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-우리카드 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-(유튜브 프리미엄) 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-(유튜브 프리미엄) 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-디바이스 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-디바이스 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-BC바로 카드 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-BC바로 카드 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-티빙/지니/밀리 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-티빙/지니/밀리 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-폰케어 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-폰케어 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-소상공인 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-소상공인 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-우리카드 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-(유튜브 프리미엄) 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-(유튜브 프리미엄) 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-디바이스 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-디바이스 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-BC바로 카드 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-BC바로 카드 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-티빙/지니/밀리 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-티빙/지니/밀리 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-폰케어 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-폰케어 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중K)110K-소상공인 초이스 프리미엄,후불)중고KT,5G,,,TRUE
+중K)110K-소상공인 초이스 스페셜,후불)중고KT,5G,,,TRUE
+중외)5G 웰컴 5,후불)중고KT(외),5G,,,TRUE
+중외)5G 웰컴 3,후불)중고KT(외),5G,,,TRUE
+중외)5G 웰컴 1,후불)중고KT(외),5G,,,TRUE

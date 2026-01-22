@@ -1,0 +1,112 @@
+🎯 목표
+
+Replit(개발) 은 개발 DB에만 연결
+
+Render(운영) 은 운영 DB에만 연결
+
+두 환경 절대 공유 금지
+
+운영에는 최신 코드 반영(‘기타완료’ 옵션 노출) 후 스크린샷 증빙
+
+1) 환경변수(Secrets) 분리 설정
+A. Render(운영) — Render Dashboard > 해당 Web Service > Environment
+
+아래 두 키만 사용(운영 전용)
+
+APP_ENV=production
+
+DATABASE_URL_PROD=postgresql://<운영계_접속정보> ← 현재 운영 DB URL(77건 존재하는 DB)
+
+참고: DATABASE_URL 키가 있다면 사용하지 않거나 삭제 (앱이 참조하지 않게)
+
+저장 후 재배포/재시작(Manual Deploy 또는 프로세스 재시작)
+
+B. Replit(개발) — 좌측 🔒Secrets
+
+아래 두 키만 사용(개발 전용)
+
+APP_ENV=development
+
+DATABASE_URL_DEV=postgresql://<개발계_접속정보> ← 새로 만든 개발 DB URL(빈 DB 권장)
+
+중요: Replit(개발)에서는 DATABASE_URL 키를 쓰지 마세요.
+(있다면 무시되게 하거나 삭제)
+
+개발 DB가 아직 없으면 Neon에서 새 DB 생성
+
+예: 이름 mcc_development
+
+Connection String 복사 → DATABASE_URL_DEV에 저장
+
+2) 앱의 DB 선택 규칙(확인)
+
+APP_ENV==='production' → DATABASE_URL_PROD 사용
+
+그 외(개발) → DATABASE_URL_DEV 사용
+
+※ 운영/개발에서 DATABASE_URL 키는 참조하지 않음
+
+현재 코드에 DEV 미설정 시 DATABASE_URL로 폴백 로직이 있다면, 분리 검증이 끝날 때까지 폴백이 동작하지 않도록 주의(오탐 방지).
+
+최소한 부팅 로그에 어떤 키를 실제로 사용했는지를 반드시 출력하세요.
+
+3) 서버 완전 재시작
+
+Render(운영): git pull → npm ci && npm run build → 프로세스 매니저 재시작
+
+Replit(개발): 서버 완전 재시작(핫리로드 말고 프로세스 재기동)
+
+4) 증빙 수집·제출 (운영 / 개발 각 환경 별도 제출)
+4-1) 부팅 로그(마스킹 필수)
+[BOOT] Started at: <ISO 시간>
+[BOOT] NODE_ENV=<값>
+[BOOT] APP_ENV=<값>
+[BOOT] DATABASE_URL_USED (masked)=postgresql://<user>:****@<host>:<port>/<db>
+[BOOT] dotenv: <로딩 경로 또는 process.env>
+
+4-2) 실제 접속 DB 확인용 SQL 결과
+
+앱이 사용하는 커넥션으로 아래 SQL 실행 후 텍스트/스크린샷 제출:
+
+SELECT current_database() AS db,
+       current_user       AS "user",
+       inet_server_addr() AS host,
+       inet_server_port() AS port;
+SELECT COUNT(*) AS documents_count FROM documents;
+
+
+기대: 운영과 개발의 db/host/port 또는 documents_count가 명확히 달라야 함
+
+4-3) 운영 코드 최신 반영 증빙
+git rev-parse HEAD        # 배포 전
+git pull origin main
+npm ci && npm run build
+pm2 restart all | docker compose restart | systemctl restart <service>
+git rev-parse HEAD        # 배포 후
+
+
+브라우저 캐시 초기화(Application → Clear storage → Clear site data, 강력 새로고침) 후 스크린샷:
+
+접수관리 → 개통 상태 변경 모달에 ‘기타완료’ 옵션 표시
+
+대시보드에 ‘기타 업무 처리건’ 집계 정상 반영
+
+5) 완료 기준(모두 충족)
+
+Replit(개발) 부팅 로그에 개발 DB URL(마스킹) 출력, SQL 결과에서 개발 DB로 확인
+
+Render(운영) 부팅 로그에 운영 DB URL(마스킹) 출력, SQL 결과에서 운영 DB로 확인
+
+운영 UI에 ‘기타완료’ 옵션 표시 및 대시보드 집계 정상
+
+콘솔/서버 에러 없음
+
+6) 실패 시 즉시 조치
+
+Replit(개발)에서 여전히 운영 DB 호스트/DB명이 찍히면:
+
+Secrets 값 재점검(특히 DATABASE_URL_DEV)
+
+DATABASE_URL가 참조되지 않도록 런처/코드 확인
+
+완전 재시작 후 4) 증빙 다시 제출

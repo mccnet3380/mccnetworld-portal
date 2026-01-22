@@ -1,0 +1,135 @@
+[수정 원칙 - 필수]
+
+오류가 발생한 부분만 최소 수정
+
+UI(레이아웃/디자인/스타일/컴포넌트 구조) 절대 변경 금지
+
+버튼 색상/CSS/Tailwind/HTML 구조 그대로 유지
+
+환경설정(.env, Secrets, DB 연결, 운영 DB 로직) 수정 금지
+
+DB 스키마 변경 금지(필요 시 ‘DB 스키마 변경 제안’에 텍스트로만 제시)
+
+부분 코드 금지 → 파일 전체 최종본 제출
+
+실제 오류 재현 → 필요 최소 범위만 수정
+
+수정 후 서버 재시작 및 동일 시나리오 재검증
+
+운영/테스트 페이지 동일 커밋·동일 번들로 반영
+
+변경 개요
+
+수정 목적: 개통완료 관리 테이블의 처리자 컬럼에서 사용자명이 비어 있거나 -로 나오는 문제를 해결하여 정확한 처리자명 표시.
+
+해결할 오류 / 재현 절차(간단)
+
+현상: “처리자” 컬럼이 - 또는 빈 값으로 표시됨.
+
+재현: /completed-activations 페이지 → 테이블 확인.
+
+추정 원인:
+
+문서 객체의 처리자 키가 환경마다 다름: activated_by, activatedBy, activatorId, processed_by 등 혼재.
+
+ID 타입 불일치(숫자 vs 문자열)로 사용자 목록과 매칭 실패.
+
+일부 응답에 processedByName 또는 activated_by_name가 존재하나 사용 안 함.
+
+변경 범위 요약
+
+프론트엔드만 수정: 처리자 표시 로직(매핑/폴백) 개선.
+
+백엔드/빌드/배포/환경변수/스타일/레이아웃: 변경 없음(빌드·배포는 실행 필요).
+
+수정 파일 목록 (최소화)
+
+client/src/pages/CompletedActivations.tsx
+
+파일 경로 + 파일별 변경 이유
+
+CompletedActivations.tsx
+
+getActivatedByNameSync(또는 동등 유틸)에서 다중 키 폴백 + 타입 정규화로 사용자 매칭 정확도 향상.
+
+사용자 목록을 Map 캐싱(useMemo) 하여 O(1) 조회 및 성능 유지.
+
+예상 변경 내용 (요약 diff)
+
+[추가] 사용자 맵 캐싱
+
+const userMap = useMemo(() => {
+  return new Map(users.map(u => [String(u.id), u.name]));
+}, [users]);
+
+
+[치환] 처리자 ID 정규화 + 다중 키 폴백
+
+const resolveActivatorId = (doc:any) =>
+  doc?.activated_by ?? doc?.activatedBy ?? doc?.activatorId ?? doc?.processed_by ?? null;
+
+const activatorId = resolveActivatorId(doc);
+const activatorName =
+  doc?.activated_by_name ??
+  doc?.processedByName ??
+  (activatorId != null ? userMap.get(String(activatorId)) : undefined) ??
+  '-';
+
+
+[유지] 렌더링/레이아웃/스타일 및 다른 컬럼 로직 그대로 유지
+
+핵심 추가/삭제/치환 포인트 요약
+
+처리자명 결정 순서(폴백 체인):
+
+activated_by_name →
+
+processedByName →
+
+userMap[String(activated_by | activatedBy | activatorId | processed_by)] →
+
+'-'
+
+ID 비교 시 문자열로 정규화(String(id))하여 타입 불일치 제거.
+
+useMemo로 사용자 맵 캐싱(O(1) 조회).
+
+환경변수/DB/스키마/스타일은 미변경
+
+.env, DB, 스키마, CSS/Tailwind, 컴포넌트 구조 일체 변경 없음.
+
+리스크와 회피책
+
+잠재 영향: 응답 스키마가 더 이질적인 경우 일부 케이스 누락 가능.
+
+회피/완화: 폴백 체인 확장 가능하도록 함수화, 미매칭 시 '-'로 안전 표시. 콘솔 경고(개발 모드)로 누락 키 로깅 옵션 추가 가능(운영 비활성).
+
+롤백 계획
+
+수정 전 CompletedActivations.tsx 백업.
+
+문제 시 파일 원복 또는 git revert <commit>.
+
+서버 재시작으로 즉시 복귀.
+
+검증 시나리오 & 성공 기준
+
+목록 로드: /completed-activations 진입 → 콘솔 에러 0.
+
+처리자 표시: 각 행 “처리자”에 사용자명이 정확히 표시.
+
+activated_by = 10 → Super Admin과 같이 사용자명 매칭 확인.
+
+이름 필드 제공 시(activated_by_name/processedByName) 이를 우선 표시.
+
+혼재 키 케이스: activated_by(숫자/문자열), activatedBy, activatorId, processed_by 각각 존재하는 샘플에서 모두 정상 표시.
+
+성공 조건: 콘솔 에러 0, 처리자 공백/- 오표시 없음, UI/레이아웃 변경 없음.
+
+[제출 규칙]
+
+본 사전 변경 안내 승인 전 코드 본문 금지.
+
+승인 후 파일 전체 최종본만 제출(부분 코드 금지).
+
+수정 전/후 결과를 스크린샷·로그로 검증하여 함께 제출.

@@ -1,0 +1,100 @@
+You are the dedicated developer for my repository. Previous requests were NOT implemented correctly. Treat this as a blocking fix and follow all instructions strictly.
+
+[Context]
+- Login account under test: mcclg04 (username: 이다엘, Sales Manager role)
+- Historical note: This account used to be "원세영" (e.g., username wsy_manager) and was later updated to mcclg04.
+- The following issues persist and MUST be fixed now:
+
+[Current Problems — all MUST be addressed]
+1) Role/permission collision on refresh:
+   - After logging in as mcclg04 and refreshing, the UI sometimes switches/mixes with another user (원세영).
+   - Root causes likely: token payload vs /api/auth/me mismatch, stale localStorage/Zustand state, or wrong user key used in queries.
+
+2) Admin: "Sales Manager edit" error → **`updateSalesManagerSchema is not defined`**
+   - When saving the Sales Manager edit modal, this runtime error occurs.
+   - The schema import/export or naming is broken.
+
+3) Activations Completed: **Rate plan edit** still does NOT reuse the Application page’s carrier-based searchable plan select (filter + search).
+
+4) Cancel Activation flow NOT applied:
+   - Records still move to a separate cancellation category.
+   - Required: stay in the same “Activations Completed” table and set `canceled_at` with the server timestamp when clicking Cancel.
+   - Sidebar still shows **“Activation Cancel History”** → must be removed (this is the ONLY allowed UI change).
+
+5) Sales Manager dashboard (for mcclg04):
+   - “Today activations” card shows wrong count (activation date vs submission date confusion).
+   - “Carrier-wise details” section shows no rows for Today/Month-to-date, but there are actual items.
+   - Counts must include: submissions, activations, other-completed, grouped by dealerName (not code) and carrier.
+   - Scope MUST be restricted to the Sales Manager’s assigned dealers (from server-side auth context).
+
+6) “Other Completed” consistency:
+   - The set of statuses for “other completed” is inconsistent across pages.
+   - Must be defined once on the server and reused everywhere.
+
+7) “Completed by (개통처리자)” must always be the currently authenticated user who clicks “complete” (server-side enforced).
+   - Never trust client-sent handler fields.
+
+8) Toast duration NOT unified to 3 seconds.
+
+[Non-negotiable Rules]
+1) Fix ONLY the parts related to the problems above.
+2) **NO UI layout/design/style/component changes**, except removing the sidebar item “Activation Cancel History.”
+3) **DO NOT touch `.env`, Secrets, DB connection configs, or production DB logic.**
+   - If a DB schema change is required, DO NOT change code. Instead, add a final section “DB Schema Change Proposal” describing the needed field(s).
+4) **NO partial code.** For each modified file, return the **entire final version** of the file.
+5) Keep explanations minimal. Output must be copy-paste ready.
+
+[Required Fixes — precise]
+
+A) Role/permission refresh bug (mcclg04 vs 원세영 mix)
+- Ensure `/api/auth/me` strictly reflects the token payload (role, userType, userId).
+- Ensure login/refresh token generation uses consistent fields (role, userType, userId, dealerId/managerId).
+- Frontend (Zustand/localStorage): on refresh, **always** re-sync state from `/api/auth/me` and ignore stale persisted role.
+- Eliminate any cross-user collision: do not reuse keys that can mix mcclg04 and wsy_manager. Ensure requests always send the correct Authorization header.
+- Queries and UI gating must rely on stable user **ID** (numeric/UUID), not mutable username.
+
+B) Fix runtime error: **`updateSalesManagerSchema is not defined`**
+- Find all references to `updateSalesManagerSchema` and import/define the correct schema.
+- Ensure the schema file actually exports it (naming must match).
+- Return the full corrected files (route/controller/service/schema) — NO partials.
+
+C) Activations Completed → Rate plan edit
+- Reuse the same **carrier-based searchable plan select** logic from the “Application” page.
+- Priority:
+  1) Import existing shared component/hook (`PlanSelect` / `RatePlanSelect` / `useRatePlans` / `fetchRatePlansByCarrier`).
+  2) If none, replicate the **same API + filter + search** logic used in “Application”.
+- Save to the existing fields (`servicePlanId` / `ratePlanId` / `planName`) according to the current schema. Do not alter schema.
+
+D) Cancel Activation behavior + Sidebar
+- On Cancel button: DO NOT move to a separate category/table.
+- Update the **same row** in the activations/completed table: set `canceled_at = current server timestamp (Asia/Seoul)`.
+- Reflect `canceled_at` immediately in the list’s “Canceled At” column.
+- Remove the sidebar item **“Activation Cancel History”** (only allowed UI change).
+- If `canceled_at` is missing in schema, DO NOT code around it; just add a “DB Schema Change Proposal”.
+
+E) Sales Manager dashboard (Today / Month-to-date)
+- Timezone: Asia/Seoul.
+- Today = [00:00:00, 23:59:59.999]; Month-to-date = [1st 00:00:00, today 23:59:59.999].
+- For the logged-in Sales Manager, limit scope to **assigned dealers** (from server auth context).
+- Return data grouped by **dealerName** and **carrier**, with columns: submissions, activations (by `activated_at`), otherCompleted.
+- Ensure card totals match the grouped data.
+
+F) Other Completed consistency
+- Define a single server constant, e.g. `OTHER_COMPLETED_STATUSES = [...]`, and use it across all counters/queries.
+
+G) Completed by (개통처리자)
+- In the “complete/activation” endpoint, force `processedByUserId = req.user.id` (or equivalent).
+- Never read `processedBy` from the client body.
+
+H) Toast duration
+- Set global toast duration to 3000ms and normalize any per-call overrides.
+
+[Output format — strictly required]
+- Start with `CHANGED_FILES:` listing all modified files (only the necessary ones).
+- Then for each file:
+
+  ## File: <path from project root>
+  ```ts
+  // FIX: <short summary of fix>
+  // NOTE: <one-line reproduction note>
+  <full final version of the file — no omissions>

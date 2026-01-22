@@ -1,0 +1,88 @@
+[사전 변경 안내]
+수정 목적(한 줄)
+- 운영 DB(Render PostgreSQL)에 스키마(테이블)가 없어 발생하는 “relation does not exist” 오류를 제거하기 위해, 코드 변경 없이 DB 스키마만 동기화합니다.
+
+해결할 오류 / 재현 절차
+- 오류: Failed to create other business carrier: error: relation "other_business_carriers" does not exist
+- 재현: mccnetworld.com → 관리자 패널 → 기타업무통신사 → 새로 생성 → 실패
+
+변경 범위 요약
+- 코드/환경변수/UI 변경 없음
+- 데이터베이스: Render PostgreSQL에 현재 스키마 생성(초기화 아님, 데이터 손실 없음)
+
+요구 사항(절대 준수)
+- 운영 DB(Render)로만 푸시할 것. 개발 DB(Neon)로는 절대 수행 금지
+- 먼저 대상 DB 식별 → Dry-run/미리보기 → 실제 반영 순서
+- prisma 또는 drizzle 중 실제 프로젝트 ORM을 자동 판별하여 해당 경로만 수행
+
+[작업 지시]
+1) 대상 DB 연결 확인
+- Replit 워크스페이스 Shell에서 아래 순서로 진행
+- 환경변수 존재 확인:
+  printenv DATABASE_URL_PROD || echo "DATABASE_URL_PROD not set"
+- 실제 접속 대상 확인:
+  psql "$DATABASE_URL_PROD" -c "SELECT current_database(), current_user, version();"
+
+(예상) current_database: mccnetworld_database / user: mccnetworld_database_user
+
+2) ORM 판별 (prisma 또는 drizzle)
+- 패키지 확인:
+  node -e "const p=require('./package.json');console.log(Object.keys({...p.dependencies,...p.devDependencies}))"
+- 파일 구조 확인:
+  test -d prisma && echo "HAS_PRISMA"
+  test -f drizzle.config.ts && echo "HAS_DRIZZLE"
+  test -f shared/schema.ts && echo "HAS_DRIZZLE_SCHEMA"
+
+3) Dry-run 또는 생성 SQL 미리보기
+- PRISMA 경로(Dry-run):
+  npx prisma db push --schema=prisma/schema.prisma --url="$DATABASE_URL_PROD" --accept-data-loss --dry-run
+- DRIZZLE 경로(SQL 생성 미리보기):
+  npx drizzle-kit generate --config=drizzle.config.ts
+
+4) 실제 반영 (ORM별 하나만 실행)
+- PRISMA (스키마 반영):
+  npx prisma db push --schema=prisma/schema.prisma --url="$DATABASE_URL_PROD" --accept-data-loss
+  # 마이그레이션 기반이라면:
+  # npx prisma migrate deploy --schema=prisma/schema.prisma --skip-generate --early-access-feature-flag
+
+- DRIZZLE (스키마 반영):
+  # 마이그레이션 파일이 있는 경우:
+  npx drizzle-kit migrate --config=drizzle.config.ts
+  # 마이그레이션 파일 없이 schema.ts에서 직접 푸시하는 경우:
+  npx drizzle-kit push --config=drizzle.config.ts --force
+
+5) 필수 테이블 존재 확인 (예: other_business_carriers 등)
+- 아래 쿼리로 검증:
+  psql "$DATABASE_URL_PROD" -c "\dt"
+  psql "$DATABASE_URL_PROD" -c "\d+ other_business_carriers" || echo "table missing"
+  psql "$DATABASE_URL_PROD" -c "\d+ service_plans" || echo "table missing"
+  psql "$DATABASE_URL_PROD" -c "\d+ carriers" || echo "table missing"
+
+6) 애플리케이션 헬스 점검(운영 스냅샷 기준)
+- 헬스체크:
+  curl -i https://mccnetworld.com/api/health
+- 관리자 기능 재검증(엔드투엔드):
+  - 기타업무통신사 생성 → 200 + “성공적으로 생성되었습니다”
+  - 통신사 생성 → 200 + 목록 반영
+  - 접수 제출 → 200 + DB 저장 확인
+
+[성공 기준]
+- PRISMA/DRIZZLE 명령 성공 종료코드(0)
+- 필수 테이블이 \dt / \d+ 에서 확인됨
+- 관리자 패널에서 생성/저장 기능이 200 응답 및 정상 반영
+
+[리스크/회피책]
+- 빈 운영 DB에 테이블 신규 생성만 수행(데이터 손실 없음)
+- Dry-run/SQL 미리보기로 스키마 영향 사전 확인
+- 잘못된 DB로 푸시 방지: 항상 1)에서 current_database/current_user 확인
+
+[롤백 계획]
+- 변경 전 빈 DB였다면 ‘드롭 후 재생성’이 가장 빠름:
+  Render Dashboard → PostgreSQL → (필요시) Drop & Recreate
+- 또는 해당 테이블만 드롭 후 재실행
+
+[마지막 보고]
+- 실행한 명령(정확한 CLI)
+- ORM 경로(Prisma 또는 Drizzle)
+- \dt 결과(테이블 리스트)
+- 관리자 패널 기능 정상 동작 스크린샷/로그

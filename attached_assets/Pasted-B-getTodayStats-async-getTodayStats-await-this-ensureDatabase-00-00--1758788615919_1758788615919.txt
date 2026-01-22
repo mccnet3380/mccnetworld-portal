@@ -1,0 +1,100 @@
+B) getTodayStats() 메서드 전체 교체
+async getTodayStats() {
+  await this.ensureDatabase();
+
+  // 오늘 00:00 ~ 현재
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // 당일 개통(activation_status='개통')
+  const totalToday = await this.db.execute(sql`
+    SELECT COUNT(*)::int AS cnt
+    FROM documents
+    WHERE activation_status = '개통'
+      AND activated_at >= ${startOfToday} AND activated_at <= ${now}
+  `);
+
+  // 신규/번호이동 분리 집계 (customer_type: 'new' | 'port_in')
+  const typeStats = await this.db.execute(sql`
+    SELECT customer_type, COUNT(*)::int AS cnt
+    FROM documents
+    WHERE activation_status = '개통'
+      AND activated_at >= ${startOfToday} AND activated_at <= ${now}
+      AND customer_type IN ('new', 'port_in')
+    GROUP BY customer_type
+  `);
+
+  // 캐리어 별 당일 개통 집계
+  const carrierStats = await this.db.execute(sql`
+    SELECT carrier, COUNT(*)::int AS cnt
+    FROM documents
+    WHERE activation_status = '개통'
+      AND activated_at >= ${startOfToday} AND activated_at <= ${now}
+    GROUP BY carrier
+    ORDER BY cnt DESC
+  `);
+
+  // 기타업무(선택): 테이블 없으면 빈 배열로 반환해 운영 안정성 유지
+  let otherBusinessToday = 0;
+  if (await this.tableExists('other_business_carriers')) {
+    const otherRes = await this.db.execute(sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM other_business_carriers
+      WHERE created_at >= ${startOfToday} AND created_at <= ${now}
+    `);
+    // @ts-ignore
+    otherBusinessToday = otherRes?.rows?.[0]?.cnt ?? otherRes?.[0]?.cnt ?? 0;
+  }
+
+  // @ts-ignore
+  const total = totalToday?.rows?.[0]?.cnt ?? totalToday?.[0]?.cnt ?? 0;
+
+  // @ts-ignore
+  const newCount = (typeStats?.rows ?? typeStats ?? []).find((r:any) => r.customer_type === 'new')?.cnt ?? 0;
+  // @ts-ignore
+  const portInCount = (typeStats?.rows ?? typeStats ?? []).find((r:any) => r.customer_type === 'port_in')?.cnt ?? 0;
+
+  // @ts-ignore
+  const carriers = (carrierStats?.rows ?? carrierStats ?? []).map((r:any) => ({
+    carrier: r.carrier,
+    count: r.cnt
+  }));
+
+  return {
+    totalActivationsToday: total,
+    newActivationsToday: newCount,
+    portInActivationsToday: portInCount,
+    otherBusinessToday,
+    carrierStats: carriers
+  };
+}
+
+
+위 메서드는 documents(activated_at, activation_status, customer_type, carrier) 기준으로 집계합니다. 컬럼명이 프로젝트와 다르면 컬럼명만 맞춰주세요(스키마 변경 없이).
+
+2) server/routes.ts – 엑셀 다운로드 응답 헤더/전송 보정
+
+엑셀 다운로드 라우트(기존 경로 유지) 핸들러 내부에서 버퍼/스트림 전송 직전 아래 두 줄을 반드시 설정하세요.
+
+res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+res.set('Content-Disposition', 'attachment; filename="export.xlsx"');
+
+
+버퍼를 이미 만들었다면:
+
+// const buffer = workbookXlsxBuffer ...
+res.send(buffer); // 또는 res.end(buffer);
+
+
+스트림이라면:
+
+workbookStream.on('error', (err) => {
+  console.error('Excel stream error:', err);
+  if (!res.headersSent) res.status(500).end('Excel export failed');
+});
+workbookStream.pipe(res);
+
+
+추가로 대시보드/기타업무 관련 GET 응답에는 캐시 무효화를 권장합니다(선택):
+
+res.set('Cache-Control', 'no-store');

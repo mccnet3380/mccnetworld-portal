@@ -1,0 +1,140 @@
+수정 목적(한 줄)
+
+기타완료 문서 생성 시 처리자(activatedBy) 값이 저장되지 않는 문제를 최소 변경으로 복구하여, 이후 생성되는 기타완료 문서의 activated_by 컬럼이 정상 저장되도록 함.
+
+해결할 오류 / 재현 절차(간단)
+
+오류 증상: DB에서 activation_status='기타완료' 인 모든 문서의 activated_by가 NULL.
+
+원인: 기타신청 생성 화면(OtherApplication)에서 문서 생성 시 처리자 정보(activatedBy)를 전송하지 않음.
+
+재현
+
+로그인 → 기타신청/기타완료 생성 폼에서 문서 생성
+
+Network 탭 확인: 요청 본문(FormData)에 activatedBy 누락
+
+DB 확인: 새 문서의 activated_by = NULL
+
+기대 결과
+
+요청 본문에 activatedBy 포함(현재 로그인 사용자 id)
+
+DB 저장 시 activated_by에 해당 id 기록
+
+이후 목록/상세에서 처리자 이름 표시 가능(표시 로직은 ③-2 계획에 따름)
+
+변경 범위 요약
+
+프론트엔드(최소): client/src/pages/OtherApplication.tsx 문서 생성 요청(FormData)에 activatedBy 추가
+
+백엔드: 변경 없음(서버가 이미 해당 필드 수용/매핑 중이라는 전제)
+
+필요 시 확인만 수행: 생성 라우트가 activatedBy를 activated_by에 매핑하고 있는지 로깅/단위 테스트로 검증(코드 변경 불필요)
+
+빌드/배포: 프론트 빌드 필요(npm run build), 서버 재시작 필요
+
+명시: .env/Secrets/DB 연결/운영 DB 로직/DB 스키마/스타일/레이아웃/컴포넌트 구조 모두 미변경
+
+수정 파일 목록 (최소화)
+
+client/src/pages/OtherApplication.tsx
+
+문서 생성 시 사용하는 FormData 구성부에 activatedBy 필드 1줄 추가(현재 로그인 사용자 id)
+
+파일 경로 + 파일별 변경 이유 (각 1–2줄)
+
+client/src/pages/OtherApplication.tsx:
+
+기타완료 생성 시 처리자 정보 미전달이 원인이므로, FormData.append('activatedBy', String(user.id)) 한 줄만 추가하여 서버에 처리자 id 전송.
+
+예상 변경 내용 (요약 diff)
+
+추가(개념)
+
+// 기존
+formData.append('activationStatus', '기타완료');
+// 누락: activatedBy
+
+// 변경 후
+formData.append('activationStatus', '기타완료');
++ if (user?.id != null) {
++   formData.append('activatedBy', String(user.id));
++ }
+
+
+보완 포인트
+
+user?.id가 없을 경우에는 아무 것도 보내지 않음(빈 문자열 전송 금지)
+
+네트워크 요청 방식/엔드포인트/기타 필드들은 그대로 유지
+
+(참고) 기타완료 목록에서 처리자 표시를 위해서는 ③-2(프론트 includeActivatedBy=true + 백엔드 조건부 JOIN)에 따라 activatedByName을 조회해야 합니다. 본 변경(③-3)은 “저장 단계” 복구입니다.
+
+핵심 추가/삭제/치환 포인트 (불릿)
+
+추가: 생성 요청 FormData에 activatedBy(현재 로그인 사용자 id) 1줄 추가
+
+유지: 엔드포인트/파라미터/쿼리키/레이아웃/스타일/컴포넌트 구조 불변
+
+삭제/치환 없음: 기존 동작에는 영향 최소화
+
+✅ 환경변수/DB/스키마/스타일 모두 미변경
+
+리스크와 회피책
+
+보안/무결성: 클라이언트 전송 값 신뢰 이슈
+
+회피: 서버가 세션 사용자 id를 우선 사용하도록 검증만 실시(코드 변경 없이 로깅/단위 테스트). 불가피할 경우, 서버에서 activatedBy가 들어오면 숫자형 변환/화이트리스트(존재하는 사용자 id인지) 검증(기존 유효성 규칙 활용).
+
+런타임: user?.id가 일시적으로 없는 케이스
+
+회피: 해당 시에는 필드 미전송(빈 문자열 전송 금지) → 서버는 기존 로직대로 null 저장(표시 시 - 폴백)
+
+롤백 계획
+
+되돌릴 파일: client/src/pages/OtherApplication.tsx만 직전 커밋으로 복원
+
+복구 절차
+
+파일 복원 → npm run build
+
+서버 재시작
+
+동일 시나리오 재검증(요청 본문/DB 값 확인)
+
+검증 시나리오 & 성공 기준
+
+S1. 생성 요청 본문 확인(프론트)
+
+단계: 로그인 → 기타완료 문서 생성 → DevTools Network 요청 본문 확인
+
+성공 기준: FormData에 activatedBy=<로그인 사용자 id> 포함, HTTP 200 OK, 콘솔 오류 0
+
+S2. DB 반영 확인(백엔드 응답/조회)
+
+단계: 생성 직후 목록 또는 상세 재조회(기타완료 페이지)
+
+성공 기준: 새 문서의 activated_by가 NULL이 아님(해당 id 저장), 응답 200 OK
+
+S3. 처리자 표시 확인(표시 로직 연계)
+
+단계: (③-2 계획이 적용된 환경 기준) includeActivatedBy=true로 조회
+
+성공 기준: 테이블의 처리자 컬럼에 실명 표시, - 아님, 콘솔 오류 0
+
+S4. 회귀 테스트(다른 생성 필드 영향 없음)
+
+단계: 동일 폼으로 일반 케이스 생성
+
+성공 기준: 기존 필드/업로드/검증 로직 변화 없음, 200 OK
+
+운영 데이터 보정(선택/코드 미변경 안내)
+
+옵션 A(권장): 향후 생성분부터 처리자 저장(기존 44건은 - 유지)
+
+옵션 B: 기존 데이터 일괄 보정(운영상 선택)
+
+예시: UPDATE documents SET activated_by = <관리자ID> WHERE activation_status='기타완료' AND activated_by IS NULL;
+
+주의: 운영 중엔 짧은 점검 창 확보 및 백업 후 수행 권장

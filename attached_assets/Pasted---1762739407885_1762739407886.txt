@@ -1,0 +1,115 @@
+🚨 긴급 수정 요청: 판매점 접수 신청 내역 미표기 및 구조적 연동 불가 이슈
+
+요약:
+판매점에서 정상적으로 “접수 신청 완료” 알림을 받았으나,
+해당 신청건이 판매점 대시보드에는 표시되지 않고,
+근무자(관리자) 화면의 “접수 관리”에서만 보이는 구조적 오류가 여전히 해결되지 않았습니다.
+이 문제는 최소 3회 이상 수정 요청했으나 개선되지 않았습니다.
+
+🔍 현재 상황
+구분	현상	비고
+판매점 계정	접수 후 “서류가 성공적으로 접수되었습니다.” 알림 표시	✅ 정상 메시지 표시
+근무자 계정	동일 접수건이 “접수 관리” 목록에 표시됨	✅ 근무자 화면엔 존재
+판매점 대시보드	해당 신청 내역이 전혀 표시되지 않음 (0건)	❌ 미표시 / 집계 불가
+채팅	“진행”으로 전환 후에도 채팅방 생성 안 됨	❌ 연결 불가
+⚠️ 핵심 원인 (이미 로그 분석 및 SQL 확인 완료)
+
+documents.dealer_id가 NULL 또는 잘못된 값으로 저장됨
+→ 대시보드 조회(WHERE dealer_id = ?)에 걸리지 않음
+→ 판매점 본인 접수건을 조회할 수 없음
+
+문서 생성 시 req.user.dealerId가 undefined이거나,
+dealer_registrations 테이블과의 매칭이 수행되지 않음
+
+판매점 접수건임에도 created_by 또는 dealer_id가 관리자 쪽에 귀속되어
+시스템상 “근무자 소유 문서”로 분류되고 있음
+
+🧭 요청사항 (강력히 요구)
+1️⃣ 문서 생성 로직 즉시 수정
+
+파일 위치 찾기
+
+전역 검색: "POST /api/documents", "createDocument", "new Document", "req.user.dealerId"
+
+확인 대상: /server/routes.ts, /server/controllers/documents.ts, /services/documents.ts
+
+수정 요구
+
+// dealerId 확정 로직 (필수)
+const dealerId =
+  req.user?.dealerId ??
+  (await resolveDealerIdFromPOS(req.body.contactCode, req.body.storeName));
+
+if (!dealerId) {
+  console.error("[DOC_CREATE_ERROR] dealerId not found", req.user, req.body);
+  return res.status(400).json({ error: "DEALER_ID_MISSING" });
+}
+
+document.dealer_id = dealerId;
+document.dealer_name_snapshot = req.body.storeName || dealer.name;
+
+
+✅ 판매점이 직접 제출한 문서는 반드시 dealer_id가 기록되어야 합니다.
+
+2️⃣ 판매점 대시보드 조회 조건 보강
+
+현 조회 조건:
+
+SELECT * FROM documents WHERE dealer_id = :dealerId;
+
+
+수정안(임시 하위호환 허용):
+
+SELECT * FROM documents
+ WHERE dealer_id = :dealerId
+    OR LOWER(REPLACE(dealer_name_snapshot, ' ', '')) = LOWER(REPLACE(:dealerName, ' ', ''));
+
+
+→ 백필 전까지는 이름 스냅샷 기반 보조 필터를 활성화해야 합니다.
+
+3️⃣ 기존 NULL dealer_id 문서 백필
+UPDATE documents d
+SET dealer_id = dr.id
+FROM dealer_registrations dr
+WHERE d.dealer_id IS NULL
+  AND LOWER(REPLACE(d.dealer_name_snapshot, ' ', '')) =
+      LOWER(REPLACE(dr.name, ' ', ''));
+
+
+⚙️ 실행 후 백필 로그 필수 (updated_rows, failed_rows 출력)
+
+4️⃣ 채팅 동기화 점검
+
+채팅방 참여 권한 로직에서 document.dealer_id === currentDealer.id 조건 불일치 시
+→ 방이 생성돼도 판매점이 join 불가 상태
+
+수정: dealer_id 누락 시 fallback으로 dealer_name_snapshot 기반 허용 (임시)
+
+✅ 검증 시나리오 (테스트 기준)
+시나리오	기대 결과
+판매점에서 신규 접수	“성공적으로 접수되었습니다.” 후, 대시보드 즉시 반영 (전체 탭에 1건 추가)
+근무자 접수 관리	동일 건이 표시됨
+대시보드 새로고침 후	동일 건이 상태별 구분(대기, 진행, 완료)에 반영됨
+근무자 “진행” 클릭 후	채팅창 자동 생성 및 상호 대화 가능
+백필 후 과거 문서	판매점 대시보드에서 과거 접수건 노출됨
+📌 마감 및 후속 조치 요청
+
+시급도: 최상 (접수 기능 핵심 모듈 작동 불능 상태)
+
+수정 완료 목표: 오늘 중 (운영 중단 예방)
+
+검증 방법: 접수 → 대시보드 새로고침 → 즉시 반영 확인
+
+배포 후 로그 제출:
+
+[DocCreate] dealerId=3, storeName="누리 판매점", status="등록완료"
+[DealerDashboardQuery] dealerId=3, total=1
+
+
+🟥 명확히 말씀드립니다.
+이 오류는 단순 UI 이슈가 아니라,
+시스템 핵심 데이터 연동(dealer_id 매핑 실패)로 인한 구조적 오류입니다.
+3차 수정 요청에도 동일 증상이 반복되고 있어
+“핵심 로직 검증 및 dealer_id 연동 구조 전면 점검”이 필요합니다.
+
+이번 수정에서는 **“dealer_id 필드 누락 시 문서 생성 자체를 차단”**하는 강제 로직까지 반드시 포함해 주십시오.

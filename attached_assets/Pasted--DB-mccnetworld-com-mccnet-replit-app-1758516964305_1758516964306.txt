@@ -1,0 +1,104 @@
+제목: 워크스페이스 변경사항이 운영 사이트에 반영되는 이슈 — 도메인/배포/DB 경로 점검 요청
+
+요약
+운영 도메인 mccnetworld.com 및 mccnet.replit.app는 Replit Publishing → Domains에서 Production 배포에 연결되어 있습니다.
+그러나 Republish 없이도 워크스페이스에서 테스트한 데이터 변경이 운영 화면에 나타납니다.
+Replit 문서를 검토한 결과, 워크스페이스와 Production이 같은 DB를 참조하는 것이 주 원인으로 추정됩니다.
+아래 항목에 대해 확인과 조치를 부탁드립니다.
+
+환경
+
+새 Replit UI (좌측 사이드바 없음)
+
+Publishing → Manage: 상태 Active, 수동 배포(Republish 버튼)
+
+배포 스펙: Autoscale (4 vCPU / 8 GiB RAM)
+
+연결 도메인: mccnet.replit.app, mccnetworld.com (둘 다 Production 배포에 연결)
+
+재현 절차
+
+워크스페이스에서 기능 테스트(예: 문서 생성/수정)
+
+Republish 없이 mccnetworld.com 접속
+
+방금 생성/수정한 데이터가 운영 화면에 표시
+
+기대 동작
+
+Republish 전에는 운영에 어떤 변화도 보이지 않아야 합니다(코드/데이터 모두).
+
+실제 동작
+
+Republish 없이도 데이터 변화가 운영 화면에 반영됩니다.
+
+요청 사항
+
+도메인 직결 여부 확인/정리
+
+워크스페이스(편집기) 측 Custom Domain/Hosting 설정에 mccnetworld.com 등 운영 도메인이 연결되어 있는지 확인해 주십시오.
+
+연결되어 있다면 강제 Detach 부탁드립니다. 운영 도메인은 Production 배포에만 연결되길 원합니다.
+
+자동 배포/자동 승격 확인
+
+현재 배포가 수동 배포(Republish 시에만 반영) 인지 확인해 주십시오.
+
+GitHub/CI 연동 등으로 자동 Publish가 트리거되는 설정이나 로그가 있는지도 확인 부탁드립니다(있다면 비활성화 희망).
+
+DB/Secrets 경로 검증 (핵심)
+
+워크스페이스와 Production 배포가 동일한 DATABASE_URL(또는 같은 Secret) 을 참조하는지 확인해 주십시오.
+
+같다면 워크스페이스용 별도 STAGING_DATABASE_URL 을 사용하도록 분리하려 합니다.
+
+배포 환경에서 Deployment Secrets 우선순위 및 워크스페이스 Secrets와의 충돌 여부도 점검 부탁드립니다.
+
+미리보기/프록시 경로 분리 보장
+
+*.repl.co 미리보기와 mccnet.replit.app/mccnetworld.com(운영)이 서로 다른 런타임/환경임이 보장되는 현재 권장 설정을 안내해 주십시오.
+
+미리보기에서 운영 도메인으로 프록시/리다이렉션 되는 경로가 없는지도 확인 부탁드립니다.
+
+원하는 최종 상태
+
+운영 도메인은 Production 배포에만 연결
+
+워크스페이스는 별도 스테이징 DB 사용
+
+Republish하지 않는 한 운영 화면에는 어떠한 변경도 반영되지 않음
+
+첨부
+
+Publishing → Domains/Manage 스크린샷
+
+문제 발생 시각(YYYY-MM-DD HH:mm KST)과 간단한 재현 영상/캡처
+
+같이 보내면 좋은 “증빙/로그” (선택)
+
+워크스페이스 Shell에서 아래 값들을 출력해 캡처로 첨부하면 원인 파악에 도움이 됩니다.
+
+# 워크스페이스 환경에서 어떤 DB를 바라보는지 확인
+echo "DATABASE_URL=$DATABASE_URL"
+echo "STAGING_DATABASE_URL=$STAGING_DATABASE_URL"
+
+# (psql 설치되어 있다면) 실제 접속해 현재 DB 식별
+# 주의: 운영 DB라면 SELECT/UPDATE 금지, 조회만 하세요.
+psql "$DATABASE_URL" -c "select current_database(), current_user;"
+
+
+운영 배포 쪽은 Publishing → Resources/Secrets 화면 캡처로 DATABASE_URL 값이 워크스페이스와 다른지 비교 첨부.
+
+내부 자가 점검 체크리스트(권장)
+
+워크스페이스 Custom Domain/Hosting에 운영 도메인 연결 없음(있으면 Detach)
+
+워크스페이스는 STAGING_DATABASE_URL, 배포는 DATABASE_URL 로 완전 분리
+
+코드에서 환경별 분기가 있는지 확인
+
+(예:) NODE_ENV==='production' ? DATABASE_URL : (STAGING_DATABASE_URL || DATABASE_URL)
+
+워크스페이스에서 테스트 데이터 생성 후 운영 사이트에 변화가 없는지 확인
+
+Republish 후에는 코드 변경만 운영에 반영되는지 확인

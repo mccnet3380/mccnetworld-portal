@@ -1,0 +1,122 @@
+수정 목적(한 줄)
+
+CompletedActivations 화면의 Select 컴포넌트 빈 값 오류를 제거하여 페이지가 빈 화면으로 멈추는 문제를 복구.
+
+해결할 오류 / 재현 절차(간단)
+
+오류: Console에
+Error: A <Select.Item /> must have a value prop that is not an empty string
+
+재현
+
+테스트페이지 → 개통완료 관리 클릭 → 빈 화면
+
+F12 Console 확인 시 위 오류 노출
+
+고객명 클릭 → 수정 다이얼로그 열릴 때에도 동일 오류로 렌더 중단
+
+원인
+
+<SelectItem value=""> 또는 value={plan.id || ''} 등 빈 문자열 value 존재
+
+요금제 목록이 비어있는 경우 <SelectContent> 내부에 <div> 안내를 넣어 Radix 구조 위반
+
+<Select value>가 ''(빈 문자열) 로 들어가는 케이스
+
+변경 범위 요약
+
+프론트엔드만 (최소 범위): CompletedActivations.tsx 안의 DeviceEditDialog 내 Select 관련 로직만 보정
+
+백엔드/빌드/배포/환경설정/DB/스타일/UI구조: 변경 없음
+
+수정 파일 목록 (최소화)
+
+client/src/pages/CompletedActivations.tsx
+
+DeviceEditDialog의 요금제 선택 <Select> 및 <SelectContent> 렌더링 가드 보정
+
+파일 경로 + 파일별 변경 이유 (각 1–2줄)
+
+client/src/pages/CompletedActivations.tsx:
+
+빈 값('')이 들어가는 <SelectItem> 제거 및 문자열 값 보장
+
+요금제 목록이 비었을 때 <div> 대신 **disabled <SelectItem>**로 안내(구조 준수)
+
+<Select value>에 undefined 사용(빈문자열 금지) 및 plan.id → String(plan.id) 강제 캐스팅
+
+예상 변경 내용 (요약 diff)
+
+<SelectItem value="">…</SelectItem> → 삭제(또는 value="none" + disabled)
+
+value={plan.id || ''} → value={String(plan.id)} (단, plan.id null/undefined는 map 이전에 필터)
+
+요금제 없음일 때
+
+<SelectContent> 내부의 <div> 안내 제거
+
+<SelectItem disabled value="__no_plans__">해당 통신사 요금제가 없습니다</SelectItem> 만 표시
+
+<Select value={someState}>
+
+someState가 falsy면 **undefined**로 전달(빈 문자열 금지)
+
+onValueChange에서 "none"/"__no_plans__" 선택 시 내부 상태를 null 처리(실제 저장 시엔 전달 안 함)
+
+핵심 추가/삭제/치환 포인트 (불릿)
+
+삭제: 빈 문자열 value를 가진 모든 <SelectItem>
+
+치환: plan.id를 항상 문자열로 캐스팅하고, null/undefined plan은 map 대상에서 제외
+
+추가: 목록 비어있을 때 disabled <SelectItem> 안내 (Radix 구조 위반 제거)
+
+치환: <Select value> 초기값을 undefined로 처리해 placeholder 렌더, 빈문자열 금지
+
+✅ 불변: .env/Secrets/DB 연결/DB 스키마/레이아웃/디자인/Tailwind 클래스/컴포넌트 구조
+
+리스크와 회피책
+
+리스크(호환): 동일 다이얼로그 내 다른 Select에도 유사 패턴이 있으면 동일 오류 가능
+
+회피: 본 수정은 해당 Select만 변경. 이후 동일 증상 발견 시 동일 패턴으로 로컬 범위 보정
+
+리스크(사용성): 요금제 없음 시 선택 불가
+
+회피: disabled 항목으로 명확한 안내만 표시(기존 스타일/레이아웃 유지)
+
+롤백 계획
+
+변경 전 CompletedActivations.tsx 백업/커밋
+
+문제 발생 시 해당 파일만 이전 커밋으로 되돌림(다른 파일 영향 없음)
+
+검증 시나리오 & 성공 기준
+
+개통완료 관리 진입
+
+기대: 페이지 즉시 렌더, 빈 화면 사라짐, Console 오류 0건
+
+수정 다이얼로그 열기
+
+기대: 다이얼로그 정상 표시, 요금제 Select 펼침 가능, Console 오류 0건
+
+요금제 목록 케이스
+
+(A) 목록 있음: 각 항목이 문자열 value로 정상 표시/선택
+
+(B) 목록 없음: disabled 안내 항목 1개만 보임, 선택 동작 없음
+
+성공 기준: 네트워크 200 응답, 렌더 중단 없음, 상태 변경 시 UI 즉시 반영
+
+운영 서버(mccnetworld.com) 동일 시나리오 재검증
+
+기대: 동일 결과(200/오류 0/정상 렌더)
+
+적용 절차 (요청하신 운영 수칙 반영)
+
+테스트페이지에 단일 파일 수정 반영 → 서버 재시작
+
+위 검증 시나리오 1–3 수행(스크린샷/콘솔 로그 확보)
+
+운영 서버에 동일 변경 반영 → 서버 재시작 → 시나리오 4 수행

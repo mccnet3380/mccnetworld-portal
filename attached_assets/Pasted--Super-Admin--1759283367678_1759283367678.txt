@@ -1,0 +1,102 @@
+사전 변경 안내 – 관리자 패널 ‘시스템 관리자’ 삭제 불가(슈퍼 제외)
+
+수정 목적(한 줄)
+
+관리자 패널 > 사용자 관리에서 Super Admin을 제외한 시스템 관리자 계정은 삭제 가능하도록 복구(현재 ‘기타’ 유형만 삭제 가능, 시스템 관리자는 “사용자를 찾을 수 없습니다” 404).
+
+해결할 오류 / 재현 절차(간단)
+
+관리자 패널 > 사용자 관리 진입
+
+‘시스템 관리자’ 유형 행에서 삭제 아이콘 클릭
+
+토스트: “삭제 실패 – 사용자를 찾을 수 없습니다” (Network: DELETE /api/admin/users/:id → 404)
+→ 기대: **DELETE /api/admin/admins/:id**로 호출되어 200/204 응답 및 목록 반영
+
+변경 범위 요약
+
+백엔드(최소): 관리자 삭제 라우트 확인/보강
+
+DELETE /api/admin/admins/:id 존재/정상 동작 보장
+
+(선택적 호환) DELETE /api/admin/users/:id로 잘못 호출되어도 admins로 위임하는 Alias 1개 추가
+
+Super Admin(화면상 “Super Admin” 사용자)은 삭제 불가 가드(409/400)
+
+프론트(최소): AdminPanel.tsx에서 계정 유형 분기로 올바른 엔드포인트 사용
+
+시스템 관리자는 DELETE /api/admin/admins/:id
+
+기타/일반은 기존 DELETE /api/admin/users/:id
+
+성공 시 정확한 queryKey에 대해 invalidateQueries 실행(관리자 목록 + 통합 목록)
+
+빌드/배포: 기존 파이프라인 그대로.
+
+불변: 환경변수/Secrets, DB 스키마, UI(레이아웃/디자인/스타일/컴포넌트 구조) 절대 변경 금지.
+
+수정 파일 목록(최소화)
+
+server/routes.ts 또는 server/admin-routes.ts(프로젝트 구조에 맞춤)
+
+server/storage.ts(필요 시 deleteAdmin returning() 보장)
+
+client/src/pages/AdminPanel.tsx
+
+파일별 변경 이유(1–2줄)
+
+server/routes: 관리자 삭제 라우트 정합성 확보(DELETE /api/admin/admins/:id), (선택) users→admins Alias 추가. Super Admin 삭제 가드.
+
+server/storage: deleteAdmin(id)가 **.returning()**으로 1건 반환(프론트 갱신/토스트에 사용).
+
+AdminPanel.tsx: handleDeleteUser 분기 보강(시스템 관리자는 deleteAdminMutation), 정확한 queryKey 무효화.
+
+예상 변경 내용(요약 diff)
+
+프론트:
+
+if (row.accountType === 'admin' || row.role === 'admin') deleteAdminMutation.mutate(row.id); else deleteUserMutation.mutate(row.id);
+
+invalidateQueries([...관리자 목록 키...]) + invalidateQueries([...통합 목록 키...])
+
+백엔드:
+
+DELETE /api/admin/admins/:id 파라미터 검증/권한 체크/존재 확인 → 삭제 → 200(또는 204) 반환
+
+(선택) DELETE /api/admin/users/:id가 들어오면 admins로 위임(Alias)
+
+Super Admin(예: 현재 로그인 “Super Admin” 또는 시스템상 마스터 계정) 삭제 금지 → 409/400
+
+핵심 추가/치환 포인트
+
+추가: admins 삭제 라우트(또는 Alias) / Super Admin 삭제 가드
+
+치환: AdminPanel 삭제 분기에서 **시스템 관리자는 /api/admin/admins/:id**로 호출
+
+유지: 응답 포맷/토스트 문구/레이아웃/스타일/DB 스키마/환경값 그대로
+
+리스크와 회피책
+
+호환: 일부 UI가 기존 /api/admin/users/:id로 계속 호출할 수 있음 → Alias 라우트로 흡수
+
+무결성: 참조 중 관리자 삭제 시 FK 에러 → 409 Conflict + 기존 메시지 유지
+
+롤백 계획
+
+변경을 단일 커밋으로 묶고 문제 시 git revert
+
+또는 server/routes*, server/storage.ts, AdminPanel.tsx만 직전 버전 복원 → 재시작
+
+검증 시나리오 & 성공 기준
+
+S1 시스템 관리자 삭제: (Super Admin 제외) 임의 시스템 관리자 삭제 → 200/204, 테이블에서 즉시 제거(캐시 무효화로 새로고침 불필요)
+
+S2 기타 유형 삭제: 기존처럼 정상 200/204
+
+S3 Super Admin 삭제 시도: 409/400 + “삭제할 수 없는 계정입니다” 메시지
+
+S4 API 확인: Network에서 시스템 관리자 삭제가 **/api/admin/admins/:id**로 나가는지 확인
+
+S5 운영 동일성: 테스트 OK 후 운영(mccnetworld.com)에서도 동일 결과
+
+⚠️ 코드 제출 규칙 준수: 승인 후 파일 전체 최종본만 제출해 주세요. 부분 코드 금지.

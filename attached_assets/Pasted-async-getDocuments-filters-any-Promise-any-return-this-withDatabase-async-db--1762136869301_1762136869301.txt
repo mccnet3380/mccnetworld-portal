@@ -1,0 +1,148 @@
+async getDocuments(filters?: any): Promise<any[]> {
+  return this.withDatabase(async (db) => {
+    console.log('[getDocuments] START - filters:', JSON.stringify(filters));
+    const docColumns = getTableColumns(documents);
+
+    let query;
+
+    if (filters?.includeActivatedBy) {
+      console.log('[getDocuments] Building query with activatedByName...');
+
+      query = db
+        .select({
+          ...docColumns,
+          dealerName: contactCodes.dealerName,
+          planName: servicePlans.name,
+          activatedByName: sql<string>`
+            CASE
+              WHEN ${documents.activatedByRole} = 'admin' THEN COALESCE(${admins.name}, '')
+              WHEN ${documents.activatedByRole} = 'user'  THEN COALESCE(${users.name},  '')
+              ELSE ''
+            END
+          `,
+        })
+        .from(documents)
+        .leftJoin(contactCodes, eq(documents.contactCode, contactCodes.code))
+        .leftJoin(servicePlans, eq(documents.servicePlanId, servicePlans.id))
+        /* 🔐 역할 분기 조인 */
+        .leftJoin(
+          admins,
+          and(eq(documents.activatedBy, admins.id), eq(documents.activatedByRole, sql`'admin'`))
+        )
+        .leftJoin(
+          users,
+          and(eq(documents.activatedBy, users.id), eq(documents.activatedByRole, sql`'user'`))
+        );
+    } else {
+      query = db
+        .select({
+          ...docColumns,
+          dealerName: contactCodes.dealerName,
+          planName: servicePlans.name,
+        })
+        .from(documents)
+        .leftJoin(contactCodes, eq(documents.contactCode, contactCodes.code))
+        .leftJoin(servicePlans, eq(documents.servicePlanId, servicePlans.id));
+    }
+
+    if (filters) {
+      console.log('[getDocuments] Applying filters...');
+      const conditions = [];
+      if (filters.status) conditions.push(eq(documents.status, filters.status));
+      if (filters.search) conditions.push(sql`${documents.customerName} ILIKE ${`%${filters.search}%`}`);
+
+      if (filters.activationStatus) {
+        const statuses = filters.activationStatus.split(',').map((s: string) => s.trim());
+        if (statuses.length === 1) {
+          conditions.push(eq(documents.activationStatus, statuses[0]));
+        } else {
+          conditions.push(
+            sql`${documents.activationStatus} IN (${sql.raw(statuses.map((s: string) => `'${s}'`).join(','))})`
+          );
+        }
+      }
+
+      if (conditions.length > 0) {
+        console.log('[getDocuments] Adding where conditions:', conditions.length);
+        query = query.where(and(...conditions));
+      }
+    }
+
+    console.log('[getDocuments] Executing query...');
+    const results = await query.orderBy(desc(documents.id));
+    console.log('[getDocuments] Query executed, results count:', results.length);
+
+    // ===== 배치 그룹핑(기존 로직 유지) =====
+    const batchGroups = new Map<string, any[]>();
+    const standaloneDocuments: any[] = [];
+
+    for (const row of results) {
+      const rowData = {
+        ...row,
+        storeName: (row as any).storeName || (row as any).dealerName || null,
+      };
+
+      let batchMeta = null as any;
+      if (rowData.notes && typeof rowData.notes === 'string') {
+        const metaMatch = rowData.notes.match(/__BATCH_META__:(.+?)(?:\n|$)/);
+        if (metaMatch) {
+          try {
+            batchMeta = JSON.parse(metaMatch[1]);
+            // 배치 메타는 notes에서 제거
+            rowData.notes = rowData.notes.replace(/__BATCH_META__:.+?(?:\n|$)/, '').trim();
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+
+      if (batchMeta?.batchId) {
+        if (!batchGroups.has(batchMeta.batchId)) {
+          batchGroups.set(batchMeta.batchId, []);
+        }
+        batchGroups.get(batchMeta.batchId)!.push({ ...rowData, batchMeta });
+      } else {
+        standaloneDocuments.push(rowData);
+      }
+    }
+
+    const groupedDocuments: any[] = [];
+    for (const [batchId, docs] of Array.from(batchGroups.entries())) {
+      console.log(`[BATCH_PROCESS] batchId=${batchId} docCount=${docs.length} ids=[${docs.map(d => d.id).join(',')}]`);
+
+      docs.sort((a: any, b: any) => (a.batchMeta?.fileIndex || 0) - (b.batchMeta?.fileIndex || 0));
+      let mainDoc = docs.find((d: any) => !d.batchMeta?.isChild);
+      console.log(`[BATCH_PROCESS] mainDoc found=${!!mainDoc} mainDocId=${mainDoc?.id}`);
+
+      if (!mainDoc && docs.length > 0) {
+        mainDoc = docs[0];
+        console.log(`[BATCH_PROCESS] Promoted first doc to main: id=${mainDoc.id}`);
+      }
+
+      if (mainDoc) {
+        mainDoc.attachments = docs.map((d: any) => ({
+          id: d.id,
+          fileName: d.fileName,
+          filePath: d.filePath,
+          fileSize: d.fileSize,
+          fileMimetype: d.fileMimetype,
+          originalFilename: d.originalFilename
+        }));
+        mainDoc.fileCount = docs.length;
+        console.log(`[BATCH_PROCESS] Created attachments: count=${mainDoc.attachments.length}`);
+        delete mainDoc.batchMeta;
+        groupedDocuments.push(mainDoc);
+      } else {
+        console.log(`[BATCH_PROCESS] ERROR: No main doc found for batchId=${batchId}`);
+        groupedDocuments.push(...docs.map((d: any) => {
+          delete d.batchMeta;
+          return d;
+        }));
+      }
+    }
+
+    const finalDocuments = [...groupedDocuments, ...standaloneDocuments];
+    finalDocuments.sort((a, b) => b.id - a.id);
+    return finalDocuments;
+  });
+}

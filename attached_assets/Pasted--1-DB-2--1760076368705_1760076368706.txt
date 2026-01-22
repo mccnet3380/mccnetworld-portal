@@ -1,0 +1,161 @@
+[사전 변경 안내]
+수정 목적(한 줄)
+- 운영 대시보드의 통계 정확도 개선: (1) 당일 ‘통신사별 접수 현황’과 운영 DB 수량 일치, (2) 당일 개통건의 ‘신규/번호이동’ 통계 표시 추가. (UI/스타일 유지, 프론트 최소 변경)
+
+해결할 오류 / 재현 절차
+- 문제1: 대시보드의 당일 접수건 통신사별 수량이 운영 DB와 불일치
+- 문제2: 당일 개통건에서 신규/번호이동 수량 미표시
+- (참고) 문제3/4는 별도 이슈로 유지, 이번 변경 범위 밖
+
+변경 범위 요약
+- 프론트엔드만 변경: client/src/pages/Dashboard.tsx
+- 백엔드/DB/환경변수/스타일/빌드: 변경 없음
+
+요구 사항(절대 준수)
+1) 데이터 방어적 렌더링
+   - API shape가 환경마다 다를 수 있으므로, 안전한 접근(옵셔널 체이닝 + 기본값) 사용
+2) 통신사별 접수 현황 집계 로직
+   - 서버 응답 배열(receptionByCarrier 등)을 받아 **carrierId가 있으면 carrierId 기준으로**, 없으면 **정규화된 carrierName** 기준으로 합산(중복 제거)
+   - 표시 전 이름 정규화: trim + 연속 공백 1개로 치환
+   - 내림차순 정렬(count desc)
+3) 신규/번호이동 통계
+   - 다음 후보 키 중 존재하는 값을 안전하게 표시:  
+     - 신규(new): `data.today?.activations?.new`, `data.activations?.today?.new`, `data.todayActivations?.newCustomerCount`, `data.newCustomerCount`  
+     - 번호이동(port-in): `data.today?.activations?.portIn`, `data.activations?.today?.portIn`, `data.todayActivations?.portInCount`, `data.portInCount`
+   - 값이 없으면 0
+4) 임시 로그(개발 확인용)
+   - 콘솔 로깅은 `const DASH_DEBUG=false` 스위치로 제어. 최종 배포 전 `false` 유지
+
+[수정 지시]
+파일: client/src/pages/Dashboard.tsx
+
+1) 유틸 추가 (파일 상단, 컴포넌트 외부)
+----------------------------------------------------------------
+const DASH_DEBUG = false;
+
+const normalizeName = (s?: string) =>
+  (s ?? "").trim().replace(/\s+/g, " ");
+
+type CarrierItem = { carrierId?: string|number; carrierName?: string; count?: number };
+
+function aggregateReceptionByCarrier(raw?: CarrierItem[]) {
+  const arr = Array.isArray(raw) ? raw : [];
+  const map = new Map<string|number, { name: string; count: number }>();
+
+  for (const item of arr) {
+    const id = item?.carrierId;
+    const name = normalizeName(item?.carrierName);
+    const key = (id ?? name) as string|number;
+    if (!key) continue;
+
+    const prev = map.get(key);
+    const cnt = Number(item?.count ?? 0);
+    map.set(key, { name, count: (prev?.count ?? 0) + (isFinite(cnt) ? cnt : 0) });
+  }
+
+  return Array.from(map.entries())
+    .map(([k, v]) => ({ key: k, name: v.name, count: v.count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function pickNumber(...candidates: Array<any>): number {
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+----------------------------------------------------------------
+
+2) 데이터 안전 파싱 (대시보드 데이터 fetch 이후, 렌더링 직전)
+----------------------------------------------------------------
+// 예: API 응답을 data로 받는 상태라고 가정
+const receptionRaw =
+  data?.today?.receptionByCarrier ??
+  data?.receptionByCarrier ??
+  data?.todayStats?.receptionByCarrier;
+
+if (DASH_DEBUG) {
+  // 개발 확인용 실제 데이터 로그
+  console.log("[DASH] receptionRaw =", receptionRaw);
+  console.log("[DASH] data =", data);
+}
+
+// 집계/중복 제거
+const receptionAgg = aggregateReceptionByCarrier(receptionRaw);
+
+// 신규/번호이동
+const newCount = pickNumber(
+  data?.today?.activations?.new,
+  data?.activations?.today?.new,
+  data?.todayActivations?.newCustomerCount,
+  data?.newCustomerCount
+);
+
+const portInCount = pickNumber(
+  data?.today?.activations?.portIn,
+  data?.activations?.today?.portIn,
+  data?.todayActivations?.portInCount,
+  data?.portInCount
+);
+----------------------------------------------------------------
+
+3) 렌더링 교체(스타일/마크업 틀은 유지, 내부만 교체)
+- “통신사별 접수 현황” 섹션의 항목 렌더를 아래 형태로 교체
+
+----------------------------------------------------------------
+{/* 통신사별 접수 현황 */}
+<section>
+  <h3>통신사별 접수 현황 (당일)</h3>
+  {receptionAgg.length === 0 ? (
+    <div className="text-muted-foreground">데이터가 없습니다.</div>
+  ) : (
+    <ul className="space-y-1">
+      {receptionAgg.map((it) => (
+        <li key={String(it.key)} className="flex items-center justify-between">
+          <span>{it.name || "미상"}</span>
+          <span className="font-semibold">{it.count}</span>
+        </li>
+      ))}
+    </ul>
+  )}
+</section>
+----------------------------------------------------------------
+
+- “당일 개통건” 영역(또는 적절한 카드)에 신규/번호이동 2개 박스 추가(기존 스타일 클래스를 재사용)
+----------------------------------------------------------------
+<section>
+  <h3>당일 개통 분류</h3>
+  <div className="grid grid-cols-2 gap-3">
+    <div className="rounded-md border p-3">
+      <div className="text-sm text-muted-foreground">신규</div>
+      <div className="text-2xl font-bold">{newCount}</div>
+    </div>
+    <div className="rounded-md border p-3">
+      <div className="text-sm text-muted-foreground">번호이동</div>
+      <div className="text-2xl font-bold">{portInCount}</div>
+    </div>
+  </div>
+</section>
+----------------------------------------------------------------
+
+4) 기존 조건문/삼항에서 null/undefined 접근이 있었다면 옵셔널 체이닝 + 기본값으로 보강
+
+[검증 시나리오 & 성공 기준]
+시나리오 1: 통신사별 접수 현황
+- 대시보드 접속 → 리스트가 운영 DB 쿼리 결과와 **동일 수치**로 표시(중복 합산 없음)
+- 예: 동일 통신사가 여러 라인으로 오지 않고 한 줄로 카운트 통합
+
+시나리오 2: 신규/번호이동
+- 당일 개통건에 “신규: N”, “번호이동: N” 박스가 표시(없으면 0)
+
+시나리오 3: 데이터 정확도 검증
+- 운영 DB 직접 쿼리 vs 대시보드 표시값 비교 → 100% 일치
+
+[리스크와 회피책]
+- 서버 응답 필드명이 환경별로 다를 수 있으므로, 후보 키를 순차 조회
+- 캐시로 인한 구버전 표시 시 하드 리로드/캐시버스팅(배포 시 자동 반영)
+
+[롤백 계획]
+- Dashboard.tsx만 이전 버전으로 복원
+  git checkout -- client/src/pages/Dashboard.tsx

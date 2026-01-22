@@ -1,0 +1,246 @@
+[사전 변경 안내]
+목적(한 줄)
+- 전체 공지 시스템에 “통신망별/개별 사용자 대상 발송”을 추가한다. 로그인 시 대상 사용자에게만 1회 팝업으로 노출되며, 읽음 후 재노출되지 않는다. (DB/백엔드/프론트 최소 추가)
+
+변경 범위
+- DB: shared/schema.ts (announcements, announcement_reads 확장)
+- 서버: server/storage.ts, server/routes.ts (CRUD + unread/read + 통계)
+- 프론트: 
+  - client/src/components/AnnouncementPopup.tsx (팝업)
+  - client/src/pages/Announcements.tsx (관리자 목록/작성)
+  - client/src/components/UserSelector.tsx (개별 사용자 선택)
+  - client/src/components/Sidebar.tsx (메뉴)
+  - client/src/App.tsx (라우트 + 로그인 시 unread 호출)
+
+요구 사항(절대 준수)
+- 읽음 중복 방지: UNIQUE(announcement_id, user_id)
+- “지금 보여줄 공지” 서버 필터: is_active=true AND 스케줄 범위(now)
+- 대상 판정:
+  - all: 전원
+  - carrier: `target_carriers @> ARRAY[user_carrier]`
+  - users: `target_user_ids @> ARRAY[user_id]`
+- 통신망 표준 키: 'SKT' | 'KT' | 'LGU+' | 'MVNO' (표시 라벨은 프론트 매핑)
+- 관리자 권한 필수(announce CRUD)
+
+[1] DB 스키마 — shared/schema.ts (Drizzle/Postgres)
+----------------------------------------------------------------
+import { pgTable, serial, integer, text, boolean, timestamp, varchar, index, unique, sql } from "drizzle-orm/pg-core";
+import { users } from "./users"; // 실제 경로에 맞게
+
+export const announcements = pgTable("announcements", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 200 }).notNull(),
+  content: text("content").notNull(),
+  authorId: integer("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+
+  targetType: varchar("target_type", { length: 20 }).notNull(), // 'all' | 'carrier' | 'users'
+  targetCarriers: text("target_carriers").array().default(sql`ARRAY[]::text[]`), // 예: ['SKT','KT']
+  targetUserIds: integer("target_user_ids").array().default(sql`ARRAY[]::int[]`),
+
+  isActive: boolean("is_active").notNull().default(true),
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true, mode: "string" }).default(sql`NOW()`),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).nullable(),
+
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (t) => ({
+  idxActiveSched: index("ann_active_sched_idx").on(t.isActive, t.scheduledAt),
+}));
+
+export const announcementReads = pgTable("announcement_reads", {
+  id: serial("id").primaryKey(),
+  announcementId: integer("announcement_id").notNull().references(() => announcements.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  readAt: timestamp("read_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (t) => ({
+  uniqRead: unique().on(t.announcementId, t.userId),
+  idxUser: index("ann_reads_user_idx").on(t.userId),
+  idxAnn: index("ann_reads_ann_idx").on(t.announcementId),
+}));
+
+[마이그레이션]
+- 개발 DB → 운영 DB 순서로
+- `DATABASE_URL=$DATABASE_URL_DEV npm run db:push`
+- `DATABASE_URL=$DATABASE_URL_PROD npm run db:push`
+
+[2] 저장소 로직 — server/storage.ts (요지/의사코드)
+----------------------------------------------------------------
+import { and, or, sql, desc, eq, notInArray } from "drizzle-orm";
+import { announcements, announcementReads } from "@/shared/schema";
+
+type CreateAnn = {
+  title: string; content: string; authorId: number;
+  targetType: 'all'|'carrier'|'users';
+  targetCarriers?: string[]; // 표준 키
+  targetUserIds?: number[];
+  isActive?: boolean;
+  scheduledAt?: string|null;
+  expiresAt?: string|null;
+};
+
+export async function createAnnouncement(data: CreateAnn) {
+  // 정상화
+  const carriers = (data.targetCarriers ?? []).map(normalizeCarrier);
+  const userIds = Array.from(new Set(data.targetUserIds ?? []));
+
+  return await db.insert(announcements).values({
+    title: data.title.trim(),
+    content: data.content.trim(),
+    authorId: data.authorId,
+    targetType: data.targetType,
+    targetCarriers: carriers,
+    targetUserIds: userIds,
+    isActive: data.isActive ?? true,
+    scheduledAt: data.scheduledAt ?? sql`NOW()`,
+    expiresAt: data.expiresAt ?? null,
+  }).returning();
+}
+
+export async function updateAnnouncement(id: number, patch: Partial<CreateAnn> & {isActive?: boolean}) {
+  // 필요한 키만 업데이트, 배열은 중복 제거/정규화
+  const upd: any = {};
+  if (patch.title !== undefined) upd.title = patch.title.trim();
+  if (patch.content !== undefined) upd.content = patch.content.trim();
+  if (patch.targetType) upd.targetType = patch.targetType;
+  if (patch.targetCarriers) upd.targetCarriers = Array.from(new Set(patch.targetCarriers.map(normalizeCarrier)));
+  if (patch.targetUserIds) upd.targetUserIds = Array.from(new Set(patch.targetUserIds));
+  if (patch.isActive !== undefined) upd.isActive = patch.isActive;
+  if (patch.scheduledAt !== undefined) upd.scheduledAt = patch.scheduledAt;
+  if (patch.expiresAt !== undefined) upd.expiresAt = patch.expiresAt;
+  upd.updatedAt = sql`NOW()`;
+
+  return await db.update(announcements).set(upd).where(eq(announcements.id, id)).returning();
+}
+
+export async function deleteAnnouncement(id: number) {
+  // 소프트 삭제(비활성) 권장
+  return await db.update(announcements).set({ isActive: false, updatedAt: sql`NOW()` })
+    .where(eq(announcements.id, id)).returning();
+}
+
+export async function getAnnouncements({ activeOnly=false, limit=50, offset=0 } = {}) {
+  const where = activeOnly
+    ? and(eq(announcements.isActive, true))
+    : undefined;
+  return await db.select().from(announcements)
+    .where(where).orderBy(desc(announcements.createdAt)).limit(limit).offset(offset);
+}
+
+export async function markAnnouncementAsRead(announcementId: number, userId: number) {
+  await db.execute(sql`
+    INSERT INTO "announcement_reads" ("announcement_id","user_id")
+    VALUES (${announcementId}, ${userId})
+    ON CONFLICT ("announcement_id","user_id") DO NOTHING
+  `);
+}
+
+export async function getUnreadAnnouncements(userId: number) {
+  // 사용자 캐리어/역할 조회 (실제 구현의 사용자 테이블/필드에 맞게)
+  const u = await getUserById(userId); // { carrier: 'SKT' | ... }
+  const userCarrier = normalizeCarrier(u?.carrier ?? '');
+
+  // 이미 읽은 공지 제외
+  const readIds = await db.select({ id: announcementReads.announcementId })
+    .from(announcementReads)
+    .where(eq(announcementReads.userId, userId));
+
+  // 필터: 활성 + 스케줄 범위 + (ALL or CARRIER contain or USERS contain)
+  return await db.select().from(announcements).where(and(
+    eq(announcements.isActive, true),
+    or(sql`(${announcements.scheduledAt} IS NULL)`, sql`${announcements.scheduledAt} <= NOW()`),
+    or(sql`(${announcements.expiresAt} IS NULL)`, sql`${announcements.expiresAt} >= NOW()`),
+    notInArray(announcements.id, readIds.map(r => r.id)),
+    or(
+      eq(announcements.targetType, 'all'),
+      and(
+        eq(announcements.targetType, 'carrier'),
+        // target_carriers @> ARRAY[userCarrier]
+        sql`(${announcements.targetCarriers}) @> ARRAY[${userCarrier}]::text[]`
+      ),
+      and(
+        eq(announcements.targetType, 'users'),
+        // target_user_ids @> ARRAY[userId]
+        sql`(${announcements.targetUserIds}) @> ARRAY[${userId}]::int[]`
+      )
+    )
+  ))
+  .orderBy(desc(announcements.scheduledAt), desc(announcements.createdAt));
+}
+
+export async function getAnnouncementStats(announcementId: number) {
+  const base = await db.select().from(announcements).where(eq(announcements.id, announcementId)).limit(1);
+  if (!base.length) return null;
+  const a = base[0];
+
+  // 대상 총원 계산
+  let targetCount = 0;
+  if (a.targetType === 'all') {
+    targetCount = await getTotalUserCount();
+  } else if (a.targetType === 'carrier') {
+    for (const c of (a.targetCarriers ?? [])) {
+      targetCount += await getUserCountByCarrier(c);
+    }
+  } else if (a.targetType === 'users') {
+    targetCount = (a.targetUserIds ?? []).length;
+  }
+
+  const readCountRow = await db.execute(sql`
+    SELECT COUNT(*)::int AS cnt FROM "announcement_reads" WHERE "announcement_id" = ${announcementId}
+  `);
+  const read = Number(readCountRow.rows?.[0]?.cnt ?? 0);
+
+  return { target: targetCount, read, unread: Math.max(targetCount - read, 0) };
+}
+
+// helpers
+function normalizeCarrier(x: string) {
+  const s = (x || '').trim().toUpperCase().replace(/\s+/g,'');
+  if (s === 'LGU+' || s === 'LGUPLUS' || s === 'LGU') return 'LGU+';
+  if (s === 'SK' || s === 'SKT') return 'SKT';
+  if (s === 'KT') return 'KT';
+  return s || 'MVNO';
+}
+
+[3] 라우트 — server/routes.ts (요지)
+----------------------------------------------------------------
+// 관리자 전용
+POST   /api/announcements                -> createAnnouncement
+GET    /api/announcements                -> getAnnouncements(?activeOnly)
+PATCH  /api/announcements/:id            -> updateAnnouncement
+DELETE /api/announcements/:id            -> deleteAnnouncement
+GET    /api/announcements/:id/stats      -> getAnnouncementStats
+
+// 로그인 사용자
+GET    /api/announcements/unread         -> getUnreadAnnouncements(req.user.id)
+POST   /api/announcements/:id/read       -> markAnnouncementAsRead(id, req.user.id)
+
+// 권한 체크: isAdmin 미들웨어를 관리자 전용 엔드포인트에 적용
+// 요청 바디 검증(zod): title/content/targetType, 배열 길이, 캐리어 표준화
+
+[4] 프론트 — 관리자 UI
+----------------------------------------------------------------
+- 공지 작성 다이얼로그에 “대상: 전체 / 통신망별 / 개별 사용자” 라디오 추가
+- 통신망 체크박스: SKT / KT / LG U+ / 알뜰(MVNO)
+- 개별 사용자 선택: <UserSelector /> 다이얼로그(검색/필터/다중선택)
+- “예상 수신 인원”은 /api/users/count?carrier=... 또는 서버 helper로 계산 결과 표시
+- 목록 테이블 컬럼: 제목 / 대상(라벨) / 작성일 / 읽음률(읽음/대상) / 작업
+
+[5] 프론트 — 팝업 (AnnouncementPopup)
+----------------------------------------------------------------
+- 로그인 직후: GET /api/announcements/unread → 순차 표시
+- 버튼: [다시 보지 않기]=mark read, [확인했어요]=mark read
+- 여러 건: (1/3) 네비 또는 다음 버튼
+- XSS 방지: content는 sanitize 후 innerHTML 또는 프리텍스트 표시
+
+[6] 검증 시나리오
+----------------------------------------------------------------
+1) 전체 발송: targetType=all → 모든 사용자 로그인 시 1회 팝업
+2) 통신망 발송: targetType=carrier, ['SKT','KT'] → SKT/KТ 사용자에만 노출
+3) 개별 발송: targetType=users, [5,12,23] → 해당 3명에게만 노출
+4) 읽음 처리: 같은 사용자가 재로그인해도 동일 공지 미노출 (reads UNIQUE 보장)
+5) 통계: stats API에서 대상/읽음/미읽음 수 일치
+
+[7] 배포
+----------------------------------------------------------------
+- DB 스키마 push → 개발 → 운영 순
+- 서버 재시작 후 관리자 계정으로 생성/수정/삭제 테스트

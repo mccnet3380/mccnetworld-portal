@@ -1,0 +1,153 @@
+변경 요청 프롬프트 (판매점 대시보드 미노출 & 채팅 불가 이슈)
+
+현상
+
+판매점이 “접수 신청 완료”라고 보이지만 판매점 대시보드에는 건이 없음.
+
+내부 근무자 화면(관리자)에서는 동일 접수건이 보임.
+
+근무자가 상태를 “진행”으로 바꿔도 채팅창이 열리지만 대화가 불가(방 생성/참여 둘 중 하나가 누락된 추정).
+
+가설(원인 후보)
+
+접수 생성 시 documents.dealer_id(또는 동등 역할 키)가 NULL/누락 →
+
+판매점 대시보드 조회 쿼리(WHERE dealer_id = ?)에 걸리지 않음.
+
+채팅방 참여 권한/룸 조인도 dealer_id로 매핑되어 실패.
+
+채팅방 생성 로직(서버)과 채팅 참여 로직(프론트)의 roomKey/documentId 연동 누락.
+
+권한 토큰/세션에 실판매점 기준 키(POS/접점코드)가 실리지 않아 권한 필터에 막힘.
+
+0) 먼저 소스 위치를 찾아주세요
+
+문서 생성 API: 전역 검색
+
+키워드: "POST /api/documents", "createDocument", "new Document", "documents.create"
+
+또는 폼 전송부에서 fetch('/api/...')를 역추적 (OtherApplication, SubmitApplication 등)
+
+판매점 대시보드 조회 API
+
+키워드: "GET /api/documents?dealer", "dealer-dashboard", "listDocumentsByDealer", "WHERE dealer_id"
+
+채팅 서버(소켓) 초기화/방 생성
+
+키워드: "socket.on('join'", "io.to(", "room:", "chatRooms", "documentId"
+
+채팅 프론트(모달/위젯)
+
+키워드: "실시간 채팅", "ChatModal", "useChat", "joinRoom", "documentId"
+
+찾은 파일 경로 & 라인을 작업 로그에 남겨주세요.
+
+1) 문서 생성 시 “판매점 식별자”를 확정 저장 (핵심)
+
+접수 생성 시 다음 우선순위로 dealer 식별자를 결정해서 documents.dealer_id(또는 동등 필드)에 저장:
+
+req.user.dealerId가 유효하면 그대로 사용
+
+없으면, 선택된 접점코드(contact_codes) 의 realSalesPOS/dealerName으로 판매점 레코드 조회 → dealerId 매핑
+
+정규화 비교(공백/특수문자/대소문자 무시) 함수 사용:
+
+const norm = (s='') => s.toLowerCase().normalize('NFKC').replace(/\s+/g,'').replace(/[.\-(){}\[\]·•‧]/g,'');
+
+
+다건 일치 시 updatedAt DESC 1건 선택
+
+둘 다 실패 시 400 반환: "DEALER_RESOLVE_FAILED"
+
+documents에 저장되는 필수 필드(스키마 변경 없이 가능한 선에서):
+
+dealer_id (정수/식별자)
+
+dealer_name_snapshot (문자열 스냅샷; 화면 표시에 사용)
+
+contact_code_snapshot (선택된 개통방명코드 스냅샷; 나중 문제 추적용)
+
+서버 로그에 아래 값 남기기:
+[DocCreate] userId=.. dealerIdResolved=.. source=user|pos|contactcode code=E001 dealerName='누리'
+
+2) 판매점 대시보드 조회 쿼리 보강
+
+현재 쿼리가 WHERE dealer_id = ?만 보고 있다면, 하위 호환 보강:
+
+1차: dealer_id = ?
+
+2차(백필 전까지만 임시): OR normalize(doc.dealer_name_snapshot) = normalize(currentDealer.name)
+
+가능한 경우, 성능을 위해 dealer_id 기준 조회가 기본이 되도록 하고, 스냅샷 비교는 임시 플래그(ENABLE_LEGACY_DEALER_FALLBACK)로 on/off.
+
+3) 채팅 로직 정합성 정리
+
+서버(소켓)
+
+채팅 roomKey는 문서ID 기준으로 단일화: room:doc:{documentId}
+
+문서 생성 직후 채팅방 레코드가 없으면 생성(없다면 메모리 룸만 써도 됨)
+
+join 시 권한 체크:
+
+관리자/근무자: OK
+
+판매점: documents.dealer_id === currentDealer.id 일 때만 OK
+
+거부 시 에러 코드: CHAT_FORBIDDEN_DEALER_MISMATCH
+
+프론트
+
+채팅 모달 열 때 반드시 documentId를 전달하여 join('room:doc:'+documentId) 호출
+
+connected만 녹색이어도 room join 성공이 아니므로, joinedRoom=true 플래그를 별도로 표시
+
+모달 하단 Debug: connected: true | joined: true | messages: N
+
+4) 데이터 백필(필수, 과거건 보이게)
+
+임시 스크립트/배치로 dealer_id가 NULL인 documents를 백필:
+
+contact_code_snapshot 또는 store_name/storeName를 정규화
+
+dealers(또는 dealer_registrations)에서 일치하는 판매점 찾아 dealer_id 업데이트
+
+로그로 백필 성공/실패 건수 출력
+
+배치 실행은 트랜잭션으로 처리하고, Dry-run 옵션 제공.
+
+5) 수용 기준 (Acceptance Criteria)
+
+ 판매점이 제출한 새 접수건이 즉시 판매점 대시보드 “전체/대기/진행/완료”에 노출.
+
+ 근무자 화면에서 “진행”으로 변경 시, 판매점 채팅 모달에서 메시지 송수신 가능(서로 보임).
+
+ documents.dealer_id가 모든 신규 생성 문서에 채워짐(NULL 금지).
+
+ 기존 NULL 문서도 백필 후 판매점 대시보드에 보임.
+
+ 채팅 모달 Debug에 connected:true, joined:true가 표시되고, 거부 시 명확한 에러 코드가 노출됨.
+
+6) 테스트 시나리오
+
+신규 접수(판매점 계정) → 제출 → 관리자 화면에서 “진행” → 양방향 채팅 성공.
+
+dealer_id 없는 과거 문서 → 백필 스크립트 실행 → 판매점 대시보드 노출 확인.
+
+권한 오용: 다른 판매점 계정으로 해당 문서 채팅 시도 → CHAT_FORBIDDEN_DEALER_MISMATCH로 차단.
+
+POS/접점코드 변경 케이스: 제출 중 POS를 바꿔도 dealer 매핑이 올바르게 반영되는지 확인.
+
+네트워크 단절 후 재연결: 소켓 reconnect 시 room 자동 재조인 확인(joined:true 유지).
+
+7) 롤백
+
+ENABLE_LEGACY_DEALER_FALLBACK 플래그로 스냅샷 매칭을 임시 on/off.
+
+문제 시, 문서 생성 로직의 dealer 자동결정 분기를 환경변수로 이전 방식으로 되돌릴 수 있게 유지.
+
+참고 메모
+
+users.dealer_id가 비어있는 계정이 여전히 존재할 수 있으므로, 문서 생성 시점에 반드시 dealer 식별자를 확정하는 것이 핵심입니다.
+
+채팅은 “서버 연결(connected)”와 “룸 참여(joined)”를 구분해 표시/검증해야 디버깅이 수월합니다.

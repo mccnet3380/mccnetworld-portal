@@ -1,0 +1,179 @@
+[사전 변경 안내]
+1) 수정 목적(한 줄)
+- 배치 문서(여러 파일) 개통완료 처리 시 동일 batchId의 모든 파일 row가 함께 이동하도록, storage.ts의 배치 동기화 로직을 “검증 · 보강(로깅 강화 + 매칭 정확도 점검)”합니다. (코드 최소 변경, 환경변수/DB 스키마/UI/빌드 미변경)
+
+2) 해결할 오류 / 재현 절차
+- 오류: 파일 3개 업로드 → 접수관리엔 1건으로 보이지만, “개통완료” 처리 시 1개만 이동하고 나머지 2개는 남아 있음
+- 재현: (운영) mccnetworld.com → 접수 신청(이미지 3개) → 접수관리 확인 → 개통완료 처리 → 일부만 이동
+
+3) 변경 범위 요약
+- 백엔드: server/storage.ts
+  - 배치 동기화 로직 그대로 유지하되, “배치 식별/매칭/업데이트 영향 행수”를 확실히 검증할 수 있도록 디버그 로깅과 매칭 패턴을 보강
+- 프론트/배포/환경/스키마: 변경 없음
+
+4) 수정 파일 목록
+- server/storage.ts (단일 파일)
+
+5) 작업 지시 (코드 최소 변경, 복붙 적용)
+파일: server/storage.ts
+
+(1) 상단에 디버그 플래그/유틸 보강(중복 import 금지)
+----------------------------------------------------------------
+import { sql, eq } from "drizzle-orm";
+import { documents } from "@/server/db/schema"; // 실제 경로 맞게 유지
+
+// 개발에서는 기본 on, 운영에서는 기본 off (운영에서도 LOG_BATCH_DEBUG=true 로 임시 활성 가능)
+const LOG_BATCH_DEBUG =
+  (process.env.LOG_BATCH_DEBUG ?? "").toLowerCase() === "true" ||
+  (process.env.APP_ENV ?? "development") !== "production";
+
+/** notes 문자열에서 batchId 안전 추출 */
+function extractBatchIdFromNotes(notes?: string | null): string | null {
+  if (!notes) return null;
+
+  // 1) __BATCH_META__ 섹션 안의 "batchId":"..." 우선 탐지
+  let m = notes.match(/__BATCH_META__\s*:\s*\{[^}]*"batchId"\s*:\s*"([^"]+)"[^}]*\}/);
+  if (m?.[1]) return m[1];
+
+  // 2) 전체 문자열에서 "batchId":"..." 일반 탐지(폴백)
+  m = notes.match(/"batchId"\s*:\s*"([^"]+)"/);
+  if (m?.[1]) return m[1];
+
+  return null;
+}
+
+/** LIKE 검색에 사용할 안전한 패턴 생성: %"batchId":"<id>"% */
+function likePatternForBatchId(batchId: string): string {
+  // 쌍따옴표 이스케이프
+  const esc = batchId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `%\\"batchId\\":\\"${esc}\\"%`;
+}
+
+function logBatch(...args: any[]) {
+  if (LOG_BATCH_DEBUG) console.log("[BatchSync]", ...args);
+}
+----------------------------------------------------------------
+
+(2) updateDocument() 배치 동기화 블록에 “검증 로그” 보강 및 LIKE 패턴 점검
+- 기존 로직은 유지하면서, 아래 추가 라인들만 삽입/치환
+----------------------------------------------------------------
+// 예시: 기존 함수 시그니처 유지
+async function updateDocument(id: number, data: any): Promise<void> {
+  const willChangeActivation = Object.prototype.hasOwnProperty.call(data, "activationStatus");
+
+  await db.transaction(async (tx) => {
+    // 1) 현재 문서 조회(기존 로직 유지)
+    const cur = await tx
+      .select({ id: documents.id, notes: documents.notes })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1);
+
+    if (!cur.length) throw new Error("Document not found");
+
+    const notes = cur[0]?.notes ?? null;
+    const batchId = willChangeActivation ? extractBatchIdFromNotes(notes) : null;
+    logBatch("doc=", id, "hasBatchId=", !!batchId, "notesSample=", LOG_BATCH_DEBUG ? String(notes).slice(0, 200) : undefined);
+
+    // 2) updateData/singleOnly 구성(기존 규칙 유지)
+    const updateData: Record<string, any> = {};
+    if (Object.prototype.hasOwnProperty.call(data, "activationStatus")) {
+      updateData.activationStatus = data.activationStatus;
+      if (Object.prototype.hasOwnProperty.call(data, "activatedBy")) {
+        updateData.activatedBy = data.activatedBy;
+      }
+      if (Object.prototype.hasOwnProperty.call(data, "activatedAt")) {
+        updateData.activatedAt = data.activatedAt;
+      }
+    }
+    const singleOnly: Record<string, any> = {};
+    for (const k of Object.keys(data)) {
+      if (k === "activationStatus" || k === "activatedBy" || k === "activatedAt") continue;
+      singleOnly[k] = (data as any)[k];
+    }
+
+    // 3) 배치 동기화(activationStatus 변경 + batchId 존재)
+    if (willChangeActivation && batchId) {
+      const pattern = likePatternForBatchId(batchId);
+      logBatch("batchId=", batchId, "likePattern=", pattern);
+
+      // 3-1) 영향 대상 미리 조회(검증용)
+      const willAffect = await tx
+        .select({ id: documents.id })
+        .from(documents)
+        .where(sql`${documents.notes} LIKE ${pattern}`);
+
+      logBatch("preAffectedCount=", willAffect.length, "ids=", willAffect.map(r => r.id).slice(0, 20));
+
+      // 3-2) 상태/처리자/처리시각 등 배치 필드 일괄 업데이트
+      if (Object.keys(updateData).length > 0) {
+        await tx
+          .update(documents)
+          .set(updateData)
+          .where(sql`${documents.notes} LIKE ${pattern}`);
+      }
+
+      // 3-3) 단건에만 적용할 기타 필드(singleOnly)가 있으면 별도 단건 업데이트
+      if (Object.keys(singleOnly).length > 0) {
+        await tx.update(documents).set(singleOnly).where(eq(documents.id, id));
+      }
+
+      // 3-4) 사후 검증(실제 반영 수 확인)
+      const postAffected = await tx
+        .select({ id: documents.id })
+        .from(documents)
+        .where(sql`${documents.notes} LIKE ${pattern}`);
+
+      logBatch("postAffectedCount=", postAffected.length, "status=", updateData.activationStatus ?? null);
+
+      return; // 배치 처리 후 종료(중복 업데이트 방지)
+    }
+
+    // 4) 배치 조건 아니라면 기존 단건 업데이트
+    const merged = { ...updateData, ...singleOnly };
+    if (Object.keys(merged).length > 0) {
+      await tx.update(documents).set(merged).where(eq(documents.id, id));
+      logBatch("singleUpdate", "id=", id, "fields=", Object.keys(merged));
+    }
+  });
+}
+----------------------------------------------------------------
+
+(3) 주의사항
+- 스키마를 변경하지 않으므로 notes가 TEXT여도 LIKE로 처리(현 범위 유지)
+- 나중에 성능/정확성 향상이 필요하면 notes에 batchId를 별도 컬럼(JSONB 또는 TEXT)로 분리해 인덱싱(이번 변경 범위 밖)
+- 기존 퍼블릭 API/리턴 타입/권한 검증/검증 로직은 일절 변경 금지
+
+6) 리스크와 회피책
+- 성능: 배치 크기(보통 2~10개)에서는 영향 미미. 트랜잭션으로 원자성 보장
+- 정합성: 예외 발생 시 tx 롤백. 로그로 사전/사후 영향 행수 추적
+
+7) 롤백 계획
+- server/storage.ts 변경분만 원복:
+  git checkout -- server/storage.ts
+- 서버 재시작 또는 재배포(Publish)
+
+8) 검증 시나리오 & 성공 기준
+시나리오 1: 배치 문서 개통완료(핵심)
+- 파일 3개 업로드 → 접수관리 1건 표시 → 개통완료 처리
+- 기대:
+  ✅ 개통완료 목록에 1건(파일 3개 포함)
+  ✅ 접수관리에서 해당 배치 항목 완전 제거
+  ✅ 서버 로그: [BatchSync] preAffectedCount=3 … postAffectedCount=3 status=개통
+
+시나리오 2: 단일 파일 문서
+- 파일 1개 업로드 → 기타완료 처리
+- 기대:
+  ✅ 기존 단건 업데이트와 동일 동작(배치 로직 비실행)
+
+시나리오 3: 로그 검증
+- 기대:
+  ✅ notesSample 에 __BATCH_META__ 또는 "batchId":"xxx" 포함
+  ✅ extractBatchIdFromNotes() 추출 성공
+  ✅ likePattern이 실제 notes와 매칭되어 pre/postAffectedCount가 배치 파일 수와 일치
+
+[성공 기준]
+- HTTP 200
+- 같은 batchId의 모든 documents가 동일 activationStatus로 동기화
+- 프론트엔드에서 항목 분리/잔존 없음
+- 디버그 로그에 batchId/영향 행수 일치가 확인됨

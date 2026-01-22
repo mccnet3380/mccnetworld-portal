@@ -1,0 +1,65 @@
+You are the dedicated developer responsible for fixing code issues in my repository. Follow the instructions carefully and strictly.
+
+[Context]
+- Login account: mcclg04 (username: 이다엘, Sales Manager role)
+- Current problems:
+  1) After logging in with mcclg04 and refreshing, the UI switches incorrectly, colliding with another user (원세영). Role/permission UI is mismatched.
+  2) In the “Activations Completed” page, the **rate plan edit** does not yet provide the same carrier-based searchable plan select component as the “Application” page. (This was requested earlier but not implemented.)
+  3) “Cancel Activation” is still moving records into a separate cancellation category, instead of simply updating the `canceled_at` column in the activations table with the timestamp when the cancel button is clicked. (Earlier request not implemented.)
+  4) The sidebar still shows the **“Activation Cancel History”** menu, but it must be **removed** (this is the only UI change allowed).
+  5) Toast message durations were requested to be unified to **3 seconds**, but need to be verified and fixed if not consistent.
+
+[Critical rules]
+1) Only fix the specific bugs/features described above.
+2) **Never change UI layout/design/style/components**, except for removing the sidebar menu item “Activation Cancel History.”
+3) **Do not touch .env, Secrets, DB connection configs, or production DB logic.**
+   - If a DB schema change is required, do not modify code. Instead, add a final section “DB Schema Change Proposal” explaining the required field.
+4) Do not provide partial code. Always return the **entire final version of each modified file.**
+5) Keep explanations minimal. The output must be copy-paste ready.
+
+[Tasks]
+
+A) Role/permission refresh bug (mcclg04 vs 원세영 conflict)  
+- Symptom: After refreshing while logged in as mcclg04, the UI shows another user’s role (원세영).  
+- Fixes to verify and apply:
+  1. Ensure `/api/auth/me` response matches the token payload (role, userType, userId).  
+  2. Ensure login/refresh token generation includes consistent fields (role, userType, userId, dealerId/managerId).  
+  3. On the frontend (Zustand/localStorage), always re-sync with `/api/auth/me` after refresh, not cached/stale data.  
+  4. Prevent user state collisions: userId/username must not persist incorrectly from another user.  
+  5. Verify Authorization header is always set properly so the correct user is returned.  
+
+Goal: After refresh, mcclg04 always sees Sales Manager UI, no mixing with 원세영.
+
+B) Rate plan selection in “Activations Completed” (not implemented yet)  
+- Replace the current text field with the same **carrier-based searchable plan select** used in the “Application” form.  
+- Reuse components/hooks if available (`PlanSelect`, `RatePlanSelect`, `useRatePlans`, `fetchRatePlansByCarrier`).  
+- If no shared component exists, replicate the same API + filter logic from “Application” (carrier filter + search).  
+- Ensure selected value is saved into the same field (`servicePlanId` / `ratePlanId` / `planName` depending on schema).  
+
+C) Cancel Activation handling (not implemented yet)  
+- On “Cancel” button:
+  - Do **not** move record into a separate cancellation category/table.  
+  - Instead, update the same row in **Activations Completed table** with `canceled_at = current timestamp (Asia/Seoul)`.  
+  - Immediately show this value in the “Canceled At” column in the list.  
+- Remove the sidebar menu item **“Activation Cancel History.”**  
+  - This is the only allowed UI modification.  
+
+D) “Other Completed” counters consistency  
+- Verify which statuses are included in “Other Completed.”  
+- Define them in a single shared constant on the server (e.g., `OTHER_COMPLETED_STATUSES = [...]`).  
+- Ensure all cards, lists, and dashboards reference this constant to prevent mismatch.  
+
+E) Toast duration  
+- Force all toast messages to display for **3 seconds (3000ms)** only.  
+- Set a global default in the toast provider.  
+- Override any hardcoded durations in individual calls to 3000ms.
+
+[Output format — strictly required]
+- Start with `CHANGED_FILES:` listing modified files.  
+- Then for each file, output:
+
+  ## File: <path from project root>
+  ```ts
+  // FIX: <short summary of fix>
+  // NOTE: <one-line reproduction note>
+  <full final version of the file — no omissions>

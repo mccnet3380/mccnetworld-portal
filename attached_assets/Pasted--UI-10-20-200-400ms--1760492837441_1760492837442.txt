@@ -1,0 +1,93 @@
+[사전 변경 안내 — 성능개선 + UI 순서 변경]
+
+목적(한 줄)
+- ‘개통방명 코드’ 자동완성 입력 지연(10~20초)을 200~400ms 수준으로 단축하고, 접수 폼의 섹션 순서를 “통신사 정보 → 고객 정보”로 교체합니다.
+
+# 1) 자동완성 성능 개선 (서버 + DB + 프론트 동시)
+원인 추정
+- 대량 테이블 전체 ILIKE 스캔 + 정렬로 풀스캔 발생 → 10~20초 지연.
+- 프론트의 실시간 요청에 대한 취소/디바운스/최소 글자 수 제한 미적용.
+
+요청 사항
+A. API 신설/개선
+- 엔드포인트: GET /api/codes/search?q=...&limit=20
+- 동작: prefix/substring 검색, 기본 정렬은 relevance → createdAt DESC(동률 시)
+- 반환: id, code, name 정도 최소 컬럼만, 최대 20건
+
+B. DB 인덱스 추가 (PostgreSQL)
+-- ① 접두(prefix) 검색만 쓰는 경우(권장: 좌측 고정 검색)
+CREATE INDEX IF NOT EXISTS idx_codes_code_prefix
+  ON contact_codes (LOWER(code) text_pattern_ops);
+
+-- ② 부분 일치/오타 허용할 계획이면(trigram)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_codes_code_trgm
+  ON contact_codes USING gin (LOWER(code) gin_trgm_ops);
+
+-- ③ 보조 인덱스(선택)
+CREATE INDEX IF NOT EXISTS idx_codes_updated_at ON contact_codes(updated_at DESC);
+
+C. 서버 쿼리 가이드(예시)
+-- prefix
+SELECT id, code, name
+FROM contact_codes
+WHERE LOWER(code) LIKE LOWER($1) || '%'
+ORDER BY updated_at DESC
+LIMIT $2;
+
+-- trigram(부분 일치)
+SELECT id, code, name
+FROM contact_codes
+WHERE LOWER(code) ILIKE '%' || LOWER($1) || '%'
+ORDER BY SIMILARITY(LOWER(code), LOWER($1)) DESC, updated_at DESC
+LIMIT $2;
+
+D. 프론트 최적화 (client/src/pages/SubmitApplication.tsx)
+- 최소 입력 글자수: 2자 (예: ‘lm’, ‘l미’)
+- 디바운스: 250ms
+- 요청 취소: AbortController 적용(이전 요청 취소)
+- 최대 항목: 20개
+- 로컬 캐시: 같은 prefix는 60초 메모리 캐시
+- 로딩 스피너/결과 없을 때 안내 문구 추가
+
+예시 (의사코드)
+const controllerRef = useRef<AbortController|null>(null);
+const onChange = useMemo(() => debounce(async (text) => {
+  if (text.length < 2) return setList([]);
+  controllerRef.current?.abort();
+  const c = new AbortController();
+  controllerRef.current = c;
+  const res = await fetch(`/api/codes/search?q=${encodeURIComponent(text)}&limit=20`, { signal: c.signal });
+  setList(await res.json());
+}, 250), []);
+
+E. 한계/페일세이프
+- 2초 초과 응답 시 타임아웃 및 “다시 시도” 표시
+- 서버 에러 시 결과 0건 + 에러 토스트
+
+성공 기준
+- ‘l미’ 입력 시 0.2~0.4초 내 첫 결과 표시
+- 타이핑 중 연속 입력해도 이전 요청 취소로 큐 적체 없음
+- API/DB 로그에서 풀스캔 제거(인덱스 스캔 확인)
+
+# 2) UI 섹션 순서 변경
+배경
+- 현 배치: 고객 정보 → 통신사 정보
+- 요청: 통신사 정보 → 고객 정보 (순서를 바꿔 입력 동선 단축)
+
+변경 파일
+- client/src/pages/SubmitApplication.tsx (또는 해당 폼 컴포넌트)
+
+요청 내용
+- 섹션 컴포넌트 렌더 순서를 통신사 정보(Card/Section) → 고객 정보(Card/Section)로 교체
+- 기존 필드/검증 로직/상태 키는 변경하지 말 것 (레이아웃만 변경)
+- 탭 포커스 순서와 모바일 스크롤 포지션도 새 순서에 맞게 조정
+
+검증 시나리오
+- 데스크톱/모바일에서 폼을 열면 ‘통신사 정보’가 먼저 보임
+- 제출/검증 에러 표시가 기존과 동일하게 동작
+- 자동완성 응답 체감 지연이 1초 이하(목표 0.4초)로 단축
+
+배포/롤백
+- DB 인덱스 → 스키마 변경 먼저 적용 후 앱 배포
+- 문제 시 프론트만 롤백(섹션 순서 원복) 가능, 인덱스는 유지해도 무방

@@ -1,0 +1,111 @@
+kksnantest1( dealer_id=3 ) 계정으로 2건 제출 → 대시보드 표시 확인
+
+로그에서 아래 두 줄 반드시 확인
+
+[DocCreate] userId=.. dealerId=.. code=.. storeName=..
+
+[DealerDashboard] dealerId=3 count=.. (fallback 여부 포함)
+
+체크리스트
+
+ 신규 문서 documents.dealer_id가 NULL 아님
+
+ 근무자 ↔ 판매점 채팅 가능
+
+문제 없으면 바로 2번으로 진행합니다.
+
+2) 운영 DB 백업 + 백필 실행 (트랜잭션)
+
+반드시 트랜잭션으로 실행하고, 먼저 백업하세요.
+
+-- 🔒 트랜잭션 시작
+BEGIN;
+
+-- 2-0) 즉시 백업 (가벼운 스냅샷)
+CREATE TABLE IF NOT EXISTS backup_users_YYYYMMDD AS
+  SELECT * FROM users;
+
+CREATE TABLE IF NOT EXISTS backup_documents_YYYYMMDD AS
+  SELECT * FROM documents;
+
+-- 2-1) users.dealer_id 매핑 (대표명 기준)
+UPDATE users u
+SET dealer_id = dr.id
+FROM dealer_registrations dr
+WHERE u.dealer_id IS NULL
+  AND (u.user_type = 'user' OR u.user_type = 'dealer')
+  AND LOWER(TRIM(u.name)) = LOWER(TRIM(dr.representative_name));
+
+-- 2-2) documents.dealer_id 백필 (users 기준)
+UPDATE documents d
+SET dealer_id = u.dealer_id
+FROM users u
+WHERE d.user_id = u.id
+  AND d.dealer_id IS NULL
+  AND u.dealer_id IS NOT NULL;
+
+-- 2-3) 결과 점검 (눈으로 확인)
+SELECT 
+  (SELECT COUNT(*) FROM users WHERE user_type IN ('user','dealer') AND dealer_id IS NULL) AS users_null_dealer,
+  (SELECT COUNT(*) FROM documents WHERE dealer_id IS NULL) AS docs_null_dealer;
+
+-- 문제가 없으면 커밋
+COMMIT;
+-- 이상 있으면 ROLLBACK;
+
+
+대표명 기준 매핑이 애매한 계정은 수동 매핑 리스트로 별도 UPDATE 하시면 됩니다. (예: UPDATE users SET dealer_id=3 WHERE id=17;)
+
+3) 강제 검증 켜기 (재발 방지)
+
+Replit/Render Secrets:
+
+DEALER_USER_FALLBACK=off
+
+기대 효과: dealer_id가 결정되지 않으면 문서 생성 400 차단
+
+배포 전/후 로그로 검증:
+
+실패 시: { error: "DEALER_ID_MISSING" } 확인
+
+4) 운영 배포
+
+Replit에서 Republish → 헬스체크 OK까지 대기
+
+첫 30분 모니터링:
+
+[DocCreate] / [DealerDashboard] 로그에서 fallback 문구가 더 이상 찍히지 않는지 확인
+
+documents.dealer_id IS NULL 증가하지 않는지 확인
+
+5) 배포 후 검증 시나리오 (필수)
+
+판매점 계정 A로 신규 접수 → 대시보드 즉시 반영
+
+관리자에서 “진행”으로 변경 → 양방향 채팅 가능
+
+판매점 계정 B(다른 딜러)로 해당 문서 채팅 시도 → 권한 거부
+
+SELECT COUNT(*) FROM documents WHERE dealer_id IS NULL; → 0 유지
+
+보너스: 누락 계정 빠른 식별 쿼리
+-- dealer_id 없는 판매점 계정 목록
+SELECT id, username, name 
+FROM users 
+WHERE user_type IN ('user','dealer') AND dealer_id IS NULL
+ORDER BY id;
+
+-- dealer_id 없는 최근 문서(7일)
+SELECT id, user_id, dealer_id, dealer_name_snapshot, contact_code_snapshot, created_at
+FROM documents
+WHERE dealer_id IS NULL
+  AND created_at > NOW() - INTERVAL '7 day'
+ORDER BY id DESC;
+
+롤백 계획
+
+문제 발생 시 즉시:
+
+DEALER_USER_FALLBACK=on 재설정 → 재배포(즉시 가시성 복구)
+
+ROLLBACK;(트랜잭션 내 실행 시) 또는 backup_* 테이블로 복구

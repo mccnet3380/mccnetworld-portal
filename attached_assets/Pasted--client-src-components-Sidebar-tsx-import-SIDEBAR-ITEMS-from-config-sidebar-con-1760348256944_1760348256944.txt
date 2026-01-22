@@ -1,0 +1,100 @@
+사이드바 컴포넌트 수정: client/src/components/Sidebar.tsx
+
+import { SIDEBAR_ITEMS } from '@/config/sidebar.config';
+const APP_ENV = import.meta.env.VITE_APP_ENV || (process.env.APP_ENV ?? 'development');
+const FLAGS = (window as any).__FLAGS__ || {}; // 필요 시 전역 플래그 주입
+
+const items = SIDEBAR_ITEMS.filter(it => {
+  const envOk  = !it.env   || it.env.includes(APP_ENV as any);
+  const roleOk = !it.roles || it.roles.includes(currentUser.role);
+  const flagOk = !it.flag  || FLAGS[it.flag] === true;
+  return envOk && roleOk && flagOk;
+});
+
+// i18n으로 렌더
+return (
+  <nav>
+    {items.map(item => (
+      <Link key={item.key} to={item.path}>{t(item.key)}</Link>
+    ))}
+  </nav>
+);
+
+
+[2] 죽은 코드 자동검사 도입
+
+package.json 스크립트/의존성 추가
+
+{
+  "scripts": {
+    "lint": "eslint --ext .ts,.tsx .",
+    "dead:exports": "ts-prune",
+    "dead:deps": "depcheck",
+    "check:deadcode": "npm run dead:exports && npm run dead:deps",
+    "prebuild": "npm run check:deadcode"
+  },
+  "devDependencies": {
+    "ts-prune": "^0.10.3",
+    "depcheck": "^1.4.3",
+    "eslint-plugin-unused-imports": "^3.1.0"
+  }
+}
+
+
+.eslintrc에 규칙 추가
+
+plugins: ['unused-imports'],
+rules: {
+  'unused-imports/no-unused-imports': 'error',
+  'unused-imports/no-unused-vars': ['error', { args: 'after-used', ignoreRestSiblings: true }]
+}
+
+
+[3] /_archive 격리(운영 번들 제외)
+
+루트에 /_archive 폴더 생성, 당장 지우기 어려운 파일을 이관
+
+번들 제외(예: Vite):
+
+// vite.config.ts - 선택: import 금지 규칙은 lint로 보강
+// 번들 제외는 기본적으로 import가 없으면 자동 제외. 규칙상 '@archive' import 탐지 시 CI 실패 처리.
+
+
+CI/검사: rg -n "@archive" src 결과가 비어있지 않으면 실패하도록 스크립트 추가
+
+[4] 서버 라우트도 플래그로 등록 제어(선택)
+
+const flags = { enableNewAdmin: process.env.ENABLE_NEW_ADMIN === 'true' };
+if (APP_ENV !== 'production' && flags.enableNewAdmin) {
+  router.use('/api/admin-panel', adminPanelRouter);
+}
+
+
+[5] 배포 변수
+
+개발: APP_ENV=development, 운영 Publish: APP_ENV=production
+
+VITE_APP_ENV를 빌드 시 주입(또는 서버에서 window.FLAGS 주입)
+
+검증 시나리오(수용 기준)
+
+운영 빌드에서 개발 전용 메뉴(예: 관리자 패널)가 보이지 않는다.
+
+개발 빌드에서는 개발 전용 메뉴가 보이고 정상 진입된다.
+
+ts-prune/depcheck/unused-imports 검사 통과 후에만 빌드된다(미사용 코드가 있으면 빌드 실패).
+
+/_archive의 내용이 운영 번들에 포함되지 않는다(임포트 금지).
+
+“관리자/관리자 패널” 등 명칭은 i18n 키로만 관리되며, 문자열 하드코딩이 사라진다.
+
+롤백 계획
+
+사이드바 단일화 이전 파일로 복귀: git checkout -- client/src/components/Sidebar.tsx
+
+검사 스크립트 임시 비활성: package.json의 prebuild 제거
+
+feature flag 미사용 시 라우트/메뉴 플래그 조건 제거
+
+
+추가로 원하시면, 현재 저장소 기준으로 **사이드바/라우트 문자열 인벤토리**를 추출하는 `ripgrep` 명령 세트를 

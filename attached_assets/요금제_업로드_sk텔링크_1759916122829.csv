@@ -1,0 +1,20 @@
+﻿요금제명,통신사,요금제유형,데이터제공량,월요금(원),활성여부
+LTE 알뜰 (100GB+/통화맘껏),후불)텔링크SK,LTE,100GB + 5Mbps 무제한,42790,TRUE
+LTE 알뜰 (11GB+/통화맘껏),후불)텔링크SK,LTE,11GB+일2GB+3Mbps 무제한,36140,TRUE
+LTE 알뜰 (15GB+/100분),후불)텔링크SK,LTE,15GB + 3Mbps 무제한,25740,TRUE
+LTE 알뜰 (10GB+/통화맘껏),후불)텔링크SK,LTE,10GB + 1Mbps 무제한,19640,TRUE
+LTE 알뜰 (7GB+/통화맘껏),후불)텔링크SK,LTE,7GB + 1Mbps 무제한,19140,TRUE
+LTE 알뜰 (25GB/100분),후불)텔링크SK,LTE,25GB,24550,TRUE
+LTE 알뜰 (3GB+/200분),후불)텔링크SK,LTE,3GB + 1Mbps 무제한,14340,TRUE
+LTE 알뜰 (1GB+/통화맘껏),후불)텔링크SK,LTE,1GB + 1Mbps 무제한,13340,TRUE
+LTE 알뜰 (15GB/200분),후불)텔링크SK,LTE,15GB,15750,TRUE
+LTE 알뜰 (8GB/2000분),후불)텔링크SK,LTE,8GB,12210,TRUE
+LTE 알뜰 (6GB/2000분),후불)텔링크SK,LTE,6GB,10780,TRUE
+LTE 알뜰 (4GB/2000분),후불)텔링크SK,LTE,4GB,10340,TRUE
+LTE 알뜰 (2GB/2000분),후불)텔링크SK,LTE,2GB,6820,TRUE
+CMLink (100GB+),후불)텔링크SK,LTE,100GB + 5Mbps 무제한,47850,TRUE
+CMLink (11GB+),후불)텔링크SK,LTE,11GB+일2GB+3Mbps 무제한,41200,TRUE
+CMLink (15GB+),후불)텔링크SK,LTE,15GB + 3Mbps 무제한,30800,TRUE
+CMLink (7GB+),후불)텔링크SK,LTE,7GB + 1Mbps 무제한,24200,TRUE
+CMLink (10GB+),후불)텔링크SK,LTE,10GB + 1Mbps 무제한,24700,TRUE
+CMLink (1GB+),후불)텔링크SK,LTE,1GB + 1Mbps 무제한,18400,TRUE

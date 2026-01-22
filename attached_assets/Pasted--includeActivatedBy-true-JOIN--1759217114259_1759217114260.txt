@@ -1,0 +1,123 @@
+수정 목적(한 줄)
+
+기타완료 문서 목록에서 처리자명이 “-”로 표시되는 문제를, includeActivatedBy=true 조건부 JOIN과 프론트 파라미터 추가만으로 복구.
+
+해결할 오류 / 재현 절차(간단)
+
+오류 증상: 관리자 로그인 → “기타완료” 진입 → 처리자 컬럼이 “-”
+
+원인: 해당 페이지의 API 호출에 includeActivatedBy=true 누락 → 백엔드 기본 쿼리에 users JOIN 미포함
+
+비교:
+
+✅ 완료 관리(CompletedActivations): includeActivatedBy=true 전달 → 처리자 정상 표시
+
+❌ 기타완료(OtherCompletions): 파라미터 누락 → 처리자 표시 안 됨
+
+기대 결과: 기타완료 페이지에서도 처리자명이 정상 표시되고, 네트워크 응답에 activatedByName 포함(200 OK, 콘솔 오류 0).
+
+변경 범위 요약
+
+백엔드(최소): server/storage.ts 내 getDocuments()에 조건부 JOIN 로직 추가 (이미 다른 화면에서 사용 중인 패턴 준용)
+
+프론트엔드(최소): client/src/pages/OtherCompletions.tsx에서 API 호출 시 includeActivatedBy=true 파라미터 추가
+
+빌드/배포: 프론트 빌드, 서버 재시작 필요
+
+불변 명시: 환경설정(.env/Secrets/DB 연결/운영 DB 로직) 미변경, DB 스키마 미변경, UI(레이아웃/디자인/스타일/컴포넌트 구조) 미변경
+
+수정 파일 목록 (최소화)
+
+server/storage.ts
+
+getDocuments() 내부에 filters?.includeActivatedBy가 truthy일 때만 users LEFT JOIN하여 activatedByName: users.name 선택
+
+(필요 시) users 테이블 스키마 import 한 줄 추가(이미 있으면 변경 없음)
+
+client/src/pages/OtherCompletions.tsx
+
+목록 조회 시 activationStatus=기타완료와 함께 **includeActivatedBy=true**를 URLSearchParams에 추가
+
+파일 경로 + 파일별 변경 이유 (각 1–2줄)
+
+server/storage.ts: 동일 라우트·스키마 유지하면서 조건부 JOIN만 추가해 activatedByName을 반환(다른 호출에는 영향 없음).
+
+client/src/pages/OtherCompletions.tsx: 기존 요청에 파라미터 한 줄 추가로 백엔드 조건부 JOIN 트리거.
+
+예상 변경 내용 (요약 diff)
+
+server/storage.ts
+
+if (filters?.includeActivatedBy) { ... leftJoin(users, eq(documents.activatedBy, users.id)) ... select({ activatedByName: users.name }) }
+
+그 외 경로는 기존 select 그대로(변경 없음)
+
+client/src/pages/OtherCompletions.tsx
+
+params.append('includeActivatedBy', 'true') 1줄 추가
+
+나머지 쿼리 파라미터/렌더 로직 변경 없음
+
+핵심 추가/삭제/치환 포인트 (불릿)
+
+추가: 조건부 users JOIN 및 activatedByName 별칭 반환(백엔드)
+
+추가: includeActivatedBy=true 파라미터(프론트)
+
+유지: 엔드포인트/쿼리 키/응답 스키마(기존 필드 불변, activatedByName만 옵션 필드로 추가), UI/스타일/레이아웃 불변
+
+삭제 없음, 대체(치환) 없음
+
+✅ 환경변수/DB/스키마/스타일 모두 미변경
+
+리스크와 회피책
+
+성능: users JOIN으로 쿼리 비용 소폭 증가
+
+회피: 조건부 JOIN만 수행, 필요한 칼럼만 select, 기존 페이지네이션 유지
+
+호환: 응답 필드 충돌 가능성 낮음(신규 별칭 activatedByName)
+
+회피: 프론트는 activatedByName ?? '-' 폴백(기존 UI 로직 유지)
+
+롤백 계획
+
+되돌릴 커밋/파일:
+
+server/storage.ts, client/src/pages/OtherCompletions.tsx만 이전 커밋으로 복원
+
+복구 절차:
+
+파일 복원 → npm run build
+
+서버 재시작
+
+동일 시나리오 재검증(200/표시/오류 0)
+
+검증 시나리오 & 성공 기준
+
+S1. 로그인 & 기타완료 목록 표시
+
+단계: 관리자 로그인 → 기타완료 페이지 이동
+
+기대: 200 OK, 콘솔 오류 0, 테이블 로드
+
+성공 기준: 처리자 컬럼에 실명 표시(예: “홍길동”), -가 아님
+
+S2. API 응답 필드 확인
+
+단계: Network 탭에서 GET /api/documents?activationStatus=기타완료&includeActivatedBy=true 확인
+
+성공 기준: 응답 JSON에 activatedByName 존재, HTTP 200 OK
+
+S3. 회귀 확인(다른 페이지 영향 없음)
+
+단계: 완료 관리 페이지 진입(이전부터 정상 동작)
+
+성공 기준: 처리자 계속 정상 표시, 콘솔 오류 0, API 응답 변동 없음
+
+S4. 운영서버 동일 재현
+
+단계: 테스트페이지 통과 후 mccnetworld.com에서 S1~S3 반복
+
+성공 기준: 결과 동일(200/표시/오류 0)

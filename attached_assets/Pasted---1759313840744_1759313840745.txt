@@ -1,0 +1,137 @@
+수정 목적 (한 줄)
+
+기타신청 페이지의 업무 요청점 드롭다운을 관리자패널 > 기타업무통신사 데이터로 동기화(동적 로드)하여 관리-사용 일관성 확보.
+
+해결할 오류 / 재현 절차
+
+현재: 기타신청의 드롭다운이 하드코딩이거나 관리 값과 불일치.
+
+재현:
+
+관리자패널 > 기타업무통신사에서 항목 추가/수정/삭제
+
+기타신청 페이지 열기 → 업무 요청점 드롭다운 확인
+
+변경사항 반영 안 됨(또는 일부만 반영)
+
+변경 범위 요약
+
+백엔드(읽기 전용 엔드포인트 1개 추가)
+
+GET /api/other-business-carriers : 로그인 사용자용 읽기 전용 조회
+
+내부적으로 관리자용 목록 API와 동일 쿼리를 사용(필요 시 enabled=true만 필터)
+
+응답은 AdminPanel이 사용하는 필드명 그대로 반환 (프론트 간 스키마 충돌 방지)
+
+프론트엔드(드롭다운 데이터 소스 교체)
+
+기타신청 페이지에서 하드코딩 제거 → API 연동
+
+로딩/빈값/에러 가드 추가(레이아웃/스타일 변경 없음)
+
+빌드/배포
+
+npm run build 후 서버 재시작
+
+불변: 환경변수, Secrets, DB 스키마, UI/레이아웃/디자인/CSS, 기존 제출 페이로드 키 이름
+
+수정 파일 목록 (최소화)
+
+server/routes.ts
+
+GET /api/other-business-carriers 추가
+
+requireAuth 적용(관리자 권한 불필요, 읽기 전용)
+
+(필요 시) server/storage.ts
+
+관리자 라우트에서 사용하는 기존 목록 함수 재사용. 없다면 동등한 read 메서드 1개만 추가
+
+client/src/pages/OtherApplication.tsx (실제 파일명 기준 적용)
+
+업무 요청점 드롭다운의 옵션 소스를 **/api/other-business-carriers**로 교체
+
+React Query/선호 fetch 유틸 사용, 값 매핑만 교체(UI 구조·클래스 유지)
+
+파일별 변경 이유 (각 1–2줄)
+
+routes.ts: 사용자 측 페이지에서 관리자 데이터가 필요하므로 읽기 전용 공개 엔드포인트를 신설(내부 쿼리는 관리자와 동일, 권한 차이만).
+
+storage.ts: 중복 쿼리 방지 차원에서 관리자 목록 쿼리 재사용(없다면 최소한의 read 함수만 추가).
+
+OtherApplication.tsx: 드롭다운 옵션만 API 데이터로 바꾸고, 선택 값은 기존 제출 필드명 그대로 전송(스키마·서버 로직 불변).
+
+예상 변경 내용 (요약 diff · 개념)
+
+routes.ts
+
+router.get('/api/other-business-carriers', requireAuth, async (req,res)=>{ /* 관리자 목록 쿼리 재사용 */ res.json(list); })
+
+필요 시 list = list.filter(x => x.enabled === true) 정도의 가벼운 필터만 적용
+
+OtherApplication.tsx
+
+변경 전: const OPTIONS = ['A사', 'B사' ...] 하드코딩
+
+변경 후:
+
+useQuery(['/api/other-business-carriers'])로 목록 로드
+
+SelectItem value={item.id} / 표시라벨 item.name (※ 실제 AdminPanel 목록 응답의 필드명을 그대로 사용)
+
+빈 목록 ⇒ disabled 항목 1개 “등록된 항목 없음” 표시
+
+값 가드: 빈 문자열 금지(이전에 발생했던 <Select.Item /> must have a value … 에러 예방)
+
+제출 페이로드: 기존과 동일한 문자열/ID 필드를 그대로 전송합니다. (서버 저장 로직/스키마 미변경)
+
+핵심 추가/치환 포인트 요약
+
+추가: GET /api/other-business-carriers (읽기 전용, requireAuth)
+
+치환: 기타신청 드롭다운 하드코딩 → API 데이터 바인딩
+
+가드: 빈 목록/로딩/에러 시에도 UI 붕괴 없이 유지, 빈 value 금지
+
+리스크와 회피책
+
+데이터 없음: 최초 구축 시 목록이 비어 유저 혼란 가능
+
+회피: “등록된 항목이 없습니다(관리자에게 문의)” disabled 옵션 노출
+
+캐시/갱신 지연: AdminPanel에서 수정 직후 반영 지연
+
+회피: staleTime: 0, refetchOnWindowFocus: true로 포커스 시 즉시 재조회(추가 로딩 UI는 기존 스타일 재사용)
+
+롤백 계획
+
+OtherApplication.tsx에서 옵션 소스를 하드코딩으로 되돌림
+
+routes.ts 신설 라우트 제거
+
+서버 재시작 → 기존 동작으로 복구
+
+검증 시나리오 & 성공 기준
+
+동기화(추가)
+
+관리자패널 > 기타업무통신사 추가 → 기타신청 페이지 열기
+
+성공: 드롭다운에 신규 항목 표시, Network GET /api/other-business-carriers 200, 응답에 해당 항목 존재
+
+동기화(수정/삭제)
+
+관리자패널에서 항목 수정/삭제 → 기타신청 페이지 재포커스
+
+성공: 드롭다운 목록이 즉시 반영, 캐시/지연 없음
+
+제출 검증
+
+항목 선택 후 기타신청 제출
+
+성공: 요청 바디에 기존 필드명으로 값 포함(200 응답, 서버 저장 정상)
+
+예외 처리
+
+목록 0건일 때도 UI 깨짐 없음, “등록된 항목 없음”만 표시

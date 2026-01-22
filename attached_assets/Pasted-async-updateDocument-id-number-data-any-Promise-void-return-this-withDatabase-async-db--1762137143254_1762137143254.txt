@@ -1,0 +1,157 @@
+async updateDocument(id: number, data: any): Promise<void> {
+  return this.withDatabase(async (db) => {
+    const toSafeDate = (value: any): Date | null => {
+      if (!value || value === '') return null;
+      if (value instanceof Date) return value;
+      if (typeof value === 'string') {
+        try {
+          const parsed = new Date(value);
+          return isNaN(parsed.getTime()) ? null : parsed;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+
+    const dateFields = ['activatedAt', 'cancelledAt', 'updatedAt', 'deletedAt', 'discardedAt', 'settledAt'];
+
+    const safeData: any = { ...data };
+    for (const field of dateFields) {
+      if (field in safeData) {
+        safeData[field] = toSafeDate(safeData[field]);
+      }
+    }
+
+    const willChangeActivation = Object.prototype.hasOwnProperty.call(safeData, "activationStatus");
+
+    await db.transaction(async (tx: any) => {
+      // 현재 문서 조회: notes + 처리자 보존 여부 확인
+      const cur = await tx
+        .select({
+          id: documents.id,
+          notes: documents.notes,
+          prevActivatedBy: documents.activatedBy,
+          prevActivatedByRole: documents.activatedByRole
+        })
+        .from(documents)
+        .where(eq(documents.id, id))
+        .limit(1);
+
+      if (!cur.length) throw new Error("Document not found");
+
+      const notes = cur[0]?.notes ?? null;
+      const prevActivatedBy = cur[0]?.prevActivatedBy ?? null;
+      const prevActivatedByRole = cur[0]?.prevActivatedByRole ?? null;
+
+      const batchId = willChangeActivation ? extractBatchIdFromNotes(notes) : null;
+      logBatch("doc=", id, "hasBatchId=", !!batchId, "notesSample=", LOG_BATCH_DEBUG ? String(notes).slice(0, 200) : undefined);
+
+      // 처리자 세팅 동반성/보존 가드
+      const wantsSetBy = Object.prototype.hasOwnProperty.call(safeData, "activatedBy");
+      const wantsSetRole = Object.prototype.hasOwnProperty.call(safeData, "activatedByRole");
+
+      // 이미 세팅된 값이 있으면 보존(덮어쓰기 금지)
+      if (prevActivatedBy && wantsSetBy) {
+        delete safeData.activatedBy;
+      }
+      if (prevActivatedByRole && wantsSetRole) {
+        delete safeData.activatedByRole;
+      }
+
+      // 신규 세팅이면 둘 다 함께 들어와야 인정
+      if ((wantsSetBy && !wantsSetRole) || (!wantsSetBy && wantsSetRole)) {
+        delete safeData.activatedBy;
+        delete safeData.activatedByRole;
+      }
+
+      // updateData / singleOnly 나누기
+      const updateData: Record<string, any> = {};
+      if (Object.prototype.hasOwnProperty.call(safeData, "activationStatus")) {
+        updateData.activationStatus = safeData.activationStatus;
+        if (Object.prototype.hasOwnProperty.call(safeData, "activatedBy")) {
+          updateData.activatedBy = safeData.activatedBy;
+        }
+        if (Object.prototype.hasOwnProperty.call(safeData, "activatedByRole")) {
+          updateData.activatedByRole = safeData.activatedByRole;
+        }
+        if (Object.prototype.hasOwnProperty.call(safeData, "activatedAt")) {
+          updateData.activatedAt = safeData.activatedAt;
+        }
+      }
+
+      const singleOnly: Record<string, any> = {};
+      for (const k of Object.keys(safeData)) {
+        if (k === "activationStatus" || k === "activatedBy" || k === "activatedByRole" || k === "activatedAt") continue;
+        if (k === 'notes') {
+          const nv = safeData[k];
+          if (nv === '' || nv === undefined || nv === null) {
+            continue; // 배치 메타 보존
+          }
+        }
+        if (safeData[k] !== undefined) {
+          singleOnly[k] = safeData[k];
+        }
+      }
+
+      // 배치 동기화 (activationStatus 변경 + batchId 존재)
+      if (willChangeActivation && batchId) {
+        const pattern = likePatternForBatchId(batchId);
+        logBatch("batchId=", batchId, "likePattern=", pattern);
+
+        const willAffect = await tx
+          .select({ id: documents.id, notes: documents.notes })
+          .from(documents)
+          .where(sql`${documents.notes} LIKE ${pattern}`);
+
+        logBatch("preAffectedCount=", willAffect.length, "ids=", willAffect.map((r: any) => r.id).slice(0, 20));
+
+        if (Object.keys(updateData).length > 0) {
+          await tx.update(documents).set(updateData).where(sql`${documents.notes} LIKE ${pattern}`);
+        }
+
+        if (Object.keys(singleOnly).length > 0) {
+          if (singleOnly.notes !== undefined) {
+            const { notes: newNotes, ...otherFields } = singleOnly;
+            logBatch("[DEBUG] newNotes=", newNotes, "otherFields=", Object.keys(otherFields));
+
+            for (const doc of willAffect) {
+              const docNotes = doc.notes || '';
+              const existingBatchMeta = docNotes.match(/__BATCH_META__:.+?(?=\n|$)/)?.[0];
+              logBatch("[DEBUG] docId=", doc.id, "docNotes.length=", docNotes.length, "hasBatchMeta=", !!existingBatchMeta);
+
+              let updatedNotes = newNotes;
+              if (existingBatchMeta && !updatedNotes.includes('__BATCH_META__')) {
+                updatedNotes = updatedNotes && updatedNotes.trim()
+                  ? `${updatedNotes}\n${existingBatchMeta}`
+                  : existingBatchMeta;
+                logBatch("[DEBUG] updatedNotes after merge=", updatedNotes.substring(0, 100));
+              }
+
+              const updatePayload = { ...otherFields, notes: updatedNotes };
+              logBatch("[DEBUG] UPDATE docId=", doc.id, "notesLength=", updatedNotes.length, "fieldsCount=", Object.keys(updatePayload).length);
+              await tx.update(documents).set(updatePayload).where(eq(documents.id, doc.id));
+            }
+          } else {
+            await tx.update(documents).set(singleOnly).where(eq(documents.id, id));
+          }
+        }
+
+        const postAffected = await tx
+          .select({ id: documents.id })
+          .from(documents)
+          .where(sql`${documents.notes} LIKE ${pattern}`);
+
+        logBatch("postAffectedCount=", postAffected.length, "status=", updateData.activationStatus ?? null);
+        return; // 배치 처리 완료
+      }
+
+      // 단건 업데이트
+      const merged = { ...updateData, ...singleOnly };
+      if (Object.keys(merged).length > 0) {
+        await tx.update(documents).set(merged).where(eq(documents.id, id));
+        logBatch("singleUpdate", "id=", id, "fields=", Object.keys(merged));
+      }
+    });
+  });
+}

@@ -1,0 +1,151 @@
+[사전 변경 안내] (운영 서버 기준)
+수정 목적(한 줄)
+- mccnetworld.com 운영 서버에서 “배치 업로드(여러 파일이 1건으로 표시)”된 문서를 개통완료/기타완료 처리할 때, 같은 배치의 모든 파일(document row)이 함께 이동/동기화되도록 수정합니다. (코드 최소 변경, DB/환경/UI 변경 없음)
+
+해결할 오류 / 재현 절차
+- 문제: 접수 시 이미지 2~3개를 올리면 접수관리엔 1건으로 보이나, 상태를 개통완료로 바꾸면 첫 번째 파일만 이동하고 나머지는 남아 있음.
+- 원인: 업로드 시 파일별 row가 생성되어 notes에 batchId로 묶여 있으나, updateDocument()가 “선택 문서 1건만 UPDATE”하여 동일 batch의 나머지 문서들이 미처리됨.
+
+변경 범위 요약
+- 백엔드: server/storage.ts
+  · updateDocument() 내 “activationStatus 변경 시” 배치 동기화 로직 추가
+  · 동일 batchId를 가진 모든 documents를 트랜잭션으로 일괄 UPDATE
+- 프론트/환경/스키마: 변경 없음
+
+요구 사항(절대 준수)
+- 기존 public API(함수 시그니처/리턴 타입) 변경 금지
+- 단일 문서 업데이트 흐름은 유지하되, activationStatus 변경 시에만 “배치 동기화”를 수행
+- 트랜잭션(tx)으로 원자성 보장
+- 배치 식별은 notes에 포함된 __BATCH_META__ 및 "batchId":"..." 값으로 수행(없으면 기존 단건 업데이트만)
+- 운영(Render Postgres)과 개발(Neon) 모두 동일하게 동작
+- 추가 인덱스/스키마 변경 없음
+
+[수정 지시]
+파일: server/storage.ts
+
+1) 상단 유틸 추가(중복 import 금지)
+----------------------------------------------------------------
+// 이미 drizzle orm / schema import 되어 있다면 중복 금지
+import { sql, eq, and } from "drizzle-orm";
+import { documents } from "@/server/db/schema"; // 실제 경로에 맞게
+// 안전한 batchId 추출기
+function extractBatchIdFromNotes(notes?: string | null): string | null {
+  if (!notes) return null;
+  if (!notes.includes("__BATCH_META__")) return null;
+  // 가장 안전한 정규식: "batchId":"<값>"
+  const m = notes.match(/"batchId"\s*:\s*"([^"]+)"/);
+  return m ? m[1] : null;
+}
+----------------------------------------------------------------
+
+2) updateDocument()에 “배치 동기화” 로직 추가
+- 핵심: activationStatus가 바뀌는 경우에만, 같은 batchId(=notes 내 batchId)를 가진 모든 documents를 동일 상태로 업데이트
+- 트랜잭션으로 묶고, 로그 남김
+
+아래 패턴으로 기존 함수를 수정(핵심만, 기존 필드 매핑/권한검사/검증 로직은 그대로 유지):
+----------------------------------------------------------------
+async function updateDocument(id: number, data: any): Promise<void> {
+  // 기존 updateData 구성 로직, 유효성 검사 등은 그대로 두되,
+  // activationStatus가 포함된 경우만 배치 동기화 시도
+  const willChangeActivation = Object.prototype.hasOwnProperty.call(data, "activationStatus");
+
+  await db.transaction(async (tx) => {
+    // 1) 현재 문서 조회
+    const cur = await tx
+      .select({ id: documents.id, notes: documents.notes })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1);
+
+    if (!cur.length) throw new Error("Document not found");
+    const batchId = willChangeActivation ? extractBatchIdFromNotes(cur[0].notes) : null;
+
+    // 2) 업데이트 payload 구성(기존 규칙 유지)
+    const updateData: Record<string, any> = {};
+    if (Object.prototype.hasOwnProperty.call(data, "activationStatus")) {
+      updateData.activationStatus = data.activationStatus;
+      // 활성화 관련 부가 필드가 있다면 함께 동기화(있을 때만)
+      if (Object.prototype.hasOwnProperty.call(data, "activatedBy")) {
+        updateData.activatedBy = data.activatedBy;
+      }
+      if (Object.prototype.hasOwnProperty.call(data, "activatedAt")) {
+        updateData.activatedAt = data.activatedAt;
+      }
+    }
+    // 그 외 필드는 “단일 문서”에만 적용하고 싶다면 여기서 분리:
+    const singleOnly: Record<string, any> = {};
+    for (const k of Object.keys(data)) {
+      if (k === "activationStatus" || k === "activatedBy" || k === "activatedAt") continue;
+      singleOnly[k] = (data as any)[k];
+    }
+
+    // 3) 배치 동기화 수행 (activationStatus 변경 + batchId가 있을 때)
+    if (willChangeActivation && batchId) {
+      // 같은 batchId를 가진 모든 문서를 한 번에 갱신
+      // notes 컬럼 내에 "batchId":"<값>" 문자열이 포함된 row 대상
+      const pattern = `%\\"batchId\\":\\"${batchId}\\"%`;
+
+      // 3-1) 배치 대상 존재 여부(선택): 로깅용
+      const affected = await tx
+        .select({ id: documents.id })
+        .from(documents)
+        .where(sql`${documents.notes} LIKE ${pattern}`);
+
+      // 3-2) 배치 업데이트
+      if (Object.keys(updateData).length > 0) {
+        await tx
+          .update(documents)
+          .set(updateData)
+          .where(sql`${documents.notes} LIKE ${pattern}`);
+      }
+
+      // 3-3) 단일 문서에만 적용할 기타 필드 있으면(메모 등) 별도 단건 업데이트
+      if (Object.keys(singleOnly).length > 0) {
+        await tx.update(documents).set(singleOnly).where(eq(documents.id, id));
+      }
+
+      console.log(`[BatchSync] batchId=${batchId} updated=${affected.length} status=${updateData.activationStatus ?? "(no-change)"}`);
+      return; // 배치 처리 후 종료(중복 업데이트 방지)
+    }
+
+    // 4) 배치 조건이 아니면 기존 단일 업데이트만 수행
+    const merged = { ...updateData, ...singleOnly };
+    if (Object.keys(merged).length > 0) {
+      await tx.update(documents).set(merged).where(eq(documents.id, id));
+    }
+  });
+}
+----------------------------------------------------------------
+
+3) (선택) LIKE 성능 보강
+- notes가 JSONB로 저장돼 있지 않고 TEXT라면 LIKE 사용이 불가피합니다.
+- 파일 수가 많지 않으므로 그대로 두되, 추후 성능 이슈가 있으면 notes에 batchId를 별도 컬럼으로 분리/인덱스 추가를 제안(이번 변경 범위엔 포함하지 않음).
+
+[검증 시나리오 & 성공 기준] (운영 서버 기준)
+시나리오 1: 배치 문서 처리
+1) mccnetworld.com → 접수 신청에서 이미지 3개 선택 후 접수
+2) 접수 관리에서 1건으로 표시 확인
+3) “개통” 상태로 변경
+✅ 기대: Render DB에서 3개 row 모두 activationStatus='개통'으로 일괄 변경
+✅ 기대: 개통완료 목록엔 1건으로 모여서 표시, 접수관리에서 잔여 파일 미잔존
+✅ 서버 로그: `[BatchSync] batchId=... updated=3 status=개통` 유사 로그
+
+시나리오 2: 개발 환경 동일 테스트(Neon)
+✅ 기대: 운영과 동일 동작/로그
+
+시나리오 3: 단일 파일
+✅ 기대: 기존 단건 업데이트와 동일 동작(배치 로직 비실행)
+
+성공 조건
+- HTTP 200
+- 같은 batchId의 모든 문서가 동일 상태로 동기화
+- 개통완료/기타완료 목록에서 분리 없이 일관 표시
+
+리스크/회피책
+- UPDATE N회 → 트랜잭션으로 원자성 보장
+- LIKE 검색 → 파일 수 적어 영향 미미, 로그로 배치 규모 추적
+- 예외 시 tx 자동 롤백
+
+롤백 계획
+- server/storage.ts 변경분만 원복: `git checkout -- server/storage.ts`
+- 재배포(Publish) 후 기존 단건 업데이트로 복귀

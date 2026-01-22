@@ -1,0 +1,92 @@
+아래 내용 그대로 붙여 넣어 사용하세요.
+
+[사전 변경 안내]
+
+변경 개요
+당일 개통 통계 미표시, 기타업무통신사 생성 실패, 엑셀 다운로드 빈페이지 문제를 쿼리/라우트 로직만 수정해 해결합니다.
+
+수정 목적(한 줄)
+대시보드/기타업무/엑셀 다운로드의 실사용 오류 제거 및 안정 동작 확보.
+
+해결할 오류 / 재현 절차(간단)
+
+당일 개통 통계 0건: 대시보드 → “아직 개통 건이 없습니다”. (getTodayStats의 집계 오류)
+
+기타업무통신사 생성 실패: 생성 클릭 → relation 'other_business_carriers' does not exist.
+
+엑셀 다운로드 빈페이지: 다운로드 클릭 → 빈 화면(컨텐츠 헤더/스트림 처리 오류).
+
+변경 범위 요약
+백엔드만 수정(쿼리/응답 헤더/스트림). 프론트/빌드/배포/환경변수/스타일/레이아웃: 미변경. DB 스키마 변경 없음(아래 제안 별도).
+
+수정 파일 목록 (최소화)
+
+server/storage.ts:
+
+getTodayStats 집계 쿼리 수정(오늘 00:00~현재, activation_status='개통', customer_type in ('new','port_in') 별 카운트).
+
+other_business_carriers 접근부에 존재 확인 가드 추가(없으면 501/가이드 메시지).
+
+server/routes.ts:
+
+엑셀 다운로드 라우트에서 Content-Type, Content-Disposition 설정 및 스트림/버퍼 반환 보정.
+
+대시보드/기타업무 라우트의 캐시 무효화 헤더(Cache-Control: no-store) 추가.
+
+예상 변경 내용 (요약 diff)
+
+[storage.ts]
+
+today 통계: activated_at BETWEEN today_start AND now() + customer_type별 COUNT(*) + 캐리어별 그룹화 재검증.
+
+기타업무통신사: table_exists('other_business_carriers') 체크 → 미존재 시 501과 “DB 스키마 생성 필요” 반환.
+
+[routes.ts]
+
+Excel: res.set('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+res.set('Content-Disposition', 'attachment; filename="export.xlsx"') 후 버퍼/스트림 전송.
+
+응답 캐시 방지 헤더 추가.
+
+환경변수/DB/스키마/스타일 미변경 명시
+
+.env/Secrets/DB 연결/운영 DB 로직: 미변경
+
+DB 스키마: 코드 수정 없음(아래 제안만)
+
+UI(레이아웃/디자인/클래스/HTML): 절대 미변경
+
+리스크와 회피책
+
+통계 쿼리 변경으로 부하 가능성 → 기존 인덱스 활용, 집계 컬럼 최소화.
+
+기타업무통신사 테이블 미존재 시 기능 제한 → **가드 응답(501)**로 운영 안전성 확보, 별도 스키마 적용 시 즉시 활성.
+
+롤백 계획
+
+단일 커밋 롤백 또는 파일 복원:
+git checkout HEAD -- server/storage.ts server/routes.ts
+
+검증 시나리오 & 성공 기준
+
+대시보드 당일 통계: 신규/번호이동 수치가 0이 아닌 실제 값으로 표시(5초 내 재조회 시 동일).
+
+기타업무통신사 생성 API:
+
+테이블 미존재 시 501 + 가이드 메시지(서버 5xx 로그 외 에러 없음).
+
+(스키마 적용 후) 200 응답 및 DB 반영.
+
+엑셀 다운로드: 클릭 시 파일 다운로드 시작, 네트워크 응답에
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet 확인.
+성공 조건: 모든 엔드포인트 200(또는 가드 시 501), 프론트 오류 토스트/빈페이지 미발생.
+
+DB 스키마 변경 제안(코드 수정 없이, 필요 시 적용)
+
+목적: other_business_carriers 미존재로 인한 생성 실패 해소.
+
+제안 스키마(예시):
+
+other_business_carriers (id serial PK, name varchar(100) unique not null, is_active boolean default true, memo text, created_at timestamp default now(), updated_at timestamp default now())
+
+운영 절차: DBA가 수동 생성 또는 마이그레이션 툴로 적용 → 적용 즉시 위 API 정상 동작.

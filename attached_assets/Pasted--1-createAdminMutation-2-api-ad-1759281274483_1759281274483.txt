@@ -1,0 +1,131 @@
+문제 1(생성 후 미표시): createAdminMutation 성공 시 쿼리 캐시 무효화 추가 → 즉시 테이블 반영
+
+문제 2(삭제 실패): 관리자 삭제 요청을 **/api/admin/admins/:id**로 분기
+
+문제 3(수정 실패): 관리자 수정 요청을 **/api/admin/admins/:id**로 분기
+
+백엔드: deleteAdmin, updateAdmin 저장소 계층 + 라우트 최소 추가
+
+프론트: 관리자 전용 delete/update mutation 추가 + 캐시 무효화 보강
+
+환경/스키마/스타일/레이아웃: 모두 미변경
+
+🔧 필수 보완 (최소 변경, 안전성 강화)
+
+응답 포맷 일관 유지
+
+새로 추가되는 DELETE / PUT도 기존 사용자/요금제 CRUD와 동일 포맷으로 반환하십시오(예: { success, data } 또는 객체 직반환 중 프로젝트 표준).
+
+이유: AdminPanel 파싱/토스트/테이블 갱신이 응답 스키마에 의존.
+
+미들웨어 동일 적용
+
+requireAdmin, requireDbHealthy를 삭제/수정 라우트 모두에 적용(이미 계획하신 대로).
+
+401/403/409/404를 명확히:
+
+잘못된 id: 400 또는 404
+
+FK 제약(참조 중): 409 Conflict(기존 메시지 재사용)
+
+storage.ts: returning() & 필드 화이트리스트
+
+deleteAdmin/updateAdmin 모두 **.returning()**으로 변경 결과 1건 반환(프론트 토스트/리스트 갱신에 사용).
+
+updateAdmin은 허용 필드만 업데이트(예: name, phone, note, isActive, role 등). username 변경 시 중복 체크 필요 시 409 처리(스키마 변경 없이).
+
+IStorage 인터페이스 반영
+
+deleteAdmin, updateAdmin을 인터페이스에 추가하고 실제 구현체에 둘 다 구현(미구현 시 컴파일 오류로 조기 탐지).
+
+경로/캐시 키 정확도
+
+invalidateQueries의 queryKey가 현재 useQuery에서 사용하는 키와 정확히 일치해야 합니다.
+
+예: 실제 키가 ['admins']라면 ['/api/admin/admins']로 무효화해도 갱신 안 될 수 있음 → 프로젝트 내 키 상수 재확인 후 동일 키 사용.
+
+권장 무효화(예시):
+
+관리자 목록: ['admins']
+
+통합 사용자 목록: ['users'] 또는 사용 중인 통합 키
+
+필요한 경우 salesManagers 키도 함께 무효화
+
+분기 처리 정확도 (프론트)
+
+handleDeleteUser, handleUpdateUser에서 accountType 분기 외에 mutation 파라미터 형태도 각 훅 시그니처와 일치 확인
+
+예: updateSalesManagerMutation.mutate({ id, data }) vs mutate({ id, ...data }) → 해당 훅 정의와 동일한 형태로 호출
+
+파라미터 검증
+
+서버 라우트에서 id는 parseInt(req.params.id, 10) 후 Number.isFinite로 검증, 아니면 400.
+
+PUT 본문의 JSON 파싱 실패 대비 try/catch로 400 명확화.
+
+로그/감사 추적(선택, 코드 미변경 가능)
+
+삭제/수정 성공 시 logger.info('Admin updated', { id, by: req.user?.id }) 수준의 운영 로그 권장(이미 로거가 있다면 재사용).
+
+호환성(선택)
+
+혹시 기존 코드 일부가 여전히 /api/admin/users/:id로 관리자 삭제/수정을 보낼 수 있으므로, 임시 Alias 라우트(내부에서 admins로 위임)를 선택적으로 추가 가능.
+
+단, 현재 계획대로 프론트 분기만으로도 충분하면 Alias는 생략.
+
+단일 커밋 구성
+
+서버(2파일) + 프론트(1파일)를 한 커밋으로 묶어 배포/롤백 단순화.
+
+🧪 검증 시나리오 & 성공 기준 (보완 포함)
+
+S1. 관리자 생성 후 즉시 표시
+
+성공: 새로고침 없이 테이블에 바로 반영, 캐시 무효화로 6명 + 1명
+
+응답: 201/200, 콘솔 오류 0
+
+S2. 관리자 삭제 성공/에러 케이스
+
+성공: /api/admin/admins/:id 200(또는 204) 후 테이블에서 제거
+
+FK 참조 있을 때: 409 Conflict + 기존 에러 메시지 노출
+
+S3. 관리자 수정 성공
+
+성공: /api/admin/admins/:id 200 후 테이블 갱신(이름 등 변경사항 반영)
+
+응답 포맷 기존과 일치, 콘솔 오류 0
+
+S4. 통합 목록 일관성
+
+성공: 관리자/영업과장/일반 사용자 모두 정상 CRUD(회귀 없음)
+
+관련 키 모두 무효화되어 재조회
+
+S5. 운영 동등성
+
+테스트페이지 통과 후 운영(mccnetworld.com) 동일 시나리오 재검증, 200/토스트/갱신 정상
+
+🚒 롤백 계획
+
+이번 변경을 단일 커밋으로 구성 → 문제 시 git revert <commit>
+
+또는 파일 단위 복구:
+
+server/storage.ts
+
+server/routes.ts
+
+client/src/pages/AdminPanel.tsx
+
+복구 후 서버 재시작 → 동일 시나리오 재검증
+
+✅ 불변 명시
+
+환경변수/Secrets: 미변경
+
+DB 스키마: 미변경(기존 admins 테이블 그대로)
+
+스타일/레이아웃/컴포넌트 구조: 미변경

@@ -1,0 +1,118 @@
+단일 PostgreSQL Pool 초기화 중…
+DB_URL (masked): postgresql://neondb_owner:****@ep-still-term-afo2v7ss.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require
+✅ PostgreSQL Pool 초기화 성공
+2:58:47 AM [express] ✅ Server running at http://0.0.0.0:5000 (development)
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Service plans API called - fetching from database
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Service plans API called - fetching from database
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Service plans API called - fetching from database
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim
+Auth check - Header present: yes
+Auth check - SessionId: tBhH***Aoim
+✅ Valid session: tBhH***Aoim (expires at 2025-09-26T04:34:55.094Z)
+Auth check - Session found: yes
+Auth success - User: 10 Session: tBhH***Aoim

@@ -1,0 +1,183 @@
+1) 수정 목적(한 줄)
+
+대시보드에 상단 통합 총 수량을 노출하고, 스크린샷의 **빨간 박스 위치(인터스티셜 영역)**에 현재 로그인한 관리자 개인의 개통 실적을 별도 카드로 표시.
+
+2) 위치/명칭 정의 (오해 방지용 정확 표기)
+
+페이지: /dashboard
+
+구역 명칭:
+
+상단 요약 섹션(Top Summary Section) = 통신사별 당월 개통현황 카드가 있는 상단 블록
+
+컨트롤 바(Filter Toolbar) = 날짜 선택 + 실시간 업데이트 줄
+
+인터스티셜 패널(Interstitial Panel) = 컨트롤 바 바로 아래 ~ 하단 KPI 섹션 바로 위의 빈 공간 ← 빨간 박스 위치
+
+하단 KPI 섹션(Monthly KPI Board) = “당월 개통 현황(총 서류/대기/진행중/개통완료/기타완료/취소/폐기)” 타일들
+
+요청 사항:
+
+상단 요약 섹션 상단에 “총 수량” 카드 1개 추가
+
+내용: “선택된 월의 총 서류 수(= 하단 KPI ‘총 서류’와 동일 수치)”
+
+인터스티셜 패널(빨간 박스 위치)에 “관리자 개인 실적” 카드 1개 추가
+
+내용: “오늘 개통 N건 · 당월 개통 M건 (로그인한 관리자 본인이 activated_by인 건만)”
+
+UI/레이아웃/스타일/클래스/컴포넌트 구조는 절대 변경 금지. 기존 카드 컴포넌트 재사용으로 카드 “2개만” 추가.
+
+3) 해결할 오류 / 재현 절차(간단)
+
+현재: 상단에 총 수량이 없고, 빨간 박스 위치에 관리자 본인 실적이 표시되지 않음.
+
+재현:
+
+Super Admin 로그인 → 대시보드
+
+상단에 “총 수량” 카드 없음
+
+컨트롤 바 아래(빨간 박스 위치)에 관리자 개인 실적 카드 없음
+
+4) 변경 범위 요약
+
+프론트엔드(필수/최소): client/src/pages/Dashboard.tsx
+
+기존 쿼리 재사용하여 상단 총 수량 카드 렌더
+
+신규 쿼리 1개 호출하여 관리자 개인 실적 카드 렌더
+
+백엔드(필수/아주 작게):
+
+server/routes.ts : GET /api/dashboard/admin-activation-stats 신규
+
+server/storage.ts : getAdminActivationStats(adminId) 신규 (KST 기준 Today/Month)
+
+빌드/배포: 기존 파이프라인 그대로
+
+불변: 환경변수/Secrets, DB 스키마, 스타일/Tailwind, 기존 레이아웃(그리드/마진/패딩), 기존 라우트 변경 없음
+
+5) 수정 파일 목록 (최소화)
+
+client/src/pages/Dashboard.tsx — 카드 2개 렌더(상단 총 수량 / 인터스티셜 관리자 실적)
+
+server/routes.ts — /api/dashboard/admin-activation-stats 신규 GET 엔드포인트
+
+server/storage.ts — getAdminActivationStats(adminId) 메서드 추가
+
+6) 파일별 변경 이유 (각 1–2줄)
+
+Dashboard.tsx: 상단 총 수량은 기존 월별 통계 API 응답에서 합계를 읽어 카드로 한 줄 추가. 인터스티셜 위치엔 관리자 개인 실적을 신규 API로 표시.
+
+routes.ts: 관리자 로그인 세션에서 adminId를 추출, storage 호출 후 { todayCount, monthCount }로 응답.
+
+storage.ts: activated_by = adminId + activation_status IN ('개통완료','기타완료') 기준으로 KST Today/Month 집계.
+
+7) 데이터/응답 스펙 (명확히)
+상단 “총 수량” 카드 (프론트만)
+
+데이터 소스: 기존 /api/dashboard/monthly-activation-stats (이미 사용 중인 쿼리)
+
+집계: 현재 컨트롤 바의 선택 월 기준, 하단 KPI ‘총 서류’와 동일 수치
+
+프론트 처리: 기존 응답 배열 합계(total)를 카드에 표시 (백엔드 변경 없음)
+
+인터스티셜 “관리자 개인 실적” 카드 (신규 API)
+
+경로: GET /api/dashboard/admin-activation-stats (requireAdmin)
+
+쿼리 파라미터: 없음 (서버가 세션에서 adminId 추출)
+
+응답(JSON):
+
+{ "todayCount": number, "monthCount": number }
+
+
+정의:
+
+todayCount: KST 오늘 00:00~24:00 범위, activated_at 기준, activation_status IN ('개통완료','기타완료'), activated_by = adminId
+
+monthCount: KST 이번 달(date_trunc('month', ...)) 범위, 필터 동일
+
+헤더: Cache-Control: no-store, Vary: Cookie
+
+시간대: 모두 Asia/Seoul 기준. DB 비교는 KST 경계 → UTC로 변환하여 컬럼(activated_at) 비교.
+
+8) 예상 변경 내용 (요약 diff · 개념)
+
+storage.ts
+
+getAdminActivationStats(adminId)
+
+SQL(개념):
+
+today: activated_at ∈ [KST 오늘 00:00, 24:00)
+
+month: date_trunc('month', activated_at AT TIME ZONE 'Asia/Seoul') = date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')
+
+공통 WHERE: activated_by = :adminId AND activation_status IN ('개통완료','기타완료')
+
+routes.ts
+
+router.get('/api/dashboard/admin-activation-stats', requireAdmin, ...)
+
+세션에서 adminId 추출 → storage 호출 → { todayCount, monthCount } 반환
+
+Dashboard.tsx
+
+기존 월별 쿼리 결과 합계로 “총 수량” 카드 추가(상단 요약 섹션 맨 위)
+
+useQuery(['/api/dashboard/admin-activation-stats']) → **컨트롤 바 바로 아래(빨간 박스 위치)**에 카드 추가
+
+스타일/클래스 기존 카드 그대로 재사용
+
+9) 핵심 추가/치환 포인트 요약
+
+추가: 카드 2개(상단 총 수량 / 인터스티셜 관리자 실적), 신규 API 1개, storage 메서드 1개
+
+치환/삭제 없음
+
+권한: 관리자만 관리자 실적 카드 보이도록 프론트 조건부 렌더 + requireAdmin 둘 다 적용
+
+10) 리스크와 회피책
+
+성능: 관리자 실적 집계 1쿼리 추가(미미) → KST 기간 제한 + 인덱스 활용(activated_at, activated_by, activation_status)
+
+권한: 비관리자 접근 → requireAdmin + 프론트 조건부 렌더
+
+표시 불일치: 상단 총 수량 vs 하단 ‘총 서류’ → **동일 소스 사용(월별 API 합계)**로 일관성 확보
+
+11) 롤백 계획
+
+Dashboard.tsx에서 두 카드 렌더 블록 제거
+
+routes.ts의 신규 라우트 제거
+
+storage.ts의 신규 메서드 제거
+
+서버 재시작 → 기존 화면으로 즉시 복원
+
+12) 검증 시나리오 & 성공 기준
+
+S1. 상단 총 수량
+
+관리자 로그인 → 대시보드 → 상단 요약 섹션 최상단 카드에 “총 수량: X” 표시
+
+성공: X가 하단 KPI ‘총 서류’와 완전히 동일
+
+S2. 관리자 개인 실적(빨간 박스 위치)
+
+컨트롤 바 아래 카드: “관리자 개인 실적 — 오늘 N건 · 당월 M건”
+
+성공: DB에서 본인이 개통한 건수와 일치, API 200 {todayCount,monthCount}
+
+S3. 권한
+
+일반 사용자/근무자 로그인 시 관리자 실적 카드 미표시, API 접근 403
+
+성공: 비관리자 보안 OK
+
+S4. 회귀 없음
+
+대시보드 기존 카드/그래프 모두 정상, 콘솔 에러 0

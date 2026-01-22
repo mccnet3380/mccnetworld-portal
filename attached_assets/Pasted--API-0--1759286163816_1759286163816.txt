@@ -1,0 +1,139 @@
+수정 목적(한 줄)
+
+대시보드 API가 스텁/형식불일치/세션전달 오류로 프론트에 항상 0/빈배열을 주는 문제를, 서버측 응답 형식·사용자 컨텍스트·타임존을 보정하여 실데이터가 표시되도록 복구.
+
+해결할 오류 / 재현 절차(간단)
+
+증상: 관리자·근무자 로그인 → 대시보드 진입 → 당일 접수/당일 개통/당월 현황이 모두 0 (첨부 스샷 동일)
+
+Network: /api/dashboard/*는 200이지만 내용이 0/빈배열
+
+원인 가설(로그 기반)
+
+응답 키 불일치: 서버가 totalToday 등 새 키를 반환, 프론트 Dashboard.tsx는 다른 키명을 읽음 → 0로 렌더
+
+사용자 컨텍스트 누락: req.user가 아닌 req.session.user 등으로 저장된 것을 라우트에서 **못 읽어 필터가 ‘없음’**으로 처리
+
+날짜 컬럼/타임존 불일치: created_at 대신 uploaded_at, ‘Asia/Seoul’ 미적용으로 오늘 집계가 0
+
+캐시 문제: 대시보드 API가 캐시되어 이전 0 응답을 재사용
+
+변경 범위 요약
+
+백엔드(필수)
+
+server/routes.ts:
+
+사용자 컨텍스트 안전 추출(req.user / req.session.user / req.session.userId/role 모두 호환)
+
+대시보드 API 응답을 프론트가 기대하는 기존 키명으로 정규화(매핑 계층)
+
+모든 대시보드 API에 Cache-Control: no-store, Vary: Cookie
+
+server/storage.ts:
+
+집계 쿼리에서 uploaded_at 사용, Asia/Seoul 기준 ‘오늘/월’ 계산 고정
+
+상태값/권한(근무자=본인, 영업과장=팀, 관리자=전체) 필터 일치 확인/보정
+
+프론트엔드: 변경 없음(서버가 프론트 기대 응답에 맞춤)
+
+빌드/배포: 기존 파이프라인(서버 재시작 포함)
+
+불변: 환경변수, Secrets, DB 스키마, UI/스타일/레이아웃 절대 변경 없음
+
+수정 파일 목록 (최소화)
+
+server/routes.ts（대시보드 4개 엔드포인트: today / monthly-activation / carrier / worker）
+
+server/storage.ts（해당 4개 집계 메서드 쿼리/타임존/상태값 보정）
+
+파일 경로 + 파일별 변경 이유 (각 1–2줄)
+
+server/routes.ts: 미들웨어가 주입한 사용자 정보를 확실히 읽도록 다중 소스 병합, 응답 키를 프론트 기대 형식으로 매핑, 캐시 무효 헤더 추가.
+
+server/storage.ts: created_at 대신 uploaded_at 사용, Asia/Seoul 기준 date_trunc로 오늘/월 집계, 권한별 WHERE 정확화.
+
+예상 변경 내용 (요약 diff)
+
+routes.ts
+
+const ctx = (req as any).user || (req.session as any)?.user || { userId: req.session?.userId, userType: (req.session as any)?.role };
+
+const userId = ctx?.id ?? ctx?.userId ?? null; const userType = ctx?.type ?? ctx?.userType ?? (req.session as any)?.role ?? 'admin';
+
+const raw = await storage.getTodayStats(userId, userType);
+
+매핑: const data = mapToDashboardShape(raw); // 프론트가 읽는 키명에 정확히 일치
+
+응답 헤더: res.set('Cache-Control','no-store'); res.set('Vary','Cookie');
+
+storage.ts
+
+모든 집계에서 uploaded_at AT TIME ZONE 'Asia/Seoul' 기반으로 오늘/최근 6개월 계산
+
+상태값 상수: 대기/진행중/개통완료/기타완료/취소/폐기 사용
+
+근무자/영업과장 권한별 WHERE 보강(본인/팀/전체)
+
+주의: 프론트가 기대하는 정확한 필드명(예: todayReceived, todayCompleted, todayCompletedNew, todayCompletedPort, otherCompletedToday, monthly[]의 label/new/port)에 서버가 맞추는 방식으로 진행(프론트 수정 없음).
+
+핵심 추가/삭제/치환 포인트 요약
+
+추가: 라우트에서 사용자 컨텍스트 안전 병합 + 응답 키 매핑 함수 + 캐시 무효 헤더
+
+치환: 집계 쿼리의 날짜 컬럼을 uploaded_at으로, 타임존을 Asia/Seoul로, 권한 WHERE 보강
+
+삭제: 스텁/0 하드코딩/불필요 주석
+
+환경변수/DB/스키마/스타일 미변경 명시
+
+✅ .env/Secrets 미변경
+
+✅ DB 스키마 미변경(조회만)
+
+✅ UI/스타일/레이아웃/컴포넌트 구조 그대로
+
+리스크와 회피책
+
+성능: 집계 비용 증가 가능 → 최근 6개월 제한, 필요한 컬럼만 SELECT, WHERE 인덱스 활용
+
+권한: 잘못된 컨텍스트 해석 → 서버 단 독립 판정(클라 파라미터 무시), 단위 테스트로 검증
+
+롤백 계획
+
+되돌릴 파일: server/routes.ts, server/storage.ts
+
+절차: 이전 커밋으로 복원(or git revert) → 서버 재시작 → 동일 시나리오 재검증(0/스텁 상태 복귀)
+
+검증 시나리오 & 성공 기준
+
+S1. 관리자(전체)
+
+대시보드 진입 → 카드/차트 0이 아닌 실제 값
+
+API: /api/dashboard/today-stats 200 & 기대 키 포함(숫자형)
+
+성공: “당일 접수건/당일 개통건/당월 개통현황” 모두 수치 표시
+
+S2. 근무자(본인)
+
+동일 페이지 → 본인 처리 건수만 표시
+
+성공: 응답에 타인 데이터 없음(권한 WHERE 적용 확인 로그)
+
+S3. 영업과장(팀)
+
+월별/통신사 분포가 팀 기준으로 표시
+
+성공: /api/dashboard/monthly-activation-stats 200, 최근 6개월 배열 반환
+
+S4. 실시간 업데이트
+
+“실시간 업데이트” 토글 후 1회 이상 자동 재조회
+
+성공: 캐시 미사용(헤더 적용)·숫자 변화 반영, 콘솔 에러 0
+
+S5. 운영 동등성
+
+mccnetworld.com에서도 S1~S4 동일 결과

@@ -1,0 +1,137 @@
+수정 목적 (한 줄)
+
+접수 관리의 문서 아이콘 클릭 시 다운로드가 아니라 팝업(모달)으로 미리보기가 뜨도록 수정 (이미지/PDF 인라인 표시).
+
+현재 증상 / 재현
+
+경로: 접수 관리 → 행의 문서 아이콘 클릭
+
+현상: 파일이 즉시 다운로드 됨
+
+기대: 페이지 내 **팝업(모달)**이 열리고 문서가 즉시 미리보기(이미지/PDF)
+
+변경 범위 요약
+
+백엔드 (server/routes.ts): 파일 조회 라우트에 inline 미리보기 지원 추가 (기본은 attachment 유지)
+
+프론트엔드 (client/src/pages/Documents.tsx): 문서 아이콘 클릭 시 미리보기 모달 열기 (기존 레이아웃/스타일 그대로)
+
+불변: 환경변수/DB/스키마/UI 레이아웃/스타일(클래스) 변경 없음
+
+수정 파일 목록 (최소)
+
+server/routes.ts
+
+client/src/pages/Documents.tsx (접수 관리 페이지 파일명 상이하면 해당 파일)
+
+백엔드 수정(정확 지시)
+
+기존 다운로드 라우트 유지하면서, 미리보기용 쿼리 파라미터를 추가합니다.
+
+라우트(예): GET /api/files/documents/:id
+
+변경 로직:
+
+// pseudo
+const isInline = req.query.disposition === 'inline'; // ?disposition=inline
+const filePath = ...;  // 저장 경로
+const fileName = ...;  // 원본 파일명
+const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+
+res.setHeader('Content-Type', mimeType);
+res.setHeader(
+  'Content-Disposition',
+  `${isInline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(fileName)}"`
+);
+// 캐시 방지 권장
+res.setHeader('Cache-Control', 'no-store');
+// 파일 스트림 전송
+return res.sendFile(filePath);
+
+
+포인트
+
+기본 동작(쿼리 없음)은 기존처럼 attachment(다운로드) 유지 → 회귀 방지
+
+미리보기 용으로는 ?disposition=inline 지정 시 브라우저 인라인 렌더
+
+Content-Type을 반드시 정확히 설정(mime-types 사용)
+
+프론트엔드 수정(정확 지시)
+
+문서 아이콘 클릭 시 모달을 띄워 인라인 렌더링합니다. (UI 구조 유지, 기존 Dialog/Modal 컴포넌트 재사용)
+
+동작 개념:
+
+GET /api/files/documents/:id?disposition=inline 를 credentials: 'include'로 fetch
+
+응답이 ok가 아니면 토스트로 에러 안내 후 종료
+
+response.headers.get('Content-Type')로 MIME 확인
+
+const raw = await response.blob(); → new Blob([raw], { type }) 로 타입 지정
+
+URL.createObjectURL(blob)을 모달의 <iframe>(또는 <img>) src에 바인딩
+
+닫을 때 URL.revokeObjectURL()로 정리
+
+**미리보기 불가 타입(docx/xlsx 등)**은 모달에 “다운로드” 버튼만 노출(기존 다운로드 라우트 호출)
+
+가드:
+
+Content-Type이 application/pdf 또는 image/*면 인라인 표시, 그 외는 다운로드 버튼 제공
+
+팝업 차단 이슈 없음(모달은 동일 탭 렌더)
+
+기존 다운로드 버튼은 그대로 유지(attachment). 문서 아이콘만 미리보기로 동작 전환.
+
+예상 변경 내용(요약 diff · 개념)
+
+server/routes.ts
+
+Content-Disposition: inline 지원(조건부)
+
+Content-Type 정확 설정
+
+Cache-Control: no-store 권장
+
+Documents.tsx
+
+handlePreview(docId) 추가
+
+fetch 옵션 credentials: 'include'
+
+Content-Type 기반 분기 → PDF/이미지 모달 미리보기, 그 외 다운로드
+
+리스크와 회피책
+
+브라우저가 인라인 미지원 파일: 모달에서 다운로드 버튼 제공
+
+일부 파일에 MIME 누락: application/octet-stream 폴백 + 다운로드 버튼 노출
+
+회귀 방지: 기본 동작(다운로드 라우트) 그대로 유지
+
+롤백 계획
+
+server/routes.ts에서 쿼리 분기 제거(항상 attachment)
+
+Documents.tsx에서 미리보기 모달 제거 → 기존 다운로드만 유지
+
+검증 시나리오 & 성공 기준
+
+이미지(JPG/PNG)
+
+문서 아이콘 클릭 → 모달에서 바로 표시 (스크롤/확대)
+
+PDF
+
+문서 아이콘 클릭 → 모달 PDF 뷰어 표시
+
+DOCX/XLSX
+
+문서 아이콘 클릭 → 모달에 미리보기 불가 안내 + 다운로드 버튼
+
+네트워크/권한 에러
+
+적절한 토스트 메시지, 콘솔 에러 0
+성공 조건: 이미지/PDF는 인라인 미리보기, 다운로드 기능 이탈 없이 유지, 200 응답.

@@ -1,0 +1,192 @@
+1) 수정 목적(한 줄)
+
+대시보드의 당일 현황(접수/개통)·당월 개통 현황이 0으로 고정되는 문제를, 집계 컬럼·상태 필터·응답 키 매핑·세션 컨텍스트·캐시 금지를 보정해 실데이터가 표출되도록 복구.
+
+2) 해결할 오류 / 재현 절차(간단)
+
+증상
+
+개통완료 관리: 10/01 건들/처리자 정상 표시(스크린샷 첨부)
+
+대시보드: 같은 날 당일 접수/개통, 당월 개통현황 0 고정
+
+재현
+
+Super Admin 로그인 → 대시보드 진입
+
+Network: /api/dashboard/today-stats, /carrier-stats, /worker-stats, /monthly-activation-stats는 200이나 값은 0/빈배열
+
+3) 변경 범위 요약 (필수 최소)
+
+백엔드만 수정
+
+server/storage.ts: 통계 4종 집계 로직 보정
+
+server/routes.ts: 응답 키 프론트 기대 스키마로 정규화, 세션 컨텍스트 안전 추출, 캐시 금지 헤더
+
+프론트: 변경 없음
+
+빌드/배포: 기존 파이프라인(캐시 정리/재시작 포함)
+
+불변: 환경변수/Secrets, DB 스키마, UI/스타일/레이아웃
+
+4) 수정 파일 목록 (최소화)
+
+server/storage.ts – getTodayStats, getMonthlyActivationStats, getCarrierStats, getWorkerStats
+
+server/routes.ts – 위 4개 라우트만
+
+5) 파일별 변경 이유 (각 1–2줄)
+
+storage.ts:
+
+접수 집계는 uploaded_at(KST) 기준, 개통 집계는 activated_at(KST) 기준으로 분리
+
+개통 집계 시 **activation_status IN ('개통완료','기타완료')**만 카운트
+
+권한 분기(근무자=본인, 영업과장=팀, 관리자=전체) WHERE 보강
+
+routes.ts:
+
+req.user || req.session.user || { userId:req.session.userId, userType:req.session.role }로 컨텍스트 병합
+
+서버 응답을 프론트가 읽는 키명으로 정규화(프론트 무변경)
+
+Cache-Control: no-store, Vary: Cookie로 캐시 차단
+
+6) 예상 변경 내용 (요약 diff/개념)
+a) 집계 기준(반드시 아래 기준으로 수정)
+
+Today(오늘): uploaded_at(접수), activated_at(개통) 각각 Asia/Seoul 00:00~24:00 범위
+
+Monthly(최근 6개월): activated_at(KST)로 date_trunc('month', ...) Grouping
+
+개통 상태 필터: activation_status IN ('개통완료','기타완료')
+
+권한 WHERE:
+
+user(근무자): activated_by = :userId / uploaded_by = :userId
+
+sales_manager: 팀 기준(기존 로직 그대로)
+
+admin: 필터 없음
+
+b) 응답 키(프론트 기대 스키마로 정규화)
+
+※ 정확한 키명은 프론트 코드 기준으로 서버가 맞춥니다. (아래 절차로 추출)
+
+추출 절차(필수)
+
+rg -n "dashboard.*today|today-stats|carrier-stats|worker-stats|monthly-activation" client/src -C 5
+
+카드/차트가 참조하는 정확한 프로퍼티명을 기록
+
+서버 응답을 그 키로 매핑 (프론트 수정 금지)
+
+c) 캐시 금지
+
+모든 대시보드 API 응답에:
+
+res.set('Cache-Control','no-store'); res.set('Vary','Cookie');
+
+7) 개발자용 디버그 체크리스트(필수 로그/SQL)
+a) DB 실제 수치 확인용 SQL (KST 기준)
+
+당일 접수(예: 2025-10-01)
+
+-- KST 경계
+WITH b AS (
+  SELECT TIMESTAMP '2025-10-01 00:00:00+09' AS s,
+         TIMESTAMP '2025-10-02 00:00:00+09' AS e
+)
+SELECT COUNT(*) AS received_today
+FROM documents d, b
+WHERE d.uploaded_at >= b.s AT TIME ZONE 'UTC'
+  AND d.uploaded_at <  b.e AT TIME ZONE 'UTC';
+
+
+당일 개통
+
+WITH b AS (
+  SELECT TIMESTAMP '2025-10-01 00:00:00+09' AS s,
+         TIMESTAMP '2025-10-02 00:00:00+09' AS e
+)
+SELECT COUNT(*) AS completed_today
+FROM documents d, b
+WHERE d.activated_at >= b.s AT TIME ZONE 'UTC'
+  AND d.activated_at <  b.e AT TIME ZONE 'UTC'
+  AND d.activation_status IN ('개통완료','기타완료');
+
+b) 라우트 로그(반드시 남겨 주세요)
+
+GET /api/dashboard/today-stats 호출 시:
+
+userType=..., userId=...
+
+rangeKST: start=..., end=...
+
+receivedToday=..., completedToday=... (DB 결과 숫자)
+
+응답 키 매핑 후 값(프론트 키명으로)
+
+8) 리스크와 회피책
+
+성능: 월별 집계 비용 ↑ → 최근 6개월 제한, 필요한 컬럼만 SELECT
+
+권한 실수: 컨텍스트 누락 → 다중 소스 병합으로 userId/userType 확보, 클라 파라미터 무시
+
+키 불일치: 프론트 참조 키 오타 → 사전 grep으로 확정 후 서버에서 매핑
+
+9) 롤백 계획
+
+변경을 단일 커밋으로 묶고 문제 시 git revert <commit>
+
+또는 server/storage.ts, server/routes.ts만 직전 버전 복원 → 재시작
+
+10) 검증 시나리오 & 성공 기준(정량)
+S1. 관리자(전체)
+
+/api/dashboard/today-stats 200, JSON에 프론트 기대 키 포함, 수치가 DB SQL 결과와 일치(±0)
+
+화면: 당일 접수/개통 카드가 0이 아님(해당 일자 데이터 있을 때)
+
+S2. 당월 개통 현황
+
+/api/dashboard/monthly-activation-stats 200, 배열 길이 ≤6, 해당 월 수치가 DB와 일치
+
+화면: “이번 달 개통 실적이 없습니다” 문구 사라짐(데이터 있을 때)
+
+S3. 통신사/근무자 분포
+
+/carrier-stats, /worker-stats 200, 합계가 S2의 그 달 합계와 일치(검산)
+
+S4. 권한(근무자·영업과장)
+
+근무자 로그인 시 본인만 집계, 영업과장은 팀 기준
+
+타 사용자 데이터 노출 없음(로그로 WHERE 확인)
+
+S5. 캐시/실시간
+
+응답 헤더 no-store 확인, 대시보드 “실시간 업데이트” 토글 시 수치 변화 반영
+
+11) 실행 순서(개발팀용)
+
+프론트 키명 추출(grep) → 응답 매핑 정의
+
+storage.ts 집계 보정(접수=uploaded_at, 개통=activated_at, 상태 IN) + KST 경계
+
+routes.ts 컨텍스트 병합 + 매핑 + no-store 헤더
+
+빌드 캐시 제거 후 재시작
+
+rm -rf dist .vite node_modules/.vite
+npm run build
+# 재시작(배포형이면 동일 커밋 재배포 + CDN 캐시 퍼지)
+
+
+S1~S5 검증 + SQL 대조(캡처 첨부)
+
+12) 참고(프론트 무수정 유지 사유)
+
+현 UI는 엄격한 키명 의존으로 렌더합니다. 프론트 변경 없이 서버 응답을 맞추는 방식이 회귀 위험이 가장 낮고, 이번 이슈의 핵심(집계 기준·키 매핑·캐시)만 정확히 짚어 해결합니다.

@@ -1,0 +1,148 @@
+현상(증빙 포함)
+
+접수 신청 파일 업로드 실패
+
+화면 토스트: “서류 접수 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.” (첨부 스샷 ①)
+
+통신사 관리 수정 실패
+
+화면 토스트: “API route not found” (첨부 스샷 ②)
+
+접점코드 엑셀 업로드 실패
+
+화면 토스트: “Upload failed with status 404” (첨부 스샷 ③)
+
+위 3건은 여전히 동일하게 재현됩니다. 지난 답변의 “수정 완료”는 실제 반영되지 않았습니다.
+
+재현 절차(동일 시나리오로 반복 재현됨)
+
+접점코드 엑셀 업로드
+관리자패널 → 접점코드 관리 → “엑셀/CSV 업로드” → .xlsx 선택 → 업로드 → 404
+
+통신사 수정
+관리자패널 → 통신사 관리 → 항목 “수정” → 토글/필드 변경 → “저장” → API route not found
+
+접수 신청 파일 업로드
+접수 신청 → PDF/JPG 첨부 → “제출” → 실패 토스트
+
+요구 작업(정확 지시) — UI/환경/DB 절대 변경 금지, 파일 전체 최종본 제출
+A) 접점코드 엑셀 업로드 404
+
+프론트가 호출하는 경로와 서버 라우트가 불일치합니다. 아래 중 하나로 통일하고 동작 확인 바랍니다.
+
+권장 서버 경로: POST /api/admin/contact-codes/import
+
+또는 기존에 이미 구현된 경로(예: /bulk-upload 등)로 프론트를 맞춤
+
+검증 요청 (반드시 Network 캡쳐 첨부)
+
+curl 예시:
+
+curl -i -X POST https://<host>/api/admin/contact-codes/import \
+  -H "Cookie: <세션쿠키>" \
+  -F "file=@contact-codes.xlsx"
+
+
+성공 기준: 200 / JSON 성공 메시지 / 목록 반영 (UI에 신규 코드 보임)
+
+⚠️ multipart/form-data여야 하며, FormData 필드명은 file 로 고정해주세요.
+
+B) 통신사 수정 “API route not found”
+
+필수 라우트: PUT /api/admin/carriers/:id 또는 PATCH /api/admin/carriers/:id
+
+프론트가 호출하는 실제 경로/메서드와 일치시키세요.
+
+Zod 스키마는 부분 업데이트 허용이 필요합니다.
+
+updateCarrierSchema.partial().parse(req.body) 형태(또는 동등한 처리)
+
+검증 요청
+
+curl 예시:
+
+curl -i -X PUT https://<host>/api/admin/carriers/123 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: <세션쿠키>" \
+  -d '{"name":"후불미디어(수정)"}'
+
+
+성공 기준: 200 / DB에 해당 컬럼 변경 / UI 즉시 반영
+
+C) 접수 신청 파일 업로드 실패
+
+라우트가 엑셀 전용 업로드 미들웨어를 쓰고 있거나, 허용 MIME/필드명이 불일치할 가능성이 큽니다.
+
+POST /api/documents 라우트의 업로드 미들웨어를 문서/이미지 허용 설정으로 고정(프로젝트에 이미 있는 templateUpload 또는 동등 설정 사용).
+
+허용 MIME: application/pdf, image/jpeg, image/png, (필요 시 application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document)
+
+FormData 필드명: 프론트가 보내는 이름과 서버가 받는 이름을 일치(예: files[] 또는 file)
+
+요청/응답 샘플:
+
+curl -i -X POST https://<host>/api/documents \
+  -H "Cookie: <세션쿠키>" \
+  -F "file=@sample.pdf" \
+  -F "customerName=테스트" \
+  -F "carrier=후불미디어"
+
+
+성공 기준: 200 / 업로드 파일 저장 / 생성된 문서 ID 반환 / 대시보드 “당일 접수” +1
+
+제출 규칙(반드시 준수)
+
+부분 코드 금지 → 아래 파일 전체 최종본 제출
+
+server/routes.ts
+
+(필요 시) server/uploads(또는 middleware) 관련 파일
+
+client/src/pages/AdminPanel.tsx (접점코드 업로드 호출부)
+
+불변: .env/Secrets/DB 스키마/운영 DB 로직/레이아웃·스타일·컴포넌트 구조
+
+납품 전/후 체크리스트
+
+서버 라우트 목록 확인(routes.ts에서 실제 경로 문자열 캡처)
+
+contact-codes 업로드 경로
+
+carriers 수정 경로
+
+documents 업로드 경로
+
+브라우저 Network 탭 스샷 첨부
+
+요청 URL/메서드/상태코드/응답 본문
+
+서버 로그 1줄 남기기(개발모드만)
+
+contact-codes/import uploaded: N rows
+
+carrier updated: id=...
+
+document created: id=..., fileCount=...
+
+캐시 초기화
+
+서버: 재빌드/재시작
+
+브라우저: Disable cache + 강력 새로고침
+
+성공 기준(정량)
+
+접점코드 업로드: 200, 목록 반영, 404/415/500 재발 없음
+
+통신사 수정: 200, DB 반영, UI 갱신, “API route not found” 재발 없음
+
+접수신청 업로드: 200, 파일 저장, 대시보드 “당일 접수” +1
+
+롤백
+
+이번 커밋 하나로 묶고, 문제 시 git revert <commit>
+
+또는 server/routes.ts, client/src/pages/AdminPanel.tsx 이전 버전으로 복원 후 재시작
+
+🔒 주의: 추정 답변 금지. 각 라우트의 정확한 경로/메서드/필드명과 Network 200 캡처로 종료 보고 바랍니다.
+승인 시, 동일 시나리오로 테스트/운영(mccnetworld.com) 양쪽에서 재검증하세요.

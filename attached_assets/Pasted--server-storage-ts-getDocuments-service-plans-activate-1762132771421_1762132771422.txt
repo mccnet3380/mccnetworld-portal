@@ -1,0 +1,92 @@
+승인합니다. 바로 반영하겠습니다.
+말씀하신 대로 server/storage.ts의 getDocuments 에 service_plans 조인을 추가하고, 처리자 표시(activatedByName) 가 항상 채워지도록 방어 코드를 보강하겠습니다. 프론트/빌드/배포 변경은 없습니다.
+
+적용 변경(요약 Diff)
+// server/storage.ts
+// (상단) 스키마 import에 servicePlans 추가
+import { documents, users, admins, contactCodes, servicePlans } from '@/shared/schema';
+import { sql, eq, and } from 'drizzle-orm';
+
+// getDocuments 내부 - SELECT 필드에 planName, activatedByName 보강
+const baseSelect = {
+  id: documents.id,
+  documentNumber: documents.documentNumber,
+  customerName: documents.customerName,
+  customerPhone: documents.customerPhone,
+  customerEmail: documents.customerEmail,
+  activationStatus: documents.activationStatus,
+  activatedAt: documents.activatedAt,
+  servicePlanId: documents.servicePlanId,
+  // 새로 추가: 요금제명
+  planName: servicePlans.name,                  // ✅ F열(요금제) 소스
+  // 기존/보강: 처리자명
+  activatedByName: sql<string>`
+    COALESCE(${admins.name}, ${users.name}, '')
+  `,                                            // ✅ H열(처리자) 소스
+  dealerName: contactCodes.dealerName,
+  carrierName: contactCodes.carrier,            // 필요 시 표시용 carrier명 매핑
+  customerType: documents.customerType,
+};
+
+// FROM/JOIN
+let query = db
+  .select(baseSelect)
+  .from(documents)
+  .leftJoin(contactCodes, eq(documents.contactCodeId, contactCodes.id))
+  // ✅ 요금제 조인 추가
+  .leftJoin(servicePlans, eq(documents.servicePlanId, servicePlans.id))
+  // ✅ 처리자 조인(둘 다 LEFT JOIN 유지)
+  .leftJoin(admins, eq(documents.activatedBy, admins.id))
+  .leftJoin(users, eq(documents.activatedBy, users.id));
+
+// ... (기존 where/order/limit 등은 그대로)
+
+
+만약 activated_by_role 컬럼을 이미 도입하셨다면, 아래처럼 역할 조건까지 포함해 충돌을 더 확실히 차단할 수 있습니다.
+
+.leftJoin(
+  admins,
+  and(eq(documents.activatedBy, admins.id), eq(documents.activatedByRole, sql`'admin'`))
+)
+.leftJoin(
+  users,
+  and(eq(documents.activatedBy, users.id), eq(documents.activatedByRole, sql`'user'`))
+)
+
+Excel 내보내기 매핑(참고)
+
+엑셀 생성하는 곳(기존 라우트)에서 다음 키로 읽도록만 되어 있으면 추가 작업 없이 값이 채워집니다.
+
+F열(요금제): row.planName || ''
+
+H열(처리자): row.activatedByName || ''
+
+이미 getDocuments 결과를 그대로 사용 중이면, 위 조인/SELECT 추가만으로 정상 표기됩니다.
+
+리스크/완화
+
+성능: service_plans는 소형 테이블인 경우가 대부분이며 LEFT JOIN 1회 추가로 영향 미미합니다. service_plans.id에 기본 PK 인덱스 존재 시 문제 없음.
+
+호환성: 반환 필드만 추가하는 방식이라 기존 API 소비 코드는 그대로 동작합니다.
+
+롤백
+
+leftJoin(servicePlans, …) 및 planName: servicePlans.name 추가분만 제거하면 원복됩니다.
+
+검증 시나리오
+
+정산관리 → Excel 내보내기
+
+F열(요금제)에 실제 요금제명 표시 확인
+
+H열(처리자)에 실제 처리자명 표시 확인
+
+NULL 안전성
+
+servicePlanId가 없는 문서는 F열이 공백으로 출력되는지 확인
+
+처리자 없는 문서는 H열 공백 출력
+
+기존 조회/필터
+
+문서 목록 조회/검색/필터 정상(200 OK)

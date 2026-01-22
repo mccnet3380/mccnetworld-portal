@@ -1,0 +1,163 @@
+수정 목적 (한 줄)
+
+접점코드 엑셀 업로드 실패 복구, 2) 통신사 수정 실패(부분 수정 검증 실패) 복구, 3) 접수신청 파일 업로드 오류 복구.
+
+재현 기준 & 현재 증상
+
+접점코드 엑셀 업로드
+
+관리자패널 → 접점코드 관리 → 엑셀 업로드 → 실패(네트워크 400/415/500 혼재)
+
+원인: 프론트가 Content-Type: application/json으로 전송 → 서버 multer(multipart) 미인식
+
+통신사 수정
+
+관리자패널 → 통신사 관리 → 편집 → 저장 → 실패(검증 에러)
+
+원인: updateCarrierSchema가 전체 필드 필수로 정의 → 부분 수정 시 Zod 검증 실패
+
+접수신청 파일 업로드
+
+접수 신청 → 파일 첨부(PDF/JPG 등) → 제출 시 오류
+
+원인: 해당 라우트가 엑셀 전용 multer 설정으로 바인딩되어 비엑셀 MIME 거부
+
+변경 범위 요약
+
+백엔드: server/routes.ts에서
+
+통신사 수정 라우트의 검증 스키마를 부분 업데이트 허용으로 변경
+
+접수신청 업로드 라우트의 multer 미들웨어를 문서·이미지 허용 설정(templateUpload) 으로 교체(해당 라우트에 한정)
+
+프론트엔드: client/src/pages/AdminPanel.tsx에서
+
+접점코드 엑셀 업로드 요청 전송 방식을 FormData로 고정(헤더 강제 제거, credentials: 'include')
+
+빌드/배포: 기존 파이프라인 그대로(재빌드 및 서버 재시작만)
+
+불변: 환경변수/Secrets, DB 스키마, UI/스타일, 운영 DB 로직
+
+수정 파일 목록 (최소화)
+
+server/routes.ts
+
+통신사 수정 API: updateCarrierSchema → 부분 수정 허용으로 변경
+
+접수신청 파일 업로드 API: 엑셀 전용 upload → 문서/이미지 허용 templateUpload 로 교체
+
+(다른 라우트에는 영향 없음)
+
+client/src/pages/AdminPanel.tsx
+
+접점코드 엑셀 업로드 mutation: 기존 apiRequest(JSON) → fetch + FormData 로 변경
+
+FormData 키: file (서버 multer 필드명과 일치)
+
+성공 시 캐시 무효화(해당 리스트 쿼리키) 유지
+
+파일별 변경 이유 (각 1–2줄)
+
+routes.ts:
+
+부분 업데이트 허용으로 실제 변경된 필드만 검증/적용(부분 수정 시 422 방지).
+
+업로드 라우트에 한해 templateUpload 사용으로 PDF/이미지 등 비엑셀 MIME 정상 수용.
+
+AdminPanel.tsx:
+
+multipart/form-data로 정확히 전송하기 위해 FormData 직전송(헤더 자동생성, JSON 강제 금지).
+
+예상 변경 내용 (요약 diff · 개념)
+
+통신사 수정
+
+(변경 전) updateCarrierSchema.parse(req.body)
+
+(변경 후) 부분 검증 허용: 제공 필드만 검증·업데이트(필수 아닌 필드 누락 허용)
+
+접수신청 파일 업로드
+
+(변경 전) 엑셀 전용 upload.fields([...])
+
+(변경 후) 문서/이미지 허용 templateUpload.fields([...]) 로 교체
+
+필드명/최대개수/사이즈는 현 프론트 제출 명세 그대로 유지(정책 변경 없음)
+
+접점코드 엑셀 업로드(프론트)
+
+(변경 전) apiRequest('/api/admin/contact-codes/import', { headers: { 'Content-Type': 'application/json' } ... })
+
+(변경 후) const fd = new FormData(); fd.append('file', file); fetch(..., { method:'POST', body:fd, credentials:'include' })
+
+헤더 지정 금지(브라우저가 boundary 포함 헤더 자동 세팅)
+
+리스크와 회피책
+
+multer 교체에 따른 회귀: 다른 라우트에 영향 없도록 해당 라우트만 교체
+
+부분 검증으로 인한 누락 허용 확대: 실제 저장 로직에서 존재 필드만 업데이트(undefined 무시), 서버 측 필수 제약은 DB/스토리지 레벨 그대로
+
+대용량 파일: 현 설정 유지(사이즈 제한·허용 MIME 기존 정책 준수)
+
+롤백 계획
+
+단일 커밋으로 묶은 뒤 문제 시 git revert <commit>
+
+또는 다음 두 파일만 직전 상태로 복구:
+
+git checkout HEAD -- server/routes.ts client/src/pages/AdminPanel.tsx
+
+
+재빌드 및 서버 재시작
+
+검증 시나리오 & 성공 기준 (엔드투엔드)
+S1. 접점코드 엑셀 업로드
+
+경로: 관리자패널 → 접점코드 관리 → 엑셀 업로드
+
+성공 기준
+
+Network: POST /api/admin/contact-codes/import → 200
+
+서버 로그: Contact codes imported successfully: N
+
+목록에 신규 코드 반영 / 콘솔 오류 0
+
+S2. 통신사 수정
+
+경로: 관리자패널 → 통신사 관리 → 편집 → 이름만 변경 후 저장
+
+성공 기준
+
+Network: PUT /api/admin/carriers/:id → 200
+
+DB: 해당 id 레코드 컬럼 변경 확인
+
+UI 즉시 반영 / 콘솔 오류 0
+
+S3. 접수신청 파일 업로드
+
+경로: 접수 신청 → PDF/JPG 첨부 → 제출
+
+성공 기준
+
+Network: 200
+
+서버 저장 경로(기존 uploads 정책) 파일 생성
+
+대시보드 “당일 접수” 카운트 +1 / 콘솔 오류 0
+
+S4. 회귀 방지 체크(샘플)
+
+엑셀 전용 업로드(정산/정책 등 기존 위치) 정상 동작 확인
+
+다른 관리자 기능 CRUD(요금제/사용자 등) 정상
+
+빌드/재시작 & 캐시
+
+서버: npm run build → 서버 재시작
+
+브라우저: DevTools Disable cache + 강력 새로고침(또는 캐시 비우기)
+
+확인: 이전 404/415/422/500 로그 재발 없음

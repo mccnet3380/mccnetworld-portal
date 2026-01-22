@@ -1,0 +1,113 @@
+[수정 원칙 - 필수]
+
+오류가 발생한 부분만 수정 (불필요한 변경 금지)
+
+UI(레이아웃/디자인/스타일/컴포넌트 구조) 절대 변경 금지
+
+버튼 색상, CSS, Tailwind, HTML 구조 그대로 유지
+
+환경설정(.env, Secrets, DB 연결, 운영 DB 로직) 절대 수정 금지
+
+DB 스키마 변경 금지 → 필요 시 ‘DB 스키마 변경 제안’으로 설명만 제시
+
+부분 코드 금지 → 파일 전체 최종본 제출
+
+실제 오류 재현 후 최소 범위 수정
+
+수정 후 서버 재시작 및 동일 시나리오 재검증
+
+운영 페이지와 테스트 페이지 동일 커밋/번들로 유지
+
+변경 개요
+
+운영 도메인에서 로그인/페이지 진입 시 빈페이지가 발생합니다. “SPA fallback·정적 파일 MIME 개선·경로 최적화”를 적용했다고 하셨으나, 여전히 핵심 자산(index-*.js/css) 서빙이 비정상입니다. 정적 자산 서빙/캐시/헤더를 확실히 바로잡아 빈페이지를 해소해주세요.
+
+수정 목적(한 줄)
+
+운영 서버에서 index.html과 해시된 JS/CSS 자산을 정상이자 최신 상태로 서빙하여 빈페이지를 제거.
+
+해결할 오류 / 재현 절차(간단)
+
+현상: https://mccnetworld.com/login 진입 시 빈페이지
+
+콘솔: index-*.js 500 또는 index-*.css MIME: application/json(CSS로 서빙되지 않음)
+
+네트워크: index.html은 200이지만, 참조된 /assets/index-*.js|css 중 404/500/MIME 오염 존재
+
+변경 범위 요약
+
+배포/서빙 레이어만 수정(코드/UI 미변경): 정적 자산 헤더, 캐시 무효화, SPA 라우팅 규칙, 자산 경로 일관성
+
+운영·개발 동일 커밋/동일 dist 산출물 보장
+
+수정 파일 목록 (최소화)
+
+서버 정적 서빙 설정(예: Nginx/Node 서빙 미들웨어) — 설정 전체본 제출
+
+배포된 dist/index.html 및 /assets/* — 실제 배포본 전체 제출(경로/파일명 검증 목적)
+
+파일별 변경 이유
+
+정적 서빙 설정: MIME/캐시/SPA fallback/경로 매핑을 표준으로 교정
+
+index.html & /assets: index.html의 링크가 실제 존재하는 해시 파일을 가리키는지 확인/교정
+
+예상 변경 내용 (요약 diff)
+
+[치환] CSS MIME: text/css / JS MIME: application/javascript
+
+[추가] HTML: Cache-Control: no-store 또는 no-cache, must-revalidate
+
+[유지] 정적 자산: Cache-Control: max-age=31536000, immutable
+
+[수정] SPA fallback: “앱 경로”만 index.html로, assets/*는 fallback 금지
+
+[정리] dist 클린배포: 오래된 index-*.js/css 제거 후 최신 빌드만 배포
+
+[버전] index.html 내 자산 참조 해시 파일명 일치 보장
+
+핵심 추가/삭제/치환 포인트
+
+(•) index.html 안의 <link href="/assets/index-XXXX.css">, <script src="/assets/index-XXXX.js" ...>가 실제로 존재하는 파일을 가리키는지 확인
+
+(•) /assets/*.css가 절대 application/json 등 잘못된 MIME으로 서빙되지 않도록 서버 설정 명시
+
+(•) 404 HTML fallback는 라우팅 경로에만 적용, /assets/* 404는 에러로 반환
+
+(•) 배포 캐시 무효화: dist 재배포 후 브라우저/프록시 캐시를 강제로 비우거나 ?v=<timestamp> 부착
+
+환경변수/DB/스키마/스타일은 미변경
+
+코드/DB/UI/스타일 미변경. 서빙/배포 설정만 수정
+
+리스크와 회피책
+
+리스크: 캐시 잔존으로 오래된 번들이 계속 로드
+
+회피: 배포 직후 index.html 요청에 Cache-Control: no-store 적용, JS/CSS는 해시 파일명 사용
+
+롤백 계획
+
+배포 전후 dist 스냅샷 보관 → 문제 시 이전 dist로 즉시 원복
+
+검증 시나리오 & 성공 기준
+
+시크릿 창에서 /, /login, /documents, /completed 진입 → 빈페이지 없음
+
+네트워크 탭: index.html 200, index-*.js/css 200, 정상 MIME
+
+콘솔 에러 0, JS 실행 정상
+
+운영/개발 동일 커밋·동일 화면
+
+(필수) 점검·증빙 자료 요청
+
+아래 헤더 캡처 4종을 첨부해주세요(네트워크 탭 or curl):
+
+GET /index.html (혹은 /login 최종 HTML)
+
+GET /assets/index-*.js
+
+GET /assets/index-*.css
+
+404 테스트: GET /assets/not-exist.js가 SPA fallback으로 HTML을 내지 않고 정상 404인지

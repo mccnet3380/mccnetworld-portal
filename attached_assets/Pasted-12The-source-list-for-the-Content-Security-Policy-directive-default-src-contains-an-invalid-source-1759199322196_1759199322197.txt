@@ -1,0 +1,104 @@
+12The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.이 오류 이해하기
+12The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?이 오류 이해하기
+12The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.이 오류 이해하기
+_app-e1a9ecaa502069cd.js:34 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+MCCNETWORLD:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.이 오류 이해하기
+MCCNETWORLD:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?이 오류 이해하기
+MCCNETWORLD:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.이 오류 이해하기
+_app-e1a9ecaa502069cd.js:34 [LaunchDarkly] LaunchDarkly client initialized
+5Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.이 오류 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'ambient-light-sensor'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'battery'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'execution-while-not-rendered'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'execution-while-out-of-viewport'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'layout-animations'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'legacy-image-formats'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'navigation-override'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'oversized-images'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'publickey-credentials'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'speaker-selection'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'unoptimized-images'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'unsized-media'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'pointer-lock'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Allow attribute will take precedence over 'allowfullscreen'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+framework-52d8d2061846de7f.js:1 Allow attribute will take precedence over 'allowpaymentrequest'.
+_ @ framework-52d8d2061846de7f.js:1이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'ambient-light-sensor'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'battery'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'execution-while-not-rendered'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'execution-while-out-of-viewport'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'layout-animations'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'legacy-image-formats'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'navigation-override'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'oversized-images'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'publickey-credentials'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'speaker-selection'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'unoptimized-images'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Unrecognized feature: 'unsized-media'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Allow attribute will take precedence over 'allowfullscreen'.이 경고 이해하기
+64770454-d951-437f-903d-6786f4d2ab61-00-3n285x24b4sfg.janeway.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Arch%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.이 경고 이해하기
+Console.js:61 Checking auth with sessionId: exists
+Console.js:61 Auth check response: 200 true
+Console.js:61 Auth check data: Object
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object
+50Console.js:61 Error: Minified React error #31; visit https://reactjs.org/docs/error-decoder.html?invariant=31&args[]=object%20with%20keys%20%7Bid%2C%20name%2C%20displayOrder%2C%20isActive%2C%20isWired%2C%20bundleNumber%2C%20bundleCarrier%2C%20documentRequired%2C%20requireCustomerName%2C%20requireCustomerPhone%2C%20requireCustomerEmail%2C%20requireContactCode%2C%20requireCarrier%2C%20requirePreviousCarrier%2C%20requireDocumentUpload%2C%20requireBundleNumber%2C%20requireBundleCarrier%2C%20allowNewCustomer%2C%20allowPortIn%2C%20requireDesiredNumber%2C%20createdAt%2C%20updatedAt%7D for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+    at qu (index-CfODrheW.js:38:6327)
+    at b (index-CfODrheW.js:38:11385)
+    at xn (index-CfODrheW.js:40:1475)
+    at uP (index-CfODrheW.js:40:45767)
+    at lP (index-CfODrheW.js:40:39790)
+    at UO (index-CfODrheW.js:40:39718)
+    at Qm (index-CfODrheW.js:40:39570)
+    at zx (index-CfODrheW.js:40:35934)
+    at Nj (index-CfODrheW.js:40:36738)
+    at Ti (index-CfODrheW.js:38:3279)
+Mt.forEach.n.<computed> @ Console.js:61이 오류 이해하기
+index-CfODrheW.js:38 Uncaught Error: Minified React error #31; visit https://reactjs.org/docs/error-decoder.html?invariant=31&args[]=object%20with%20keys%20%7Bid%2C%20name%2C%20displayOrder%2C%20isActive%2C%20isWired%2C%20bundleNumber%2C%20bundleCarrier%2C%20documentRequired%2C%20requireCustomerName%2C%20requireCustomerPhone%2C%20requireCustomerEmail%2C%20requireContactCode%2C%20requireCarrier%2C%20requirePreviousCarrier%2C%20requireDocumentUpload%2C%20requireBundleNumber%2C%20requireBundleCarrier%2C%20allowNewCustomer%2C%20allowPortIn%2C%20requireDesiredNumber%2C%20createdAt%2C%20updatedAt%7D for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+    at qu (index-CfODrheW.js:38:6327)
+    at b (index-CfODrheW.js:38:11385)
+    at xn (index-CfODrheW.js:40:1475)
+    at uP (index-CfODrheW.js:40:45767)
+    at lP (index-CfODrheW.js:40:39790)
+    at UO (index-CfODrheW.js:40:39718)
+    at Qm (index-CfODrheW.js:40:39570)
+    at zx (index-CfODrheW.js:40:35934)
+    at Nj (index-CfODrheW.js:40:36738)
+    at Ti (index-CfODrheW.js:38:3279)이 오류 이해하기
+Console.js:61 API Response: Object
+Console.js:61 API Response: Object

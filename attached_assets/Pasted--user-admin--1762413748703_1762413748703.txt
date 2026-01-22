@@ -1,0 +1,212 @@
+목표
+
+근무자(user/admin)
+
+“접수 관리”에서 신규 접수 생성(= 기존 “접수 신청” 기능을 같은 화면에서 수행)
+
+모든 판매점 접수 열람 및 상태 변경 가능
+
+채팅은 ‘업무요청중’ 상태에서만 노출/가능, ‘진행중’에서는 절대 노출 금지
+
+판매점(dealer)
+
+/dealer-login으로 로그인 → “접수 신청”에서 접수 요청만 수행
+
+이후 “접수 관리”에서 본인 판매점 건만 조회/상태 확인
+
+채팅은 ‘업무요청중’ 상태에서만 노출/가능, ‘진행중’에서는 절대 노출 금지
+
+권한별 조회/행동
+
+근무자=전체 문서 열람/생성/상태변경
+
+판매점=자기 문서만 열람(상태 변경은 기존 정책대로), 채팅은 ‘업무요청중’만 허용
+
+수정 원칙(필수)
+
+오류 난 부분만 수정, 불필요 변경 금지
+
+UI 레이아웃/디자인/스타일(버튼 색상, Tailwind 포함) 변경 금지
+
+환경변수(.env), DB 연결, 운영 DB 로직 변경 금지
+
+DB 스키마 변경 금지(필요 시 ‘DB 스키마 변경 제안’에 제안만)
+
+부분 코드 금지 → 변경 파일은 “파일 전체 최종본” 제출
+
+테스트(Neon)·운영(Render) 동일 동작
+
+수정 후 서버 재시작 & 동일 시나리오 재검증 필수
+
+변경 범위 요약
+
+프론트(최소 변경)
+
+Dealer 로그인 플로우 고정화
+
+DealerLogin.tsx의 요청 경로를 POST /api/auth/dealer-login 로 사용
+
+로그인 성공 시 useAuth 스토어에 user, sessionId, isAuthenticated 저장
+
+성공 후 이동 경로: /dealer-dashboard (없는 경우 /documents로 대체)
+
+접수 관리(Documents) 상단에 근무자 전용 “신규 접수” 버튼(권한 가드)
+
+버튼 클릭 시 기존 접수 신청 폼 컴포넌트를 모달로 재사용(스타일 변경 금지)
+
+리스트 필터/권한 가드
+
+근무자: 전체 조회
+
+판매점: 본인(dealerId/작성자/접점코드 기준)만 조회
+
+채팅 버튼 노출 규칙
+
+‘업무요청중’에서만 노출/활성화
+
+‘진행중’에서는 노출/활성화 금지(숨김 가드 확실히)
+
+백엔드(최소 변경)
+
+GET /api/documents
+
+근무자(user/admin): 전체
+
+판매점(dealer): dealerId(또는 contactCode/작성자)로 서버 단에서 확실히 제한
+
+POST /api/documents
+
+근무자 생성 시: createdBy(근무자) + 선택한 dealerId(또는 접점코드로 매핑) 정확 반영
+
+판매점 생성 시: 본인 dealerId 자동 매핑
+
+채팅 권한 가드(서버)
+
+문서 접근 권한 필수 + 문서 상태가 ‘업무요청중’일 때만 채널 생성/송수신 허용
+
+‘진행중’ 상태는 채널 금지
+
+빌드/배포 파이프라인 변경 없음.
+
+수정 파일 목록(예상) & 변경 이유
+
+실제 경로명은 저장소 구조에 맞춰 조정해 주세요. 변경 파일은 전체 최종본으로 제출 바랍니다.
+
+client/src/pages/DealerLogin.tsx
+
+이유: API 경로 고정 /api/auth/dealer-login + useAuth.set({ user, sessionId, isAuthenticated }) 저장 + 성공 후 이동
+
+client/src/pages/Documents.tsx*(접수 관리)
+
+이유:
+
+근무자 전용 “신규 접수” 버튼 권한 가드 렌더
+
+리스트 호출 시 권한별 필터 조건 전달(필요 시 쿼리 파라미터)
+
+채팅 버튼 노출 가드: 상태가 ‘업무요청중’만 보이도록
+
+client/src/pages/SubmitApplication.tsx(또는 재사용 폼 컴포넌트)
+
+이유: 근무자도 같은 폼으로 생성(모달 재사용), 제출 성공 시 Documents 재조회
+
+client/src/components/ChatDialog.tsx + 액션셀
+
+이유: 상태별 노출 제어(업무요청중만 노출, 진행중은 숨김)
+
+server/storage.ts (혹은 대응 라우트/서비스 파일)
+
+이유:
+
+getDocuments 권한별 필터(근무자=전체, 판매점=dealerId 제한)
+
+createDocument 생성 시 작성자/판매점 매핑 정확화
+
+채팅 권한/상태 가드 재확인(업무요청중만 허용)
+
+예상 변경 내용(요약 diff: 개념)
+
+DealerLogin.tsx
+
+fetch("/api/auth/dealer-login")
+
+useAuth.getState().set({ user: data.user, sessionId: data.sessionId, isAuthenticated: true })
+
+setLocation("/dealer-dashboard") (없으면 /documents)
+
+Documents
+
+if (userType in ['user','admin']) → “신규 접수” 버튼 렌더
+
+리스트 API: 권한별 필터 적용
+
+채팅 아이콘: if (activationStatus === '업무요청중')에만 렌더
+
+서버 getDocuments
+
+if dealer → where dealerId = currentDealerId
+
+if admin/user → 전체
+
+서버 채팅
+
+상태 검사: 업무요청중만 통과, 진행중은 거부
+
+※ UI 스타일/클래스/레이아웃 절대 변경 금지
+
+리스크 & 회피책
+
+권한 누락으로 판매점이 타 판매점 문서 열람 가능 → 서버 필터 강제
+
+채팅 노출 오표시 → 프론트/백엔드 이중 가드(업무요청중만 허용)
+
+근무자 신규 접수 시 매핑 오류 → createdBy/userType/dealerId 로그 남기고 검증
+
+롤백 계획
+
+프론트 변경(로그인/버튼/채팅가드) 과 백엔드 변경(필터/가드) 를 분리 커밋
+
+문제 발생 시 해당 커밋만 되돌려 현 운영 상태로 즉시 복귀
+
+검증 시나리오 & 성공 기준
+
+판매점 로그인/접수
+
+/dealer-login → 로그인 → /dealer-dashboard(or /documents)
+
+“접수 신청”에서 제출 → “접수 관리”에 본인 건만 표시
+
+상태가 **‘업무요청중’**으로 변경되면 채팅 버튼 노출
+
+성공 기준: 200 응답, 타 판매점 문서 미표시, ‘진행중’에는 채팅 버튼 없음
+
+근무자 신규 접수
+
+/documents → 신규 접수(모달 폼) → 제출 즉시 리스트 반영
+
+전체 판매점 문서 열람 가능, 상태변경 가능
+
+성공 기준: 200 응답, 리스트 갱신, 스타일 변동 없음
+
+권한 가드
+
+판매점 계정으로 타 판매점 문서 직접 접근 → 403/권한없음
+
+‘진행중’ 상태에서 채팅 접근 시도 → 버튼 미노출 + 서버 거부
+
+성공 기준: 서버/콘솔 에러 없음, 로그 정상
+
+테스트/운영 동일성
+
+Neon/Render 모두 동일 동작
+
+성공 기준: 응답·화면·채팅 조건 일치
+
+DB 스키마 변경 제안(없음)
+
+현재 스키마로 충분(문서: 작성자/판매점/상태/접점코드/노트 등).
+
+스키마 변경 필요 시, 별도 제안서로 올려주세요(이번 작업에서는 미변경).
+
+위 지시서 승인 후, **변경되는 각 파일의 “전체 최종본”**을 제출해 주세요.
+(특히 DealerLogin.tsx, Documents*.tsx, SubmitApplication.tsx(모달 재사용), ChatDialog.tsx/액션셀, server/storage.ts:getDocuments/createDocument/채팅가드 부문)

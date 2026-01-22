@@ -1,0 +1,168 @@
+수정 목적(한 줄)
+
+대시보드 API의 **스텁(0/빈값 하드코딩)**을 제거하고, 실제 DB 집계값을 반환하도록 복구.
+
+해결할 오류 / 재현 절차(간단)
+
+관리자/근무자 로그인 → 대시보드 접속
+
+기대: 실제 접수/개통·월별·통신사별·근무자별 통계 표시
+
+실제: 모든 카드/차트가 0 또는 빈 배열
+
+원인: server/routes.ts의 대시보드 API가 주석 처리된 스텁(0/[])을 반환
+
+변경 범위 요약
+
+백엔드(필수)
+
+server/storage.ts: 대시보드 통계 메서드 4종 구현
+
+server/routes.ts: 스텁 제거 → storage 호출로 치환 + 권한 필터 전달
+
+프론트엔드: 변경 없음
+
+빌드/배포: 기존 파이프라인 그대로
+
+불변: 환경변수/Secrets, DB 스키마, UI/스타일 절대 미변경
+
+수정 파일 목록 (최소화)
+
+server/storage.ts – 통계 조회 메서드 추가(인터페이스 + 구현)
+
+server/routes.ts – 스텁 제거 후 실제 호출로 치환
+
+파일별 변경 이유 (각 1–2줄)
+
+storage.ts: IStorage에 통계 메서드 정의/구현하여 문서 집계 쿼리 수행(권한/기간별 필터 포함).
+
+routes.ts: 스텁 { totalToday: 0, ... } 제거 → await getStorage().getTodayStats(...) 등 실호출로 변경, requireAuth 하에서 userId/userType 전달.
+
+예상 변경 내용 (요약 diff)
+
+storage.ts
+
+// IStorage 인터페이스에 추가
+getTodayStats(userId?: number, userType?: string): Promise<TodayStats>;
+getMonthlyActivationStats(userId?: number, userType?: string): Promise<MonthlyActivationStat[]>;
+getCarrierStats(userId?: number, userType?: string): Promise<CarrierStat[]>;
+getWorkerStats(userId?: number, userType?: string): Promise<WorkerStat[]>;
+
+// PostgreSQLStorage 구현(요지)
+async getTodayStats(userId, userType) {
+  // documents에서 오늘(Asia/Seoul 기준) 건수 집계
+  // userType이 'user'/'sales_manager'면 userId/팀 기준 WHERE 적용
+}
+async getMonthlyActivationStats(userId, userType) {
+  // 최근 6개월 개통완료 월별 GROUP BY
+}
+async getCarrierStats(userId, userType) {
+  // 통신사(carrier)별 GROUP BY
+}
+async getWorkerStats(userId, userType) {
+  // documents ⟂ users 조인 → 근무자별 처리 건수
+}
+
+
+routes.ts
+
+// 변경 전(스텁)
+router.get('/api/dashboard/today-stats', requireAuth, async (req, res) => {
+  const todayStats = { totalToday: 0, pendingToday: 0, ... };
+  res.json(todayStats);
+});
+
+// 변경 후(실호출)
+router.get('/api/dashboard/today-stats', requireAuth, async (req, res) => {
+  const { userId, userType } = (req as any).user;
+  const data = await getStorage().getTodayStats(userId, userType);
+  res.json(data);
+});
+
+// monthly-activation-stats / carrier-stats / worker-stats도 동일 패턴으로 치환
+
+핵심 추가/삭제/치환 포인트
+
+추가: storage.ts에 4개 통계 메서드(SQL 집계)
+
+치환: routes.ts의 하드코딩 0/[] → storage 호출로 변경
+
+삭제: 스텁/주석 제거
+
+권한 처리: userType에 따라 본인/팀/전체 범위 필터
+
+유지: DB 스키마·환경·UI/스타일 그대로
+
+최소 보완(현장 이슈 방지)
+
+타임존 일관화: “오늘” 기준을 Asia/Seoul로 고정(date_trunc('day', created_at AT TIME ZONE 'Asia/Seoul'))
+
+기간 제한: 월별/통신사 통계는 최근 6개월만 스캔(불필요 풀스캔 방지)
+
+권한 가드: requireAuth + 서버 측에서만 userId/userType 사용(클라이언트 파라미터 무시)
+
+응답 형식 고정: null 대신 0/빈 배열로 통일(프론트 회귀 방지)
+
+캐시 금지: 대시보드 API는 Cache-Control: no-store(실시간 반영 목적)
+
+에러 처리: 쿼리 실패 시 500 + 최소 형태 { totalToday: 0, ... } 반환(프론트 오류 방지)
+
+리스크와 회피책
+
+성능: 대량 집계로 응답 지연 가능
+
+회피: 기간 제한, 적절한 WHERE/INDEX 사용, COUNT/GROUP BY만 사용
+
+권한: 근무자가 타 사용자 데이터 열람 위험
+
+회피: 서버에서 userType별 WHERE 강제(클라 파라미터 미신뢰)
+
+롤백 계획
+
+대상: server/storage.ts, server/routes.ts
+
+방법: 스텁 코드가 있던 이전 커밋으로 즉시 복원(또는 git revert) → 서버 재시작
+
+데이터 영향: 없음(조회만)
+
+검증 시나리오 & 성공 기준
+
+S1. 관리자 계정(전체 통계)
+
+대시보드 진입 → 카드/차트 0 아님(데이터 존재 시)
+
+API:
+
+/api/dashboard/today-stats → 200, { totalToday:N, pendingToday:M, ... }
+
+/api/dashboard/carrier-stats → 200, [{ carrier:"SKT", count:X }, ...]
+
+/api/dashboard/worker-stats → 200
+
+S2. 근무자 계정(본인 통계)
+
+본인 건수만 표시, 타 사용자 데이터 미노출
+
+서버 로그에 userId 필터 적용 확인
+
+S3. 영업과장 계정(팀 통계)
+
+팀 단위 집계 정상, 월별 차트 최근 6개월 데이터 반환
+
+S4. 빈 데이터 시나리오
+
+신규 계정으로 0건 → 200 + 0/빈배열, 콘솔 에러 없음
+
+S5. 운영 동등 검증
+
+mccnetworld.com에서 S1~S4 동일 결과
+
+DB 스키마 변경 제안(적용하지 않음, 설명만)
+
+조회 최적화 필요 시(성능 문제 발생 시)
+
+documents(activation_status, created_at, activated_by) 복합 인덱스
+
+documents(carrier, activation_status, created_at) 인덱스
+
+현재는 코드 수정 없이 제안만 남깁니다. (스키마 변경 금지 원칙 준수)

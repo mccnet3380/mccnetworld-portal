@@ -1,0 +1,259 @@
+[사전 변경 안내]
+목적(한 줄)
+- 운영 서버에서 접점코드 추가 시 “담당 영업과장” 드롭다운이 비어 있는 문제와 “영업과장 계정 생성 불가” 문제를 해결한다. (백엔드 스토리지/라우트 실구현 + 프론트 드롭다운 데이터 로딩 보강)
+
+변경 범위
+- 백엔드: server/storage.ts (영업과장 CRUD 실구현), server/routes.ts (관리자 API 2~3개 추가)
+- 프론트: client/src/pages/ContactCodeForm.tsx(가칭) 또는 접점코드 생성 페이지의 영업과장 드롭다운 데이터 로딩/에러 처리
+- DB/환경/스타일: 변경 없음
+
+요구 사항(절대 준수)
+- 관리자 전용 API에 인증·권한 미들웨어 적용
+- SELECT는 활성(isActive=true)만 반환
+- 생성 시 DB에 INSERT 후 반환값으로 id 포함
+- 장애 시 UI가 깨지지 않도록 프론트에서 빈 배열/로딩/에러 처리
+- 스키마가 두 가지일 수 있으므로 “자동 감지” 전략:
+  1) `sales_managers` 테이블이 있으면 해당 테이블 사용
+  2) 없으면 `users` 테이블에서 `role='sales_manager'` 를 조회(폴백)
+
+[1] server/storage.ts — 영업과장 CRUD 실구현
+----------------------------------------------------------------
+// 필요 import 예시 (중복 import 금지)
+import { eq, and, sql, desc } from "drizzle-orm";
+import { users, salesManagers } from "@/shared/schema"; // 존재하는 경우만 사용
+// withDatabase(this.db) 같은 내부 헬퍼는 기존 프로젝트 스타일에 맞춰 사용
+
+// 테이블 존재 여부 감지 유틸
+async function tableExists(db: any, tableName: string): Promise<boolean> {
+  const q = await db.execute(sql`
+    SELECT to_regclass(${tableName}) IS NOT NULL AS exists
+  `);
+  return Boolean(q?.rows?.[0]?.exists);
+}
+
+// 표준화된 반환 타입
+type SalesManager = {
+  id: number;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  isActive?: boolean;
+};
+
+// ✅ 목록
+async getSalesManagers(): Promise<SalesManager[]> {
+  return this.withDatabase(async (db) => {
+    const hasTable = await tableExists(db, "sales_managers");
+
+    if (hasTable) {
+      const rows = await db
+        .select({
+          id: salesManagers.id,
+          name: salesManagers.name,
+          phone: salesManagers.phone,
+          email: salesManagers.email,
+          isActive: salesManagers.isActive,
+        })
+        .from(salesManagers)
+        .where(eq(salesManagers.isActive, true))
+        .orderBy(desc(salesManagers.updatedAt), desc(salesManagers.createdAt));
+      return rows;
+    } else {
+      // 폴백: users 로부터 role='sales_manager'
+      const rows = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          phone: users.phone,
+          email: users.email,
+          isActive: sql<boolean>`true`,
+        })
+        .from(users)
+        .where(eq(users.role, "sales_manager"));
+      return rows;
+    }
+  });
+}
+
+// ✅ 단건 조회
+async getSalesManagerById(id: number): Promise<SalesManager | null> {
+  return this.withDatabase(async (db) => {
+    const hasTable = await tableExists(db, "sales_managers");
+    if (hasTable) {
+      const [row] = await db
+        .select()
+        .from(salesManagers)
+        .where(and(eq(salesManagers.id, id), eq(salesManagers.isActive, true)))
+        .limit(1);
+      return row ?? null;
+    } else {
+      const [row] = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.role, "sales_manager")))
+        .limit(1);
+      return row ? { id: row.id, name: row.name, phone: row.phone, email: row.email, isActive: true } : null;
+    }
+  });
+}
+
+// ✅ 생성 (테이블 있으면 sales_managers에 INSERT, 없으면 users에 role='sales_manager'로 INSERT)
+async createSalesManager(input: { name: string; phone?: string; email?: string }): Promise<SalesManager> {
+  return this.withDatabase(async (db) => {
+    const hasTable = await tableExists(db, "sales_managers");
+    if (hasTable) {
+      const [created] = await db
+        .insert(salesManagers)
+        .values({
+          name: input.name.trim(),
+          phone: input.phone ?? null,
+          email: input.email ?? null,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      return created;
+    } else {
+      // users 테이블 구조에 맞게 최소 필드만 삽입 (프로젝트 스키마에 따라 조정)
+      const [created] = await db
+        .insert(users)
+        .values({
+          name: input.name.trim(),
+          phone: input.phone ?? null,
+          email: input.email ?? null,
+          role: "sales_manager",
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning({ id: users.id, name: users.name, phone: users.phone, email: users.email });
+      return { ...created, isActive: true };
+    }
+  });
+}
+
+// ✅ 수정
+async updateSalesManager(id: number, data: Partial<{ name: string; phone?: string; email?: string; isActive: boolean }>): Promise<void> {
+  return this.withDatabase(async (db) => {
+    const hasTable = await tableExists(db, "sales_managers");
+    if (hasTable) {
+      await db
+        .update(salesManagers)
+        .set({
+          ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+          ...(data.phone !== undefined ? { phone: data.phone } : {}),
+          ...(data.email !== undefined ? { email: data.email } : {}),
+          ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(salesManagers.id, id));
+    } else {
+      await db
+        .update(users)
+        .set({
+          ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+          ...(data.phone !== undefined ? { phone: data.phone } : {}),
+          ...(data.email !== undefined ? { email: data.email } : {}),
+          ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(users.id, id), eq(users.role, "sales_manager")));
+    }
+  });
+}
+
+// ✅ 비활성(삭제 대체)
+async deleteSalesManager(id: number): Promise<void> {
+  return this.updateSalesManager(id, { isActive: false });
+}
+----------------------------------------------------------------
+
+[2] server/routes.ts — 관리자 전용 API 추가
+----------------------------------------------------------------
+// 인증/권한 미들웨어 가정: requireAdmin
+router.get("/api/admin/sales-managers", requireAdmin, async (req, res) => {
+  const list = await storage.getSalesManagers();
+  res.json({ ok: true, data: list });
+});
+
+router.post("/api/admin/sales-managers", requireAdmin, async (req, res) => {
+  const { name, phone, email } = req.body ?? {};
+  if (!name || !name.trim()) return res.status(400).json({ ok: false, error: "name_required" });
+  const created = await storage.createSalesManager({ name, phone, email });
+  res.json({ ok: true, data: created });
+});
+
+// (선택) 수정/비활성
+router.patch("/api/admin/sales-managers/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "invalid_id" });
+  await storage.updateSalesManager(id, req.body ?? {});
+  res.json({ ok: true });
+});
+
+router.delete("/api/admin/sales-managers/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "invalid_id" });
+  await storage.deleteSalesManager(id);
+  res.json({ ok: true });
+});
+----------------------------------------------------------------
+
+[3] 프론트 — 접점코드 생성 페이지 드롭다운 로딩 보강
+----------------------------------------------------------------
+// 접점코드 생성 페이지(예: client/src/pages/ContactCodeForm.tsx)
+// 1) 마운트 시 영업과장 목록 로드
+// 2) 로딩/실패/빈배열 UI 안전 처리
+// 3) value={managerId} onChange=… 로 폼에 연결
+
+const [managers, setManagers] = useState<Array<{id:number;name:string}>>([]);
+const [loadingMgr, setLoadingMgr] = useState(false);
+const [mgrError, setMgrError] = useState<string | null>(null);
+
+useEffect(() => {
+  let alive = true;
+  (async () => {
+    try {
+      setLoadingMgr(true);
+      const res = await fetch("/api/admin/sales-managers", { credentials: "include" });
+      const json = await res.json();
+      if (!alive) return;
+      if (json?.ok) setManagers(json.data ?? []);
+      else setMgrError(json?.error ?? "로드 실패");
+    } catch (e:any) {
+      if (alive) setMgrError(e?.message ?? "로드 실패");
+    } finally {
+      if (alive) setLoadingMgr(false);
+    }
+  })();
+  return () => { alive = false; };
+}, []);
+
+{/* 드롭다운 렌더링 예시 */}
+<label>담당 영업과장</label>
+{loadingMgr ? (
+  <div className="text-muted-foreground">로딩 중…</div>
+) : mgrError ? (
+  <div className="text-destructive">영업과장 목록 불러오기 실패</div>
+) : (
+  <select value={managerId ?? ""} onChange={(e)=>setManagerId(Number(e.target.value)||null)}>
+    <option value="">선택하세요</option>
+    {managers.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
+  </select>
+)}
+----------------------------------------------------------------
+
+[4] 검증 시나리오 & 성공 기준
+- 시나리오 1: 목록
+  · 관리자 → 접점코드 추가 → “담당 영업과장” 드롭다운에 실제 이름들 표시 ✅
+- 시나리오 2: 생성
+  · 관리자 → 사용자 관리 → 역할 “영업과장” → 생성 → API 200, id 반환 ✅
+  · (sales_managers 존재 시 그 테이블, 없으면 users에 role='sales_manager')
+- 시나리오 3: API
+  · `GET /api/admin/sales-managers` 결과가 빈 배열이 아님 ✅
+
+[5] 배포/롤백
+- `npm run build` → 운영 반영(Publish)
+- 문제 시:
+  · `git checkout -- server/storage.ts server/routes.ts client/src/pages/ContactCodeForm.tsx`

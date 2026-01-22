@@ -1,0 +1,132 @@
+수정 목적(한 줄)
+
+접수 관리 모달 저장 시 날짜 필드 직렬화 오류(빈 값·문자열에 .toISOString() 호출)를 방지하여 정상 저장되도록 복구.
+
+해결할 오류 / 재현 절차(간단)
+
+오류 증상: 접수 관리 > 행 클릭 → 편집 모달 → 저장 → 우하단 토스트: 오류 value.toISOString is not a function
+
+재현: 날짜 입력 없이 저장(또는 날짜를 선택 후 해제) 시 100% 재현
+
+원인: 저장 핸들러에서 value.toISOString()을 직접 호출(값이 ''/string/undefined일 때 런타임 에러)
+
+변경 범위 요약 (최소)
+
+프론트엔드(필수): 접수 관리 모달이 있는 파일 1곳만 수정
+
+저장 시 페이로드 구성 함수에서 안전 직렬화 유틸을 사용(빈 값/null/문자열/dayjs/Date 모두 대응)
+
+UI/레이아웃/스타일/컴포넌트 구조 변경 금지
+
+백엔드: 변경 없음(이미 세션 기반 activated_by/activated_at 자동 저장 적용)
+
+빌드/배포: 기존 파이프라인 그대로
+
+불변 명시: 환경변수/Secrets, DB 스키마, UI/디자인/Tailwind, 라우트 경로 모두 미변경
+
+수정 파일 목록 (최소화)
+
+client/src/pages/<접수 관리 파일>.tsx
+(예: ReceptionManagement.tsx 또는 현재 “접수 관리” 뷰 파일 — 실제 파일명 그대로 사용)
+
+파일별 변경 이유 (1–2줄)
+
+접수 관리 페이지: 저장 시 사용하는 handleSave / buildPayload 내 날짜 필드 직렬화 부분에 가드 추가(비어 있으면 null/빈 문자열, 문자열이면 Date 파싱 후 ISO, dayjs면 .toDate().toISOString()).
+
+예상 변경 내용 (요약 diff)
+
+코드 본문 대신 개념 diff만 제시합니다.
+
+추가(유틸 함수 한 개)
+
+toISOOrNull(value)
+
+null/undefined/'' → null
+
+value instanceof Date → value.toISOString()
+
+typeof value.toDate === 'function'(dayjs 등) → value.toDate().toISOString()
+
+typeof value === 'string' → 유효 파싱 시 new Date(value).toISOString() / 무효면 null
+
+치환(저장 페이로드 구성)
+
+기존: form.startDate.toISOString() → 변경: toISOOrNull(form.startDate)
+
+동일 패턴으로 모든 날짜 필드에 적용:
+
+시작일/종료일, 가입일, 유심비 결제일, 결합 시작일, 희망일, 생년월일, 기타 날짜형 필드
+
+유지
+
+날짜가 null이면 필드를 생략하거나 서버에서 허용하는 빈 값으로 전송(현재 프로토콜 유지)
+
+activated_at은 서버가 자동 세팅(개통/기타완료 전환 시)
+
+핵심 추가/삭제/치환 포인트 (불릿)
+
+추가: 안전 직렬화 유틸 toISOOrNull (파일 내부에 로컬 함수로 추가)
+
+치환: 모든 .toISOString() 직접 호출 → toISOOrNull() 경유
+
+유지: UI/레이아웃/Tailwind/컴포넌트 구조, 라우트, 응답 파싱 로직 그대로
+
+리스크와 회피책
+
+타임존 해석 차이: 문자열 YYYY-MM-DD를 파싱 시 UTC 기준 시차 발생 가능
+
+회피: 로컬 날짜만 있는 문자열은 T00:00:00+09:00(KST)로 보정 후 ISO 변환(유틸 내부 처리)
+
+서버 검증 실패: 필수 날짜를 null로 보내면 400 가능
+
+회피: 기존 필드의 필수/선택 여부 유지. 필수면 저장 전 UI 유효성 검사 그대로.
+
+롤백 계획
+
+대상 파일 1개만 직전 커밋으로 복원 또는 git revert <commit>
+
+재빌드 및 서버 재시작(3분 이내)
+
+검증 시나리오 & 성공 기준
+
+빈 날짜 저장
+
+날짜 비워둔 채 저장
+
+성공: 토스트 에러 없음, Network 200/201, DB 반영(해당 날짜 필드는 NULL/빈값)
+
+문자열 날짜 저장
+
+YYYY-MM-DD 입력/선택 후 저장
+
+성공: Network 본문에 ISO로 전달되거나 서버가 정상 저장(200/201)
+
+dayjs/Date 객체 저장
+
+날짜 피커로 선택 후 저장
+
+성공: 에러 없음, 기대 필드 저장
+
+개통/기타완료 전환
+
+‘대기’→‘개통’ 저장
+
+성공: 서버가 activated_at/activated_by 자동 세팅, “처리자” 컬럼에 이름 표시
+
+운영 서버 동일 검증
+
+mccnetworld.com에서 1~4 반복
+
+성공: 결과 동일, 콘솔/서버 에러 0
+
+추가 확인(개발자 체크리스트)
+
+현재 파일에서 .toISOString( 문자열 전수 검색하여 모두 toISOOrNull 경유로 수정
+
+Network 요청 페이로드에서 날짜 필드 키 목록과 값 타입 점검
+
+응답/토스트 로직 변경 없음 확인
+
+빌드 캐시 제거: rm -rf dist .vite node_modules/.vite && npm run build 후 서버 재시작
+
+브라우저 DevTools Disable cache로 강력 새로고침(Ctrl+F5)

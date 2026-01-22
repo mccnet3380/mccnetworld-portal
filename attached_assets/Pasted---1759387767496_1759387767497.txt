@@ -1,0 +1,126 @@
+✅ 요청 제목
+
+운영/개발 환경 분리 검증 & 운영 코드 최신 반영 요청 (기타완료 옵션 미표시 이슈 포함)
+
+✅ 배경
+
+테스트(개발) 환경에는 “기타완료” 상태가 보이지만, 운영 서버에는 없음 → 운영 코드가 구버전으로 실행 중인 것으로 보입니다.
+
+우리 팀은 운영 DB와 개발 DB를 이미 분리하여 사용합니다. 그럼에도 “공유 DB”라는 답을 받았는데, 이는 실행 중인 서버가 예전 ENV를 사용하거나 DB 연결 문자열이 잘못 로드되어 오판한 것으로 의심됩니다.
+
+✅ 반드시 수행할 작업(두 환경: 운영/개발 각각)
+
+아래 1~4번을 운영, 개발 환경에 동일하게 수행하고 증빙 자료를 회신하세요.
+
+1) 런타임 환경 로그 출력(실행 직후)
+
+서버 시작 시점에 아래 정보가 콘솔에 출력되도록 하고, 로그 캡처본을 보내주세요.
+(비밀번호는 반드시 마스킹)
+
+NODE_ENV, APP_ENV
+
+사용 중인 DATABASE_URL (마스킹, 예: postgresql://user:****@host:5432/dbname)
+
+dotenv 로딩 경로(예: .env.production 또는 .env.development), 또는 ENV 로딩 방식
+
+서버 시작 타임스탬프
+
+예시 로그 포맷(권장)
+
+[BOOT] NODE_ENV=production, APP_ENV=production
+[BOOT] DATABASE_URL=postgresql://neon_user:****@ep-prod-xxx.aws.neon.tech:5432/prod_db
+[BOOT] dotenv file loaded: .env.production
+[BOOT] started at 2025-10-02T04:12:01Z
+
+2) 실제 연결된 DB 확인용 SQL (반드시 “앱이 사용하는 연결”로 수행)
+
+아래 SQL을 두 환경 각각에서 실행 후 텍스트/스크린샷으로 회신하세요.
+
+-- 연결 대상 확인
+SELECT 
+  current_database()   AS db, 
+  current_user         AS "user", 
+  inet_server_addr()   AS host, 
+  inet_server_port()   AS port;
+
+-- 대표 테이블 카운트 비교(예: documents)
+SELECT COUNT(*) AS documents_count FROM documents;
+
+
+기대 결과
+
+운영과 개발의 current_database()/host/port 또는 documents_count가 서로 달라야 합니다.
+
+같다면, 개발 인스턴스가 여전히 운영 DB에 붙은 것이므로 즉시 수정하세요.
+
+3) 운영 코드 최신 반영 & 재시작
+
+운영 서버에 최신 main 브랜치를 반영하고 재빌드/재시작하세요.
+
+수행 명령/프로세스 매니저 로그/커밋 해시(전/후)를 캡처하여 회신
+
+예:
+
+git rev-parse HEAD  # Before
+git pull origin main
+npm ci && npm run build
+<프로세스 재시작 명령: pm2 restart ..., docker compose restart 등>
+git rev-parse HEAD  # After
+
+
+배포 후 운영 UI에서 ‘개통 상태’ 드롭다운에 ‘기타완료’가 실제로 표시되는 스크린샷을 회신(미표시 시, 원인/해결 내역 포함)
+
+4) 캐시/서비스워커 영향 제거 후 UI 검증
+
+브라우저 하드 리프레시(Ctrl/Cmd+Shift+R), PWA/서비스워커가 있으면 Application → Clear storage → Clear site data 수행
+
+운영 URL에서 다음을 캡처/회신
+
+접수관리 → 개통 상태 변경 모달 → 드롭다운에 ‘기타완료’ 보이는 스크린샷
+
+대시보드 → ‘기타 업무 처리건’ 카운트 정상 반영 스크린샷
+
+✅ 수정/운영 가드(필수 준수)
+
+DB 스키마/환경변수 키/스타일/레이아웃은 변경하지 말 것.
+
+개발 DB와 운영 DB는 절대 공유 금지.
+
+개발 환경이 운영 DB로 붙지 않도록, 아래 둘 중 하나를 명확히 적용:
+
+(권장) .env.production / .env.development 분리 + 런타임에서 명시 로드
+
+DATABASE_URL_PROD / DATABASE_URL_DEV 서로 다른 키로 분리하고, 실행 스크립트에서 해당 키만 매핑
+
+적용 후 서버 재시작 필수(이전 ENV 캐싱 방지).
+
+✅ 문제 발생 시 수정 지침
+
+개발 인스턴스가 운영 DB에 붙어있다면:
+
+개발 인스턴스의 DATABASE_URL을 개발 DB URL로 교체
+
+재시작
+
+위 1)~2) 단계 로그/SQL을 다시 캡처해 회신
+
+운영 UI에 ‘기타완료’가 여전히 보이지 않으면:
+
+운영에 배포된 파일에서 상태 상수/드롭다운 렌더링 부분의 **코드 스니펫(파일 경로+커밋 해시)**과
+서버 라우트 허용 상태 배열(예: PATCH /api/documents/:id/activation-status)에 '기타완료' 포함 여부를 캡처해 회신
+
+✅ 최종 산출물(반드시 제출)
+
+운영/개발 각각의 부팅 로그 캡처(ENV/DB 마스킹 포함)
+
+운영/개발 각각의 SQL 결과 캡처/텍스트(현재 DB/host/port, documents_count)
+
+운영 코드 배포 로그(커밋 해시 전/후, 빌드/재시작 명령 및 성공 로그)
+
+운영 UI 스크린샷
+
+접수관리 → 상태 드롭다운에 ‘기타완료’ 표시
+
+대시보드 → 기타 업무 처리건 집계 반영
+
+이 과정에서 변경/수정한 파일 경로와 커밋 해시 목록

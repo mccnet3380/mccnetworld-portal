@@ -1,0 +1,145 @@
+수정 목적(한 줄)
+
+대시보드에 현재 로그인한 관리자(Admin)의 개통 실적(당일/당월)을 별도 카드로 표기.
+
+해결할 오류 / 재현 절차(간단)
+
+현재: 대시보드에 관리자 개통 실적 카드가 없음.
+
+재현: 관리자 로그인 → 대시보드 진입 → “당일 현황”, “당월 개통현황”만 보임(관리자 개인 실적 미표기).
+
+변경 범위 요약
+
+백엔드(추가)
+
+server/storage.ts: getAdminActivationStats(adminId) 메서드 추가
+
+기준 컬럼: activated_at(KST)
+
+상태 필터: activation_status IN ('개통완료','기타완료')
+
+조건: activated_by = :adminId (현재 로그인한 관리자 본인 실적)
+
+집계: 오늘(KST), 당월(KST) 개통 수량
+
+server/routes.ts: GET /api/dashboard/admin-activation-stats 신설
+
+requireAdmin 보호
+
+세션/미들웨어에서 adminId 추출 후 storage 호출
+
+응답: { todayCount: number, monthCount: number }
+
+헤더: Cache-Control: no-store, Vary: Cookie
+
+프론트엔드(추가, 최소)
+
+client/src/pages/Dashboard.tsx
+
+useQuery(['/api/dashboard/admin-activation-stats']) 추가
+
+기존 카드 컴포넌트/클래스 그대로 재사용하여 카드 1개 삽입
+
+노출 조건: 관리자 계정일 때만 렌더(권한 가드, 기존 user.role 사용)
+
+위치: “당월 개통현황”과 “당일 현황” 사이 (레이아웃/그리드 구조는 그대로, 빈 칸에 동일 스타일 카드만 추가)
+
+빌드/배포: 기존 파이프라인 동일
+
+불변: 환경변수/Secrets, DB 스키마, CSS/Tailwind, 공통 컴포넌트 구조
+
+수정 파일 목록 (최소화)
+
+server/storage.ts — getAdminActivationStats(adminId) 추가
+
+server/routes.ts — GET /api/dashboard/admin-activation-stats 추가
+
+client/src/pages/Dashboard.tsx — useQuery + 카드 1개 삽입(권한 조건부 렌더)
+
+파일별 변경 이유 (각 1–2줄)
+
+storage.ts: 관리자 본인 기준의 당일/당월 개통 집계를 KST 경계로 계산(정확한 수치 보장).
+
+routes.ts: 관리자 권한 확인 및 세션 기반 adminId 사용으로 안전하게 데이터 제공, no-store로 실시간 반영.
+
+Dashboard.tsx: 기존 UI 체계 유지하며 카드 1개만 추가(클래스·스타일 재사용, 리액트 쿼리 키 분리).
+
+예상 변경 내용 (요약 diff · 개념)
+
+storage.ts
+
+getAdminActivationStats(adminId)
+
+Today(KST): activated_at ∈ [KST 00:00, 24:00) & activated_by = adminId & status ∈ (...)
+
+Month(KST): date_trunc('month', activated_at AT TIME ZONE 'Asia/Seoul') = current_month & 동일 조건
+
+Drizzle sql 템플릿으로 KST → UTC 경계 변환(기존 대시보드 보정 로직과 동일)
+
+routes.ts
+
+router.get('/api/dashboard/admin-activation-stats', requireAdmin, ...)
+
+컨텍스트: const adminId = (req as any).user?.id || (req.session as any)?.userId;
+
+res.json({ todayCount, monthCount }); + no-store
+
+Dashboard.tsx
+
+const { data } = useQuery({ queryKey: ['/api/dashboard/admin-activation-stats'], ... })
+
+{isAdmin && <Card>관리자 개통 실적 ... data?.todayCount / data?.monthCount</Card>}
+
+기존 카드와 동일한 Tailwind 클래스/레이아웃 적용
+
+핵심 추가/치환 포인트 요약
+
+추가: 신규 API + storage 메서드 + 카드 1개(useQuery)
+
+치환 없음 / 삭제 없음
+
+유지: 기존 모든 UI/응답/쿼리 키와 충돌 없게 독립 키 사용
+
+리스크와 회피책
+
+성능: 관리자 로그인 시 쿼리 1회 추가
+
+완화: 인덱스 활용(activated_at, activated_by, activation_status), KST 경계로 기간 축소
+
+권한: 일반 사용자 접근
+
+완화: requireAdmin + 프론트 조건부 렌더(둘 다 적용)
+
+롤백 계획
+
+server/routes.ts에서 신규 라우트 제거
+
+server/storage.ts의 메서드 제거
+
+Dashboard.tsx 추가 카드 코드 제거
+
+서버 재시작 → 즉시 이전 상태로 복원
+
+검증 시나리오 & 성공 기준
+
+API 동작(관리자)
+
+호출: GET /api/dashboard/admin-activation-stats
+
+성공: 200, { todayCount: N, monthCount: M } 구조, 헤더 Cache-Control: no-store
+
+UI 표시(관리자)
+
+대시보드 카드 위치: “당월 개통현황”과 “당일 현황” 사이
+
+성공: 카드 렌더, N/M 수치 표시(0 가능), 기존 레이아웃·스타일 유지
+
+권한 검증(일반 사용자/근무자)
+
+성공: 카드 미표시, API 접근 시 403
+
+실데이터 반영
+
+관리자 계정이 개통 처리 → 대시보드 새로고침/실시간 업데이트
+
+성공: todayCount/ monthCount가 증가(캐시 없음), 콘솔/서버 에러 0
