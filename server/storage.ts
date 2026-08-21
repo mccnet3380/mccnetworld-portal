@@ -225,7 +225,7 @@ export interface IStorage {
   getContactCodeAutoMatch(dealerName: string, carrier: string): Promise<any | null>;
   createContactCode(code: any): Promise<any>;
   updateContactCode(id: number, data: { code?: string; dealerName?: string; carrier?: string; salesManagerId?: number | null; salesManagerName?: string | null; realSalesPOS?: string | null; realSalesPosCode?: string | null; memo?: string | null; isActive?: boolean; dealerRegistrationId?: number | null }): Promise<any>;
-  upsertContactCode(data: { code: string; dealerName: string; realSalesPOS?: string | null; realSalesPosCode?: string | null; carrier: string; salesManagerName?: string | null; dealerRegistrationId?: number | null; memo?: string | null; isActive?: boolean }): Promise<{ action: 'created' | 'updated'; record: any }>;
+  upsertContactCode(data: { code: string; dealerName: string; realSalesPOS?: string | null; realSalesPosCode?: string | null; carrier: string; salesManagerName?: string | null; dealerRegistrationId?: number | null; memo?: string | null; isActive?: boolean; mCode?: string | null; channel?: string | null; kpNumber?: string | null; regionName?: string | null; aliasName?: string | null; subDealerName?: string | null; sourceDealerName?: string | null; codeName?: string | null }): Promise<{ action: 'created' | 'updated'; record: any }>;
   bulkCreateContactCodes(codes: any[]): Promise<number>;
   deleteContactCode(id: number): Promise<void>;
 
