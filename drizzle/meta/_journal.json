@@ -15,6 +15,20 @@
       "when": 1759392702621,
       "tag": "0001_burly_abomination",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781321694677,
+      "tag": "0002_ordinary_argent",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781337925947,
+      "tag": "0003_romantic_zemo",
+      "breakpoints": true
     }
   ]
 }

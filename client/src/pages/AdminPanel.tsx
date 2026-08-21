@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +24,7 @@ import { Progress } from '@/components/ui/progress';
 import { createUserSchema, createWorkerSchema, updateDocumentStatusSchema, createServicePlanSchema, createCarrierSchema, createAdditionalServiceSchema, createSettlementUnitPriceSchema } from '../../../shared/schema';
 import type { User, Document, ServicePlan, Carrier, AdditionalService, SettlementUnitPrice, Dealer } from '../../../shared/sqlite-schema';
 import { apiRequest } from '@/lib/queryClient';
+import { McodeMasterUploadPanel } from '@/components/admin/mcode/McodeMasterUploadPanel';
 import { 
   Building2, 
   Users, 
@@ -43,10 +46,14 @@ import {
   Image as ImageIcon,
   Info,
   Search,
-  Loader2
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import * as XLSX from 'xlsx';
 
 // 안전한 날짜 포맷팅 유틸리티
 function formatDateSafe(value: any, formatStr: string = 'yyyy-MM-dd', options: any = { locale: ko }): string {
@@ -2472,6 +2479,98 @@ function ExcelUploadForm({
   );
 }
 
+const CONDITION_TYPE_OPTIONS = [
+  { value: 'BUNDLE_EXISTS',        label: '결합 있음 (BUNDLE_EXISTS)' },
+  { value: 'BUNDLE_NONE',          label: '결합 없음 (BUNDLE_NONE)' },
+  { value: 'BUNDLE_MATCH',         label: '결합명 일치 (BUNDLE_MATCH)' },
+  { value: 'ADD_SERVICE_EXISTS',   label: '부가서비스 있음 (ADD_SERVICE_EXISTS)' },
+  { value: 'ADD_SERVICE_NONE',     label: '부가서비스 없음 (ADD_SERVICE_NONE)' },
+  { value: 'ADD_SERVICE_MATCH',    label: '부가서비스 일치 (ADD_SERVICE_MATCH)' },
+  { value: 'ADD_SERVICE_NOT_MATCH', label: '부가서비스 불일치 (ADD_SERVICE_NOT_MATCH)' },
+  { value: 'REGFEE_EXISTS',        label: '가입비 있음 (REGFEE_EXISTS)' },
+  { value: 'REGFEE_NONE',          label: '가입비 없음 (REGFEE_NONE)' },
+  { value: 'REGFEE_MATCH',         label: '가입비 일치 (REGFEE_MATCH)' },
+  { value: 'SIM_COUNT_MATCH',      label: '유심개수 일치 (SIM_COUNT_MATCH)' },
+];
+const NEEDS_CONDITION_VALUE = ['BUNDLE_MATCH','ADD_SERVICE_MATCH','ADD_SERVICE_NOT_MATCH','REGFEE_MATCH','SIM_COUNT_MATCH'];
+
+function ArRuleForm({ form, setForm, carriersData }: { form: any; setForm: any; carriersData: any[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1">
+        <Label className="text-xs">채널 <span className="text-gray-400">(비우면 전체)</span></Label>
+        <Select value={form.channel || '__all__'} onValueChange={v => setForm((p: any) => ({ ...p, channel: v === '__all__' ? '' : v }))}>
+          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="전체 채널" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">전체</SelectItem>
+            {carriersData.filter((c: any) => c.isActive).map((c: any) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">요금제 <span className="text-gray-400">(비우면 전체)</span></Label>
+        <Input className="h-8 text-sm" placeholder="비우면 전체 요금제" value={form.planName} onChange={e => setForm((p: any) => ({ ...p, planName: e.target.value }))} />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">유형 <span className="text-gray-400">(비우면 전체)</span></Label>
+        <Select value={form.customerType || '__all__'} onValueChange={v => setForm((p: any) => ({ ...p, customerType: v === '__all__' ? '' : v }))}>
+          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="전체" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">전체</SelectItem>
+            <SelectItem value="1">1 (신규)</SelectItem>
+            <SelectItem value="2">2 (번이)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">추가/차감 *</Label>
+        <Select value={form.adjustmentType} onValueChange={v => setForm((p: any) => ({ ...p, adjustmentType: v }))}>
+          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ADD">추가 (ADD)</SelectItem>
+            <SelectItem value="DEDUCT">차감 (DEDUCT)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1 col-span-2">
+        <Label className="text-xs">조건 종류 *</Label>
+        <Select value={form.conditionType} onValueChange={v => setForm((p: any) => ({ ...p, conditionType: v, conditionValue: '' }))}>
+          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {CONDITION_TYPE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label || o.value}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      {NEEDS_CONDITION_VALUE.includes(form.conditionType) && (
+        <div className="space-y-1 col-span-2">
+          <Label className="text-xs">조건값 * <span className="text-gray-400">(이 조건 종류는 필수)</span></Label>
+          <Input className="h-8 text-sm" placeholder="예: 캐치콜+" value={form.conditionValue} onChange={e => setForm((p: any) => ({ ...p, conditionValue: e.target.value }))} />
+        </div>
+      )}
+      <div className="space-y-1 col-span-2">
+        <Label className="text-xs">금액 * <span className="text-gray-400">(양수만 허용)</span></Label>
+        <Input className="h-8 text-sm" placeholder="예: 5,000" value={form.amount} onChange={e => setForm((p: any) => ({ ...p, amount: e.target.value }))} />
+      </div>
+      <div className="space-y-1 col-span-2">
+        <Label className="text-xs">메모</Label>
+        <Input className="h-8 text-sm" value={form.memo} onChange={e => setForm((p: any) => ({ ...p, memo: e.target.value }))} />
+      </div>
+    </div>
+  );
+}
+
+// 정산지급처명/실판매점명에서 "원)", "준)", "우)", "웅)", "구)", "협)", "협력)" 등 업무용 접두어 제거 후 trim
+function normalizeDealerName(name: string): string {
+  if (!name) return '';
+  // 괄호 접두어 제거: 한글/영문 + ")" 패턴
+  return name.replace(/^[^)]*\)\s*/, '').trim();
+}
+
+// 두 명칭이 정규화 후 동일한지 비교 (본점 판단용)
+function isSameStoreName(a: string, b: string): boolean {
+  return normalizeDealerName(a) === normalizeDealerName(b);
+}
+
 export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const { user } = useAuth();
   const apiRequest = useApiRequest();
@@ -2481,6 +2580,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   // URL에서 탭 결정
   const currentPath = window.location.pathname;
   const actualDefaultTab = currentPath === '/admin/other-business-carriers' ? 'other-business-carriers' : (defaultTab || 'contact-codes');
+  const [activeTab, setActiveTab] = useState(actualDefaultTab);
 
   // Admin-only access check
   if (user?.userType !== 'admin') {
@@ -2534,12 +2634,32 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const [settlementSearchTerm, setSettlementSearchTerm] = useState('');
   const [settlementCarrierFilter, setSettlementCarrierFilter] = useState('all');
   
+  // 접점코드 수정 다이얼로그 상태
+  const [ccEditDialogOpen, setCcEditDialogOpen] = useState(false);
+  const [editingCC, setEditingCC] = useState<any>(null);
+  const [ccEditForm, setCcEditForm] = useState({
+    code: '',
+    dealerRegistrationId: null as number | null,
+    dealerName: '',
+    realSalesPOS: '',
+    realSalesPosCode: '',
+    carrier: '',
+    salesManagerName: '',
+    memo: '',
+    isActive: true,
+  });
+
   // 접점코드 관리 상태
   const [newContactCode, setNewContactCode] = useState('');
+  const [newDealerRegistrationId, setNewDealerRegistrationId] = useState<number | null>(null);
   const [newDealerName, setNewDealerName] = useState('');
+  const [ccAddDealerOpen, setCcAddDealerOpen] = useState(false);
+  const [ccEditDealerOpen, setCcEditDealerOpen] = useState(false);
   const [newRealSalesPOS, setNewRealSalesPOS] = useState('');
+  const [newRealSalesPosCode, setNewRealSalesPosCode] = useState('');
   const [newCarrier, setNewCarrier] = useState('');
   const [newSalesManagerName, setNewSalesManagerName] = useState('');
+  const [newMemo, setNewMemo] = useState('');
   
   // 접점코드 검색 상태 (접수 신청 페이지와 동일한 방식)
   const [contactCodeSearchTerm, setContactCodeSearchTerm] = useState('');
@@ -2548,7 +2668,12 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   
   // 접점코드 검색 및 필터링
   const [contactCodeSearch, setContactCodeSearch] = useState('');
+  const [debouncedCcSearch, setDebouncedCcSearch] = useState('');
   const [contactCodeCarrierFilter, setContactCodeCarrierFilter] = useState('all');
+  const [ccPage, setCcPage] = useState(1);
+  const [ccGroupView, setCcGroupView] = useState(true);
+  const [expandedDealerGroups, setExpandedDealerGroups] = useState<Set<string>>(new Set());
+  const [docsPage, setDocsPage] = useState(1);
   const [selectedContactCodes, setSelectedContactCodes] = useState<number[]>([]);
   const [selectAllContactCodes, setSelectAllContactCodes] = useState(false);
   const [forceUpdateContactCodes, setForceUpdateContactCodes] = useState(false);
@@ -2568,6 +2693,25 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     businessRequestPoint: '',
     memo: ''
   });
+
+  // 판매점 원장 관련 상태
+  const [drDialogOpen, setDrDialogOpen] = useState(false);
+  const [drEditDialogOpen, setDrEditDialogOpen] = useState(false);
+  const [drEditTarget, setDrEditTarget] = useState<any>(null);
+  const [drSearch, setDrSearch] = useState('');
+  const [drHiddenFilter, setDrHiddenFilter] = useState<'all' | 'hidden' | 'normal'>('all');
+  const [drActiveFilter, setDrActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [drForm, setDrForm] = useState({
+    businessName: '', representativeName: '', businessNumber: '',
+    contactPhone: '', address: '',
+    bankAccount: '', bankName: '', accountHolder: '',
+    username: '', password: '',
+    isHiddenPos: false, isContactPolicyPos: false, isActive: true, status: '승인',
+  });
+  const [drUploadDialogOpen, setDrUploadDialogOpen] = useState(false);
+  const [drUploadResult, setDrUploadResult] = useState<{ totalRows: number; created: number; skipped: number; errors: string[] } | null>(null);
+  const [drUploading, setDrUploading] = useState(false);
+  const drFileInputRef = useRef<HTMLInputElement>(null);
 
   // 기타업무통신사 엑셀 관련 ref
   const otherBusinessCarrierExcelInputRef = useRef<HTMLInputElement>(null);
@@ -2702,7 +2846,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       name: z.string().min(1, '판매점명은 필수입니다'),
       username: z.string().min(1, '아이디는 필수입니다'),
       password: z.string().min(6, '비밀번호는 최소 6자 이상이어야 합니다'),
-      contactEmail: z.string().email('올바른 이메일 형식이 아닙니다').optional().or(z.literal('')),
       contactPhone: z.string().optional(),
       location: z.string().optional(),
       carrierCodes: z.record(z.string()),
@@ -2711,7 +2854,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       name: '',
       username: '',
       password: '',
-      contactEmail: '',
       contactPhone: '',
       location: '',
       carrierCodes: {},
@@ -2761,7 +2903,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       name: z.string().min(1, '판매점명은 필수입니다'),
       username: z.string().min(1, '아이디는 필수입니다'),
       password: z.string().optional(),
-      contactEmail: z.string().email('올바른 이메일 형식이 아닙니다').optional().or(z.literal('')),
       contactPhone: z.string().optional(),
       location: z.string().optional(),
       carrierCodes: z.record(z.string()),
@@ -2770,7 +2911,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       name: '',
       username: '',
       password: '',
-      contactEmail: '',
       contactPhone: '',
       location: '',
       carrierCodes: {},
@@ -2810,7 +2950,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     
     const updateData: Partial<CreateDealerForm> = {
       name: data.name,
-      contactEmail: data.contactEmail,
       contactPhone: data.contactPhone,
       location: data.location,
     };
@@ -2900,6 +3039,78 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
 
   const handleCreateDealer = (data: CreateDealerForm) => {
     createDealerMutation.mutate(data);
+  };
+
+  // ── 판매점 원장 query / mutations ─────────────────────────────────────────
+  const { data: dealerRegistrationList = [], refetch: refetchDr } = useQuery<any[]>({
+    queryKey: ['/api/admin/dealer-registrations', drSearch, drHiddenFilter, drActiveFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (drSearch) params.set('search', drSearch);
+      if (drHiddenFilter === 'hidden') params.set('isHiddenPos', 'true');
+      if (drHiddenFilter === 'normal') params.set('isHiddenPos', 'false');
+      if (drActiveFilter === 'all') params.set('includeInactive', 'true');
+      if (drActiveFilter === 'inactive') params.set('isActive', 'false');
+      // drActiveFilter === 'active' → 파라미터 없음 (서버 기본값: active only)
+      return apiRequest(`/api/admin/dealer-registrations?${params.toString()}`);
+    },
+  });
+
+  const createDrMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/admin/dealer-registrations', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      toast({ title: '판매점 원장 등록 완료' });
+      setDrDialogOpen(false);
+      setDrForm({ businessName: '', representativeName: '', businessNumber: '', contactPhone: '', address: '', bankAccount: '', bankName: '', accountHolder: '', username: '', password: '', isHiddenPos: false, isContactPolicyPos: false, isActive: true, status: '승인' });
+      refetchDr();
+    },
+    onError: (e: any) => toast({ title: '등록 실패', description: e.message, variant: 'destructive' }),
+  });
+
+  const updateDrMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest(`/api/admin/dealer-registrations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      toast({ title: '판매점 원장 수정 완료' });
+      setDrEditDialogOpen(false);
+      setDrEditTarget(null);
+      refetchDr();
+    },
+    onError: (e: any) => toast({ title: '수정 실패', description: e.message, variant: 'destructive' }),
+  });
+
+  const deleteDrMutation = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/admin/dealer-registrations/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast({ title: '판매점 원장 비활성화 완료' });
+      refetchDr();
+    },
+    onError: (e: any) => toast({ title: '삭제 실패', description: e.message, variant: 'destructive' }),
+  });
+
+  const handleDrExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setDrUploading(true);
+    setDrUploadResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const sessionId = useAuth.getState().sessionId;
+      const resp = await fetch('/api/admin/dealer-registrations/upload-excel', {
+        method: 'POST',
+        headers: sessionId ? { Authorization: `Bearer ${sessionId}` } : {},
+        body: formData,
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || '업로드 실패');
+      setDrUploadResult(result);
+      if (result.created > 0) refetchDr();
+    } catch (err: any) {
+      toast({ title: '업로드 실패', description: err.message, variant: 'destructive' });
+    } finally {
+      setDrUploading(false);
+      if (drFileInputRef.current) drFileInputRef.current.value = '';
+    }
   };
 
   // 기타업무통신사 CRUD 함수들
@@ -3120,6 +3331,89 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const settlementPricingExcelInputRef = useRef<HTMLInputElement>(null);
   const [settlementPricingFile, setSettlementPricingFile] = useState<File | null>(null);
 
+  // ── STEP 5D-6: 정산 결과 관리 상태 ──────────────────────────
+  const [siFilterStatus, setSiFilterStatus] = useState('');
+  const [siFilterMatchStatus, setSiFilterMatchStatus] = useState('');
+  const [siFilterFrom, setSiFilterFrom] = useState('');
+  const [siFilterTo, setSiFilterTo] = useState('');
+  const [siPage, setSiPage] = useState(1);
+  const [siLimit, setSiLimit] = useState(100);
+  const [siEditDialogOpen, setSiEditDialogOpen] = useState(false);
+  const [siEditTarget, setSiEditTarget] = useState<any>(null);
+  const [siEditForm, setSiEditForm] = useState({
+    adjustedAmount: '',
+    addAmount: '',
+    deductAmount: '',
+    hiddenAmount: '',
+    status: '',
+    memo: '',
+    forcePolicyVersionId: '',
+    forceReason: '',
+  });
+  const siActivationUploadRef = useRef<HTMLInputElement>(null);
+  const [siActivationUploading, setSiActivationUploading] = useState(false);
+  const [siExportLoading, setSiExportLoading] = useState(false);
+  const [siExpandedDealers, setSiExpandedDealers] = useState<Set<string>>(new Set());
+
+  // ── STEP 5D-7: 정책 차수 관리 상태 ──────────────────────────
+  const [pvSelectedId, setPvSelectedId] = useState<number | null>(null);
+  const [pvCreateOpen, setPvCreateOpen] = useState(false);
+  const [pvEditOpen, setPvEditOpen] = useState(false);
+  const [pvEditTarget, setPvEditTarget] = useState<any>(null);
+  const [pvForm, setPvForm] = useState({ policyNo: '', policyName: '', effectiveFrom: '', effectiveTo: '', memo: '' });
+  const [prCreateOpen, setPrCreateOpen] = useState(false);
+  const [prForm, setPrForm] = useState({ channel: '', planName: '', customerType: '1', simCount: '', bundleType: '', addService: '', regFeeType: '', rebateAmount: '', memo: '' });
+  const [prEditOpen, setPrEditOpen] = useState(false);
+  const [prEditTarget, setPrEditTarget] = useState<any>(null);
+  const [prEditForm, setPrEditForm] = useState({ channel: '', planName: '', customerType: '1', nationalityType: '', simCount: '', bundleType: '', addService: '', regFeeType: '', rebateAmount: '', memo: '', isActive: true });
+  // 단가 행 필터
+  const [prFilterChannel, setPrFilterChannel] = useState('');
+  const [prFilterPlan, setPrFilterPlan] = useState('');
+  const [prFilterNat, setPrFilterNat] = useState('all');
+  const [prFilterType, setPrFilterType] = useState('all');
+  const [prFilterActive, setPrFilterActive] = useState('active');
+  // adjustment_rules
+  const [arCreateOpen, setArCreateOpen] = useState(false);
+  const [arEditOpen, setArEditOpen] = useState(false);
+  const [arEditTarget, setArEditTarget] = useState<any>(null);
+  const arFormDefault = { channel: '', planName: '', customerType: '', conditionType: 'BUNDLE_EXISTS', conditionValue: '', adjustmentType: 'ADD', amount: '', isActive: true, memo: '' };
+  const [arForm, setArForm] = useState(arFormDefault);
+  const [arEditForm, setArEditForm] = useState(arFormDefault);
+  // hidden_policy_rows
+  const [hpCreateOpen, setHpCreateOpen] = useState(false);
+  const [hpEditOpen, setHpEditOpen] = useState(false);
+  const [hpEditTarget, setHpEditTarget] = useState<any>(null);
+  const hpFormDefault = { dealerRegistrationId: '', contactCode: '', channel: '', planName: '', customerType: '', hiddenAmount: '', effectiveFrom: '', effectiveTo: '', isActive: true, memo: '' };
+  const [hpForm, setHpForm] = useState(hpFormDefault);
+  const [hpEditForm, setHpEditForm] = useState(hpFormDefault);
+  // 히든정책 다이얼로그용 접점코드 목록
+  const [hpDialogCCList, setHpDialogCCList] = useState<any[]>([]);
+  const loadHpDialogCCList = async (dealerRegistrationId: string) => {
+    if (!dealerRegistrationId) { setHpDialogCCList([]); return; }
+    try {
+      const result: any = await apiRequest(`/api/contact-codes?dealerRegistrationId=${dealerRegistrationId}&includeRealSalesPOSMatch=true`);
+      setHpDialogCCList(Array.isArray(result) ? result : (result?.data ?? []));
+    } catch { setHpDialogCCList([]); }
+  };
+  // 히든금액 재계산
+  const [hpRecalcOpen, setHpRecalcOpen] = useState(false);
+  const [hpRecalcFrom, setHpRecalcFrom] = useState('');
+  const [hpRecalcTo, setHpRecalcTo] = useState('');
+  const [hpRecalcResult, setHpRecalcResult] = useState<any>(null);
+  const [hpRecalcRunning, setHpRecalcRunning] = useState(false);
+  const [hpRecalcDebugCC, setHpRecalcDebugCC] = useState('');
+  const SI_COL_DEFAULTS = [130,130,110,130,140,120,120,110,260,80,120,120,100,110,100,100,120,110,110,110,100,120];
+  const [siColWidths, setSiColWidths] = useState<number[]>(() => {
+    try { const s = localStorage.getItem('mcc-si-col-v3'); if (s) { const p = JSON.parse(s); if (Array.isArray(p) && p.length === 22) return p; } } catch {}
+    return SI_COL_DEFAULTS;
+  });
+  const [peOpen, setPeOpen] = useState(false);
+  const [peFile, setPeFile] = useState<File | null>(null);
+  const [pePvId, setPePvId] = useState<string>('__auto__');
+  const [peUploading, setPeUploading] = useState(false);
+  const [peResult, setPeResult] = useState<any>(null);
+  const peFileRef = useRef<HTMLInputElement>(null);
+
   // Queries
   const { data: dealers, isLoading: dealersLoading } = useQuery({
     queryKey: ['/api/admin/dealers'],
@@ -3138,6 +3432,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['/api/admin/users'],
     queryFn: () => apiRequest('/api/admin/users') as Promise<Array<User & { dealerName: string; userType: string; displayName: string; affiliation: string; accountType: string }>>,
+  });
+
+  // 접점코드 등록 팝업용 판매점 원장 목록 (MCC 선택 드롭다운)
+  const { data: dealerListForCC = [] } = useQuery<any[]>({
+    queryKey: ['/api/admin/dealer-registrations-for-cc'],
+    queryFn: () => apiRequest('/api/admin/dealer-registrations'),
+    staleTime: 60_000,
   });
 
   // 통신사 데이터 조회 (서비스 플랜 관리용)
@@ -3190,10 +3491,14 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     }))
   ];
 
-  const { data: documents, isLoading: documentsLoading } = useQuery({
-    queryKey: ['/api/documents'],
-    queryFn: () => apiRequest('/api/documents?includeActivatedBy=true') as Promise<Array<Document & { dealerName: string; userName: string; activatedByName?: string }>>,
+  const { data: documentsResult, isLoading: documentsLoading } = useQuery({
+    queryKey: ['/api/documents', docsPage],
+    queryFn: () => apiRequest(`/api/documents?includeActivatedBy=true&page=${docsPage}&limit=50`),
+    enabled: activeTab === 'documents',
   });
+  const documents: Array<Document & { dealerName: string; userName: string; activatedByName?: string }> = documentsResult?.data ?? [];
+  const docsTotalPages: number = documentsResult?.totalPages ?? 1;
+  const docsTotal: number = documentsResult?.total ?? 0;
 
 
 
@@ -3207,6 +3512,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       category: string;
       uploadedAt: Date;
     }>>,
+    enabled: activeTab === 'templates',
   });
 
   const { data: workerStats, isLoading: workerStatsLoading } = useQuery({
@@ -3217,6 +3523,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       monthlyActivations: number;
       dealerId: number;
     }>>,
+    enabled: activeTab === 'workers',
   });
 
   const { data: servicePlans, isLoading: servicePlansLoading } = useQuery({
@@ -3227,33 +3534,363 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const { data: additionalServices, isLoading: additionalServicesLoading } = useQuery({
     queryKey: ['/api/admin/additional-services'],
     queryFn: () => apiRequest('/api/admin/additional-services') as Promise<AdditionalService[]>,
+    enabled: activeTab === 'service-plans',
   });
 
-  // Contact Codes Query
-  const { data: contactCodes, isLoading: contactCodesLoading } = useQuery({
-    queryKey: ['/api/contact-codes'],
-    queryFn: () => apiRequest('/api/contact-codes') as Promise<ContactCode[]>,
+  // Contact Codes Query (서버 페이지네이션)
+  const { data: contactCodesResult, isLoading: contactCodesLoading } = useQuery({
+    queryKey: ['/api/contact-codes', ccPage, debouncedCcSearch, contactCodeCarrierFilter],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(ccPage), limit: '50' });
+      if (debouncedCcSearch) params.set('search', debouncedCcSearch);
+      if (contactCodeCarrierFilter && contactCodeCarrierFilter !== 'all') params.set('carrier', contactCodeCarrierFilter);
+      return apiRequest(`/api/contact-codes?${params.toString()}`);
+    },
+    enabled: activeTab === 'contact-codes',
   });
+  const contactCodes: ContactCode[] = contactCodesResult?.data ?? [];
+  const ccTotalPages: number = contactCodesResult?.totalPages ?? 1;
+  const ccTotal: number = contactCodesResult?.total ?? 0;
 
-  // Sales Managers Query for contact code assignment
-  const { data: salesManagersList } = useQuery({
-    queryKey: ['/api/admin/sales-managers'],
-    queryFn: () => apiRequest('/api/admin/sales-managers'),
+  // 그룹 보기용 전체 접점코드 쿼리 (페이지네이션 없음)
+  const { data: allCCsResult, isLoading: allCCsLoading } = useQuery({
+    queryKey: ['/api/contact-codes', 'all', debouncedCcSearch, contactCodeCarrierFilter],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '1000' });
+      if (debouncedCcSearch) params.set('search', debouncedCcSearch);
+      if (contactCodeCarrierFilter && contactCodeCarrierFilter !== 'all') params.set('carrier', contactCodeCarrierFilter);
+      return apiRequest(`/api/contact-codes?${params.toString()}`);
+    },
+    enabled: activeTab === 'contact-codes' && ccGroupView,
+    staleTime: 30000,
   });
+  const allCCs: any[] = Array.isArray(allCCsResult) ? allCCsResult : (allCCsResult?.data ?? []);
 
-  // Carriers Query for contact code form
-  const { data: carriersList = [] } = useQuery({
-    queryKey: ['/api/carriers'],
-    queryFn: () => apiRequest('/api/carriers'),
-  });
+  // 중복 쿼리 제거: salesManagersList(미사용), carriersList는 carriersData로 통합됨
 
   // Settlement unit pricing queries
   const { data: settlementPrices, isLoading: settlementPricesLoading } = useQuery({
     queryKey: ['/api/admin/settlement-unit-prices'],
     queryFn: () => apiRequest('/api/admin/settlement-unit-prices') as Promise<SettlementUnitPrice[]>,
+    enabled: activeTab === 'pricing' || activeTab === 'service-plans',
   });
 
+  // ── STEP 5D-6: 정산 결과 쿼리 ─────────────────────────────────
+  const siQueryParams = new URLSearchParams();
+  if (siFilterStatus)      siQueryParams.set('status', siFilterStatus);
+  if (siFilterMatchStatus) siQueryParams.set('matchStatus', siFilterMatchStatus);
+  if (siFilterFrom)        siQueryParams.set('from', siFilterFrom);
+  if (siFilterTo)          siQueryParams.set('to', siFilterTo);
+  siQueryParams.set('page', String(siPage));
+  siQueryParams.set('limit', String(siLimit));
 
+  const { data: siData, isLoading: siLoading, refetch: siRefetch } = useQuery({
+    queryKey: ['/api/admin/settlement/items', siFilterStatus, siFilterMatchStatus, siFilterFrom, siFilterTo, siPage, siLimit],
+    queryFn: () => apiRequest(`/api/admin/settlement/items?${siQueryParams.toString()}`) as Promise<{ data: any[]; page: number; limit: number; summary: { total: number; autoMatch: number; reviewRequired: number; policyNotFound: number; settlementDone: number }; groups: Array<{ dealerName: string; total: number; autoMatch: number; reviewRequired: number; policyNotFound: number; settlementDone: number; sumPolicy: number; sumAdjusted: number; sumConfirmed: number; items: any[] }>; totalGroups: number }>,
+    enabled: activeTab === 'settlement-results',
+  });
+
+  const siMatchMutation = useMutation({
+    mutationFn: () => apiRequest('/api/admin/settlement/match', { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
+      toast({ title: '매칭 완료', description: `생성: ${res.created}건 (AUTO: ${res.autoMatch}, 검토: ${res.reviewRequired}, 미매칭: ${res.policyNotFound})` });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const siRematchMutation = useMutation({
+    mutationFn: () => apiRequest('/api/admin/settlement/rematch', { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
+      toast({ title: '재매칭 완료', description: `대상: ${res.total}건 → 매칭: ${res.updated}건 (AUTO: ${res.autoMatch}, 검토: ${res.reviewRequired}), 미매칭: ${res.stillNotFound}건` });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const siUpdateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest(`/api/admin/settlement/items/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
+      setSiEditDialogOpen(false);
+      toast({ title: '수정 완료' });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const siLockMutation = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/admin/settlement/items/${id}/lock`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
+      setSiEditDialogOpen(false);
+      toast({ title: '정산 확정 완료' });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const handleActivationUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSiActivationUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const sessionId = useAuth.getState().sessionId;
+      const resp = await fetch('/api/admin/activations/upload', {
+        method: 'POST',
+        headers: sessionId ? { Authorization: `Bearer ${sessionId}` } : {},
+        body: formData,
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || '업로드 실패');
+      const errPreview = result.errors?.slice(0, 2).join(' / ') ?? '';
+      toast({
+        title: result.created > 0 ? '개통 업로드 완료' : '개통 업로드 — 저장 0건',
+        description: `총 ${result.totalRows}행 | 저장 ${result.created}건 | 건너뜀 ${result.skipped}건${result.warnings?.length ? ` | 경고 ${result.warnings.length}건` : ''}${result.errors?.length ? ` | 오류 ${result.errors.length}건` : ''}${errPreview ? `\n예시: ${errPreview}` : ''}`,
+        variant: result.created === 0 && result.errors?.length > 0 ? 'destructive' : 'default',
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
+    } catch (err: any) {
+      toast({ title: '업로드 실패', description: err.message, variant: 'destructive' });
+    } finally {
+      setSiActivationUploading(false);
+      if (siActivationUploadRef.current) siActivationUploadRef.current.value = '';
+    }
+  };
+
+  const handleDownloadActivationTemplate = () => {
+    const headers = ['작업자','메모','접수일','개통일','요청점','고객명','개통번호','코드','접점코드','M코드','판매점명','코드명','유형','요금제','결합','부가','모델명','일련번호','가입번호','상담메모','작업일','출금등록','중복값','서식지','고객유형'];
+    const exampleRow = ['K)담당자','테스트','2026-06-13','2026-06-13','후불)엠모바일','홍길동','ACT001','','K엠12345','MCC001','누리','누리코드명','신규','엠)M 스페셜 7GB 플러스','아무나결합','캐치콜+','갤럭시S24','SN0001234','SUB001','','2026-06-13','','','','내국인'];
+    const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '개통업로드');
+    XLSX.writeFile(wb, '개통업로드_양식.xlsx');
+  };
+
+  const handleSettlementExport = async () => {
+    setSiExportLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (siFilterStatus)      params.set('status', siFilterStatus);
+      if (siFilterMatchStatus) params.set('matchStatus', siFilterMatchStatus);
+      if (siFilterFrom)        params.set('from', siFilterFrom);
+      if (siFilterTo)          params.set('to', siFilterTo);
+      const sessionId = useAuth.getState().sessionId;
+      const resp = await fetch(`/api/admin/settlement/export?${params.toString()}`, {
+        method: 'GET',
+        headers: sessionId ? { Authorization: `Bearer ${sessionId}` } : {},
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: '다운로드 실패' }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `정산결과_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      toast({ title: '다운로드 실패', description: err.message, variant: 'destructive' });
+    } finally {
+      setSiExportLoading(false);
+    }
+  };
+
+  // ── STEP 5D-7: 정책 차수 쿼리 & mutations ───────────────────
+  const { data: policyVersions, isLoading: pvLoading, refetch: pvRefetch } = useQuery({
+    queryKey: ['/api/admin/policies'],
+    queryFn: () => apiRequest('/api/admin/policies') as Promise<any[]>,
+    enabled: activeTab === 'policy-versions',
+  });
+
+  const { data: policyRowsData, refetch: prRefetch } = useQuery({
+    queryKey: ['/api/admin/policies', pvSelectedId, 'rows'],
+    queryFn: () => apiRequest(`/api/admin/policies/${pvSelectedId}/rows`) as Promise<any[]>,
+    enabled: activeTab === 'policy-versions' && pvSelectedId !== null,
+  });
+
+  const pvCreateMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/admin/policies', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies'] });
+      setPvCreateOpen(false);
+      setPvForm({ policyNo: '', policyName: '', effectiveFrom: '', effectiveTo: '', memo: '' });
+      toast({ title: '정책 차수 생성 완료' });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const pvUpdateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest(`/api/admin/policies/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies'] });
+      setPvEditOpen(false);
+      toast({ title: '정책 차수 수정 완료' });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const pvDeactivateMutation = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/admin/policies/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies'] });
+      toast({ title: '정책 차수 비활성화 완료' });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const prCreateMutation = useMutation({
+    mutationFn: (data: any) =>
+      apiRequest(`/api/admin/policies/${pvSelectedId}/rows`, { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies', pvSelectedId, 'rows'] });
+      setPrCreateOpen(false);
+      setPrForm({ channel: '', planName: '', customerType: '1', simCount: '', bundleType: '', addService: '', regFeeType: '', rebateAmount: '', memo: '' });
+      toast({ title: '단가 행 추가 완료' });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const prDeactivateMutation = useMutation({
+    mutationFn: (rowId: number) =>
+      apiRequest(`/api/admin/policies/${pvSelectedId}/rows/${rowId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies', pvSelectedId, 'rows'] });
+      toast({ title: '단가 행 비활성화 완료' });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const prUpdateMutation = useMutation({
+    mutationFn: ({ rowId, data }: { rowId: number; data: any }) =>
+      apiRequest(`/api/admin/policies/${pvSelectedId}/rows/${rowId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies', pvSelectedId, 'rows'] });
+      setPrEditOpen(false);
+      setPrEditTarget(null);
+      toast({ title: '단가 행 수정 완료' });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const { data: arData, refetch: arRefetch } = useQuery({
+    queryKey: ['/api/admin/policies', pvSelectedId, 'adjustment-rules'],
+    queryFn: () => pvSelectedId ? apiRequest(`/api/admin/policies/${pvSelectedId}/adjustment-rules`) as Promise<any[]> : Promise.resolve([]),
+    enabled: !!pvSelectedId,
+  });
+
+  const arCreateMutation = useMutation({
+    mutationFn: (data: any) => apiRequest(`/api/admin/policies/${pvSelectedId}/adjustment-rules`, { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['/api/admin/policies', pvSelectedId, 'adjustment-rules'] }); setArCreateOpen(false); setArForm(arFormDefault); toast({ title: '규칙 등록 완료' }); },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const arUpdateMutation = useMutation({
+    mutationFn: ({ ruleId, data }: { ruleId: number; data: any }) =>
+      apiRequest(`/api/admin/policies/${pvSelectedId}/adjustment-rules/${ruleId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['/api/admin/policies', pvSelectedId, 'adjustment-rules'] }); setArEditOpen(false); setArEditTarget(null); toast({ title: '규칙 수정 완료' }); },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const arDeactivateMutation = useMutation({
+    mutationFn: (ruleId: number) => apiRequest(`/api/admin/policies/${pvSelectedId}/adjustment-rules/${ruleId}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['/api/admin/policies', pvSelectedId, 'adjustment-rules'] }); toast({ title: '규칙 비활성화 완료' }); },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const { data: hpData, refetch: hpRefetch } = useQuery({
+    queryKey: ['/api/admin/hidden-policy-rows'],
+    queryFn: () => apiRequest('/api/admin/hidden-policy-rows') as Promise<any[]>,
+  });
+
+  const hpCreateMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/admin/hidden-policy-rows', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['/api/admin/hidden-policy-rows'] }); setHpCreateOpen(false); setHpForm(hpFormDefault); toast({ title: '히든정책 등록 완료' }); },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const hpUpdateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest(`/api/admin/hidden-policy-rows/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['/api/admin/hidden-policy-rows'] }); setHpEditOpen(false); setHpEditTarget(null); toast({ title: '히든정책 수정 완료' }); },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const hpDeactivateMutation = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/admin/hidden-policy-rows/${id}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['/api/admin/hidden-policy-rows'] }); toast({ title: '히든정책 비활성화 완료' }); },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  const handleHpRecalc = async (dryRun: boolean) => {
+    setHpRecalcRunning(true);
+    setHpRecalcResult(null);
+    try {
+      const body: any = { onlyUnsettled: true, dryRun };
+      if (hpRecalcFrom) body.dateFrom = hpRecalcFrom;
+      if (hpRecalcTo)   body.dateTo   = hpRecalcTo;
+      if (hpRecalcDebugCC.trim()) body.debugContactCode = hpRecalcDebugCC.trim();
+      const result = await apiRequest('/api/admin/settlement/recalculate-hidden-amounts', { method: 'POST', body: JSON.stringify(body) }) as any;
+      setHpRecalcResult({ ...result, dryRun });
+      if (!dryRun) {
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
+      }
+    } catch (e: any) {
+      toast({ title: '재계산 오류', description: e.message, variant: 'destructive' });
+    } finally {
+      setHpRecalcRunning(false);
+    }
+  };
+
+  const handleSiColResize = (colIdx: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = siColWidths[colIdx];
+    const onMove = (me: MouseEvent) => {
+      setSiColWidths(prev => { const n = [...prev]; n[colIdx] = Math.max(40, startW + me.clientX - startX); return n; });
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setSiColWidths(prev => { try { localStorage.setItem('mcc-si-col-v3', JSON.stringify(prev)); } catch {} return prev; });
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const handlePeUpload = async () => {
+    if (!peFile) { toast({ title: '오류', description: '파일을 선택하세요.', variant: 'destructive' }); return; }
+    setPeUploading(true);
+    setPeResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', peFile);
+      if (pePvId && pePvId !== '__auto__') formData.append('policyVersionId', pePvId);
+      const sessionId = useAuth.getState().sessionId;
+      const resp = await fetch('/api/admin/policies/upload-excel', {
+        method: 'POST',
+        headers: sessionId ? { Authorization: `Bearer ${sessionId}` } : {},
+        body: formData,
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || '업로드 실패');
+      setPeResult(result);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies'] });
+      if (result.versionId) {
+        setPvSelectedId(result.versionId);
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/policies', result.versionId, 'rows'] });
+      }
+    } catch (err: any) {
+      toast({ title: '업로드 실패', description: err.message, variant: 'destructive' });
+    } finally {
+      setPeUploading(false);
+    }
+  };
 
   // Forms
   const userForm = useForm<CreateUserForm>({
@@ -3326,6 +3963,15 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
 
     return () => clearTimeout(timer);
   }, [workerUsername, apiRequest]);
+
+  // 접점코드 검색 디바운스 (300ms) + 페이지 초기화
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCcSearch(contactCodeSearch);
+      setCcPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [contactCodeSearch]);
 
   const editUserForm = useForm<EditUserForm>({
     resolver: zodResolver(
@@ -3963,15 +4609,25 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/contact-codes'] });
-      
-      let description = `${data.processed || 0}개의 접점코드가 성공적으로 추가되었습니다.`;
-      if (data.duplicatesSkipped > 0) {
-        description += ` (${data.duplicatesSkipped}개 중복건 제외)`;
+
+      let description = `신규 ${data.created ?? 0}건, 수정 ${data.updated ?? 0}건`;
+      if (data.dealerMatchSuccess != null || data.dealerMatchFailed != null) {
+        description += `\n판매점 매칭: 성공 ${data.dealerMatchSuccess ?? 0}건, 실패 ${data.dealerMatchFailed ?? 0}건`;
+      }
+      if (data.realSalesPOSMatchSuccess != null || data.realSalesPOSUnregistered != null) {
+        description += `\n실제판매점 원장 매칭: ${data.realSalesPOSMatchSuccess ?? 0}건 ✓, 미등록 ${data.realSalesPOSUnregistered ?? 0}건`;
+      }
+      if ((data.skipped ?? 0) > 0) {
+        description += `\n실패: ${data.skipped}건`;
+      }
+      if (data.warnings && data.warnings.length > 0) {
+        description += `\n경고 ${data.warnings.length}건`;
       }
       if (data.errors && data.errors.length > 0) {
-        description += `\n\n오류가 발생한 행:\n${data.errors.join('\n')}`;
+        description += `\n\n오류 상세:\n${data.errors.slice(0, 5).join('\n')}`;
+        if (data.errors.length > 5) description += `\n... 외 ${data.errors.length - 5}건 더`;
       }
-      
+
       toast({
         title: "업로드 완료",
         description: description,
@@ -4336,7 +4992,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
 
   // Contact Code Mutations
   const createContactCodeMutation = useMutation({
-    mutationFn: (data: { code: string; dealerName: string; carrier: string; salesManagerId?: number | null; salesManagerName?: string | null }) => 
+    mutationFn: (data: { code: string; dealerName: string; carrier: string; salesManagerId?: number | null; salesManagerName?: string | null; dealerRegistrationId?: number | null; realSalesPOS?: string | null; realSalesPosCode?: string | null; memo?: string | null }) =>
       apiRequest('/api/admin/contact-codes', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -4345,9 +5001,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       queryClient.invalidateQueries({ queryKey: ['/api/contact-codes'] });
       setContactCodeDialogOpen(false);
       setNewContactCode('');
+      setNewDealerRegistrationId(null);
       setNewDealerName('');
       setNewCarrier('');
       setNewSalesManagerName('');
+      setNewRealSalesPOS('');
+      setNewRealSalesPosCode('');
+      setNewMemo('');
       toast({
         title: '성공',
         description: '접점코드가 성공적으로 생성되었습니다.',
@@ -4379,6 +5039,23 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
         description: error.message,
         variant: 'destructive',
       });
+    },
+  });
+
+  const updateContactCodeMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest(`/api/admin/contact-codes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contact-codes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/dealer-registrations-for-cc'] });
+      setCcEditDialogOpen(false);
+      setEditingCC(null);
+      toast({ title: '성공', description: '접점코드가 수정되었습니다.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: '오류', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -4535,11 +5212,11 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   // Contact Code Handlers
   const handleCreateContactCode = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!newContactCode || !newDealerName || !newCarrier || !newSalesManagerName) {
+
+    if (!newDealerRegistrationId || !newContactCode || !newCarrier) {
       toast({
         title: '오류',
-        description: '접점코드, 판매점명, 통신사, 담당 영업과장을 모두 입력해주세요.',
+        description: '판매점(MCC), 접점코드, 채널을 모두 입력해주세요.',
         variant: 'destructive',
       });
       return;
@@ -4550,26 +5227,66 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       dealerName: newDealerName,
       carrier: newCarrier,
       salesManagerId: null,
-      salesManagerName: newSalesManagerName,
-      realSalesPOS: newRealSalesPOS,
-    } as any, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['/api/contact-codes'] });
-        // 폼 초기화
-        setNewContactCode('');
-        setNewDealerName('');
-        setNewRealSalesPOS('');
-        setNewCarrier('');
-        setNewSalesManagerName('');
-        setContactCodeDialogOpen(false);
-      }
+      salesManagerName: newSalesManagerName || null,
+      realSalesPOS: newRealSalesPOS || null,
+      realSalesPosCode: newRealSalesPosCode || null,
+      dealerRegistrationId: newDealerRegistrationId,
+      memo: newMemo || null,
     });
   };
 
   const handleDeleteContactCode = (id: number) => {
-    if (confirm('정말로 이 접점코드를 삭제하시겠습니까?')) {
+    if (confirm('접점코드 자체를 삭제합니다.\n잘못 연결된 경우에는 삭제하지 말고 \'수정\'에서 정산지급처를 변경하세요.\n정말 삭제하시겠습니까?')) {
       deleteContactCodeMutation.mutate(id);
     }
+  };
+
+  const handleEditContactCode = (cc: any) => {
+    setEditingCC(cc);
+    setCcEditForm({
+      code: cc.code || '',
+      dealerRegistrationId: cc.dealerRegistrationId ?? null,
+      dealerName: cc.dealerName || '',
+      realSalesPOS: cc.realSalesPOS || '',
+      realSalesPosCode: cc.realSalesPosCode || '',
+      carrier: cc.carrier || '',
+      salesManagerName: cc.salesManagerName || '',
+      memo: cc.memo || '',
+      isActive: cc.isActive !== false,
+    });
+    setCcEditDialogOpen(true);
+  };
+
+  const handleDeactivateContactCode = (cc: any) => {
+    if (cc.isActive === false) {
+      if (confirm(`접점코드 "${cc.code}"를 활성화하시겠습니까?`)) {
+        updateContactCodeMutation.mutate({ id: cc.id, data: { isActive: true } });
+      }
+    } else {
+      if (confirm(`접점코드 "${cc.code}"를 비활성화합니다. 데이터는 삭제되지 않습니다. 계속하시겠습니까?`)) {
+        updateContactCodeMutation.mutate({ id: cc.id, data: { isActive: false } });
+      }
+    }
+  };
+
+  const handleSubmitCcEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCC) return;
+    const dr = (dealerListForCC as any[]).find((d: any) => d.id === ccEditForm.dealerRegistrationId);
+    updateContactCodeMutation.mutate({
+      id: editingCC.id,
+      data: {
+        code: ccEditForm.code.trim(),
+        dealerRegistrationId: ccEditForm.dealerRegistrationId,
+        dealerName: dr?.businessName || ccEditForm.dealerName,
+        realSalesPOS: ccEditForm.realSalesPOS.trim() || null,
+        realSalesPosCode: ccEditForm.realSalesPosCode.trim() || null,
+        carrier: ccEditForm.carrier,
+        salesManagerName: ccEditForm.salesManagerName.trim() || null,
+        memo: ccEditForm.memo.trim() || null,
+        isActive: ccEditForm.isActive,
+      },
+    });
   };
 
   // 접점코드 체크박스 관련 함수들
@@ -4621,19 +5338,50 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     }
   };
 
-  // 접점코드 필터링
-  const filteredContactCodes = contactCodes?.filter(code => {
-    const matchesSearch = !contactCodeSearch || 
-      (code.code && code.code.toLowerCase().includes(contactCodeSearch.toLowerCase())) ||
-      (code.dealerName && code.dealerName.toLowerCase().includes(contactCodeSearch.toLowerCase())) ||
-      ((code as any).salesManagerName && (code as any).salesManagerName.toLowerCase().includes(contactCodeSearch.toLowerCase()));
-    
-    const matchesCarrier = !contactCodeCarrierFilter || 
-      contactCodeCarrierFilter === 'all' || 
-      (code.carrier && code.carrier === contactCodeCarrierFilter);
-    
-    return matchesSearch && matchesCarrier;
-  });
+  // 접점코드 필터링은 서버에서 처리 (contactCodes = contactCodesResult.data)
+  const filteredContactCodes = contactCodes;
+
+  // 판매점 사업자명 집합 (실제판매점명 원장 매칭 확인용)
+  const dealerBusinessNameSet = useMemo(() =>
+    new Set((dealerListForCC as any[]).map((d: any) => d.businessName).filter(Boolean)),
+  [dealerListForCC]);
+
+  // 그룹 보기: 접점코드를 판매점 원장 기준으로 그룹핑
+  const groupedContactCodes = useMemo(() => {
+    if (!ccGroupView || allCCs.length === 0) return [];
+    const map = new Map<string, { key: string; drId: number | null; drCode: string; drName: string; isContactPolicyPos: boolean; isHiddenPos: boolean; codes: any[] }>();
+    for (const cc of allCCs) {
+      const key = cc.dealerRegistrationId != null ? String(cc.dealerRegistrationId) : 'unlinked';
+      if (!map.has(key)) {
+        const dealer = cc.dealerRegistrationId != null
+          ? (dealerListForCC as any[]).find((d: any) => d.id === cc.dealerRegistrationId)
+          : null;
+        map.set(key, {
+          key,
+          drId: cc.dealerRegistrationId ?? null,
+          drCode: (cc as any).drDealerCode || '',
+          drName: (cc as any).drBusinessName || cc.dealerName || '',
+          isContactPolicyPos: dealer?.isContactPolicyPos ?? false,
+          isHiddenPos: dealer?.isHiddenPos ?? false,
+          codes: [],
+        });
+      }
+      map.get(key)!.codes.push(cc);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.key === 'unlinked') return 1;
+      if (b.key === 'unlinked') return -1;
+      return a.drCode.localeCompare(b.drCode);
+    });
+  }, [ccGroupView, allCCs, dealerListForCC]);
+
+  const toggleDealerGroup = (key: string) => {
+    setExpandedDealerGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   // 서비스 플랜 체크박스 관련 함수들
   const handleSelectServicePlan = (id: number, checked: boolean) => {
@@ -4778,40 +5526,32 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     }
   };
 
-  const handleDownloadTemplate = () => {
-    // 접점코드 엑셀 템플릿 생성
-    const templateData = [
-      {
-        '접점코드': 'LDI672346',
-        '판매점명': '샘플판매점',
-        '실판매POS': '실POS명1',
-        '통신사': 'LG미디어로그',
-        '담당영업과장': '황병준'
-      },
-      {
-        '접점코드': 'SKT123456',
-        '판매점명': '테스트판매점',
-        '실판매POS': '',
-        '통신사': 'SK텔링크',
-        '담당영업과장': '김영수'
-      }
-    ];
-
-    // CSV 형태로 다운로드
+  const _handleDownloadTemplateOld = () => {
+    // 구버전 CSV 다운로드 (사용 안 함)
     const csvContent = '\uFEFF' + // BOM for Excel UTF-8 recognition
-      '접점코드,판매점명,실판매POS,통신사,담당영업과장\n' +
-      'LDI672346,샘플판매점,실POS명1,LG미디어로그,황병준\n' +
-      'SKT123456,테스트판매점,,SK텔링크,김영수\n';
+      '접점코드,판매점명,실판매POS,통신사,담당영업과장,판매점코드\n' +
+      'PLACEHOLDER_REMOVE\n';
+  };
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', '접점코드_업로드_양식.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownloadTemplate = async () => {
+    try {
+      const sessionId = useAuth.getState().sessionId;
+      const res = await fetch('/api/admin/contact-codes/template', {
+        headers: sessionId ? { 'Authorization': `Bearer ${sessionId}` } : {},
+      });
+      if (!res.ok) throw new Error('다운로드 실패');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = '접점코드_업로드_양식.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('양식 다운로드 중 오류가 발생했습니다.');
+    }
   };
 
   const handleDownloadDealerTemplate = () => {
@@ -5124,7 +5864,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
         </div>
 
         {/* Admin Tabs */}
-        <Tabs defaultValue={actualDefaultTab} className="space-y-6">
+        <Tabs defaultValue={actualDefaultTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-12">
             <TabsTrigger value="contact-codes" className="flex items-center space-x-2">
               <Settings className="h-4 w-4" />
@@ -5162,13 +5902,25 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
               <Upload className="h-4 w-4" />
               <span>서식지 관리</span>
             </TabsTrigger>
-            <TabsTrigger value="pricing" className="flex items-center space-x-2">
+            <TabsTrigger value="pricing" className="hidden">
               <Calculator className="h-4 w-4" />
               <span>정산단가</span>
             </TabsTrigger>
             <TabsTrigger value="hidden-pricing" className="flex items-center space-x-2">
               <DollarSign className="h-4 w-4" />
               <span>히든단가</span>
+            </TabsTrigger>
+            <TabsTrigger value="dealer-registrations" className="flex items-center space-x-2">
+              <Building2 className="h-4 w-4" />
+              <span>판매점 원장</span>
+            </TabsTrigger>
+            <TabsTrigger value="settlement-results" className="flex items-center space-x-2">
+              <Calculator className="h-4 w-4" />
+              <span>정산 결과</span>
+            </TabsTrigger>
+            <TabsTrigger value="policy-versions" className="flex items-center space-x-2">
+              <FileText className="h-4 w-4" />
+              <span>정산 정책</span>
             </TabsTrigger>
           </TabsList>
 
@@ -5243,83 +5995,63 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                         <DialogTitle>새 접점코드 추가</DialogTitle>
                       </DialogHeader>
                       <form onSubmit={handleCreateContactCode} className="space-y-4">
-                        <div className="relative">
-                          <Label htmlFor="contactCodeInput">접점코드</Label>
-                          <div className="relative">
-                            <Input
-                              id="contactCodeInput"
-                              value={newContactCode}
-                              onChange={(e) => handleNewContactCodeChange(e.target.value)}
-                              onFocus={() => {
-                                if (contactCodeSuggestions.length > 0) {
-                                  setShowContactCodeSuggestions(true);
-                                }
-                              }}
-                              onBlur={() => {
-                                // 잠시 지연 후 숨기기 (클릭 이벤트가 먼저 실행되도록)
-                                setTimeout(() => setShowContactCodeSuggestions(false), 200);
-                              }}
-                              placeholder="접점코드를 입력하여 검색..."
-                              required
-                              data-testid="input-new-contact-code"
-                            />
-                            
-                            {/* 검색 제안 드롭다운 */}
-                            {showContactCodeSuggestions && contactCodeSuggestions.length > 0 && (
-                              <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                {contactCodeSuggestions.map((suggestion, index) => (
-                                  <div
-                                    key={index}
-                                    className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0"
-                                    onClick={() => selectContactCodeSuggestion(suggestion)}
-                                    data-testid={`suggestion-contact-code-${index}`}
-                                  >
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex flex-col">
-                                        <span className="font-medium text-gray-900 dark:text-gray-100">
-                                          {suggestion.code}
-                                        </span>
-                                        <span className="text-sm text-gray-500 dark:text-gray-400">
-                                          {suggestion.dealerName}
-                                        </span>
-                                      </div>
-                                      <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                        {suggestion.carrier}
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                        {/* 1. 정산지급처 검색 선택 */}
                         <div>
-                          <Label htmlFor="dealerName">판매점명</Label>
-                          <Input
-                            id="dealerName"
-                            value={newDealerName}
-                            onChange={(e) => setNewDealerName(e.target.value)}
-                            placeholder="판매점명을 입력하세요"
-                            required
-                          />
+                          <Label>정산지급처 *</Label>
+                          <Popover open={ccAddDealerOpen} onOpenChange={setCcAddDealerOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className="w-full justify-between font-normal"
+                              >
+                                {newDealerRegistrationId
+                                  ? (() => {
+                                      const found = (dealerListForCC as any[]).find((d: any) => d.id === newDealerRegistrationId);
+                                      return found ? `${found.businessName}${found.dealerCode ? ` (${found.dealerCode})` : ''}` : '선택됨';
+                                    })()
+                                  : '판매점명으로 검색...'}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[340px] p-0">
+                              <Command>
+                                <CommandInput placeholder="판매점명, MCC코드, 사업자번호 검색..." />
+                                <CommandList>
+                                  <CommandEmpty>검색 결과가 없습니다.</CommandEmpty>
+                                  <CommandGroup>
+                                    {(dealerListForCC as any[]).map((d: any) => (
+                                      <CommandItem
+                                        key={d.id}
+                                        value={`${d.businessName || ''} ${d.dealerCode || ''} ${d.businessNumber || ''}`}
+                                        onSelect={() => {
+                                          setNewDealerRegistrationId(d.id);
+                                          setNewDealerName(d.businessName || '');
+                                          setCcAddDealerOpen(false);
+                                        }}
+                                      >
+                                        <span className="font-medium">{d.businessName}</span>
+                                        {d.dealerCode && (
+                                          <span className="ml-2 text-xs text-gray-400">({d.dealerCode})</span>
+                                        )}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
                         </div>
+
+                        {/* 3. 채널 선택 */}
                         <div>
-                          <Label htmlFor="realSalesPOS">실판매POS</Label>
-                          <Input
-                            id="realSalesPOS"
-                            value={newRealSalesPOS}
-                            onChange={(e) => setNewRealSalesPOS(e.target.value)}
-                            placeholder="실판매POS를 입력하세요"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="carrier">통신사</Label>
+                          <Label htmlFor="carrier">채널 *</Label>
                           <Select value={newCarrier} onValueChange={setNewCarrier}>
                             <SelectTrigger>
-                              <SelectValue placeholder="통신사를 선택하세요" />
+                              <SelectValue placeholder="채널을 선택하세요" />
                             </SelectTrigger>
                             <SelectContent>
-                              {carriersList && carriersList.map((carrier: any) => (
+                              {carriersData && carriersData.map((carrier: any) => (
                                 <SelectItem key={carrier.id} value={carrier.name}>
                                   {carrier.name}
                                 </SelectItem>
@@ -5327,18 +6059,76 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                             </SelectContent>
                           </Select>
                         </div>
+
+                        {/* 4. 접점코드 입력 */}
                         <div>
-                          <Label htmlFor="salesManager">담당 영업과장 *</Label>
+                          <Label htmlFor="contactCodeInput">접점코드 *</Label>
+                          <Input
+                            id="contactCodeInput"
+                            value={newContactCode}
+                            onChange={(e) => setNewContactCode(e.target.value.trim())}
+                            placeholder="접점코드를 입력하세요"
+                            required
+                            data-testid="input-new-contact-code"
+                          />
+                        </div>
+
+                        {/* 5. 실판매점명 (선택) */}
+                        <div>
+                          <Label htmlFor="realSalesPOS">실판매점명 (선택)</Label>
+                          <Input
+                            id="realSalesPOS"
+                            value={newRealSalesPOS}
+                            onChange={(e) => setNewRealSalesPOS(e.target.value)}
+                            placeholder="하부점명 또는 실판매점명 (정산지급처명과 같으면 본점)"
+                          />
+                        </div>
+
+                        {/* 5-1. 실판매점코드 (선택, 자동 생성 가능) */}
+                        <div>
+                          <Label htmlFor="realSalesPosCode">실판매점코드 (선택)</Label>
+                          <Input
+                            id="realSalesPosCode"
+                            value={newRealSalesPosCode}
+                            onChange={(e) => setNewRealSalesPosCode(e.target.value)}
+                            placeholder="비워두면 자동 생성 (SP0001 형식)"
+                          />
+                        </div>
+
+                        {/* 6. 담당 영업과장 */}
+                        <div>
+                          <Label htmlFor="salesManager">담당 영업과장</Label>
                           <Input
                             id="salesManager"
                             value={newSalesManagerName}
                             onChange={(e) => setNewSalesManagerName(e.target.value)}
-                            placeholder="담당 영업과장 이름을 입력하세요"
-                            required
+                            placeholder="담당 영업과장 이름 (선택사항)"
                           />
                         </div>
+
+                        {/* 7. 메모 */}
+                        <div>
+                          <Label htmlFor="newMemo">메모 (선택)</Label>
+                          <Input
+                            id="newMemo"
+                            value={newMemo}
+                            onChange={(e) => setNewMemo(e.target.value)}
+                            placeholder="기타 참고사항"
+                          />
+                        </div>
+
                         <div className="flex justify-end space-x-2">
-                          <Button type="button" variant="outline" onClick={() => setContactCodeDialogOpen(false)}>
+                          <Button type="button" variant="outline" onClick={() => {
+                            setContactCodeDialogOpen(false);
+                            setNewDealerRegistrationId(null);
+                            setNewDealerName('');
+                            setNewContactCode('');
+                            setNewCarrier('');
+                            setNewSalesManagerName('');
+                            setNewRealSalesPOS('');
+                            setNewRealSalesPosCode('');
+                            setNewMemo('');
+                          }}>
                             취소
                           </Button>
                           <Button type="submit" disabled={createContactCodeMutation.isPending}>
@@ -5348,6 +6138,148 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                       </form>
                     </DialogContent>
                   </Dialog>
+
+                  {/* 접점코드 수정 다이얼로그 */}
+                  <Dialog open={ccEditDialogOpen} onOpenChange={(open) => { if (!open) { setCcEditDialogOpen(false); setEditingCC(null); } }}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>접점코드 수정</DialogTitle>
+                        <DialogDescription>
+                          정산지급처를 변경하면 해당 판매점 그룹으로 이동됩니다.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form onSubmit={handleSubmitCcEdit} className="space-y-4">
+                        {/* 접점코드 */}
+                        <div>
+                          <Label htmlFor="ccEditCode">접점코드 *</Label>
+                          <Input
+                            id="ccEditCode"
+                            value={ccEditForm.code}
+                            onChange={(e) => setCcEditForm(f => ({ ...f, code: e.target.value }))}
+                            required
+                          />
+                        </div>
+                        {/* 정산지급처 검색 선택 */}
+                        <div>
+                          <Label>정산지급처 *</Label>
+                          <Popover open={ccEditDealerOpen} onOpenChange={setCcEditDealerOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className="w-full justify-between font-normal"
+                              >
+                                {ccEditForm.dealerRegistrationId
+                                  ? (() => {
+                                      const found = (dealerListForCC as any[]).find((d: any) => d.id === ccEditForm.dealerRegistrationId);
+                                      return found ? `${found.businessName}${found.dealerCode ? ` (${found.dealerCode})` : ''}` : '선택됨';
+                                    })()
+                                  : '판매점명으로 검색...'}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[340px] p-0">
+                              <Command>
+                                <CommandInput placeholder="판매점명, MCC코드, 사업자번호 검색..." />
+                                <CommandList>
+                                  <CommandEmpty>검색 결과가 없습니다.</CommandEmpty>
+                                  <CommandGroup>
+                                    {(dealerListForCC as any[]).map((d: any) => (
+                                      <CommandItem
+                                        key={d.id}
+                                        value={`${d.businessName || ''} ${d.dealerCode || ''} ${d.businessNumber || ''}`}
+                                        onSelect={() => {
+                                          setCcEditForm(f => ({ ...f, dealerRegistrationId: d.id, dealerName: d.businessName || '' }));
+                                          setCcEditDealerOpen(false);
+                                        }}
+                                      >
+                                        <span className="font-medium">{d.businessName}</span>
+                                        {d.dealerCode && (
+                                          <span className="ml-2 text-xs text-gray-400">({d.dealerCode})</span>
+                                        )}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        {/* 실판매점명 */}
+                        <div>
+                          <Label htmlFor="ccEditRealPOS">실판매점명</Label>
+                          <Input
+                            id="ccEditRealPOS"
+                            value={ccEditForm.realSalesPOS}
+                            onChange={(e) => setCcEditForm(f => ({ ...f, realSalesPOS: e.target.value }))}
+                            placeholder="하부점명 또는 실판매점명 (정산지급처명과 같으면 본점)"
+                          />
+                        </div>
+                        {/* 실판매점코드 */}
+                        <div>
+                          <Label htmlFor="ccEditRealPOSCode">실판매점코드</Label>
+                          <Input
+                            id="ccEditRealPOSCode"
+                            value={ccEditForm.realSalesPosCode}
+                            onChange={(e) => setCcEditForm(f => ({ ...f, realSalesPosCode: e.target.value }))}
+                            placeholder="비워두면 자동 생성 (SP0001 형식)"
+                          />
+                        </div>
+                        {/* 채널 */}
+                        <div>
+                          <Label htmlFor="ccEditCarrier">채널 *</Label>
+                          <Select
+                            value={ccEditForm.carrier}
+                            onValueChange={(val) => setCcEditForm(f => ({ ...f, carrier: val }))}
+                          >
+                            <SelectTrigger id="ccEditCarrier">
+                              <SelectValue placeholder="통신사 선택" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(carriersData as any[]).map((c: any) => (
+                                <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {/* 담당영업과장 */}
+                        <div>
+                          <Label htmlFor="ccEditSM">담당영업과장</Label>
+                          <Input
+                            id="ccEditSM"
+                            value={ccEditForm.salesManagerName}
+                            onChange={(e) => setCcEditForm(f => ({ ...f, salesManagerName: e.target.value }))}
+                          />
+                        </div>
+                        {/* 메모 */}
+                        <div>
+                          <Label htmlFor="ccEditMemo">메모</Label>
+                          <Input
+                            id="ccEditMemo"
+                            value={ccEditForm.memo}
+                            onChange={(e) => setCcEditForm(f => ({ ...f, memo: e.target.value }))}
+                            placeholder="기타 참고사항"
+                          />
+                        </div>
+                        {/* 상태 */}
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id="ccEditActive"
+                            checked={ccEditForm.isActive}
+                            onCheckedChange={(v) => setCcEditForm(f => ({ ...f, isActive: v }))}
+                          />
+                          <Label htmlFor="ccEditActive">{ccEditForm.isActive ? '활성' : '비활성'}</Label>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" variant="outline" onClick={() => { setCcEditDialogOpen(false); setEditingCC(null); }}>취소</Button>
+                          <Button type="submit" disabled={updateContactCodeMutation.isPending}>
+                            {updateContactCodeMutation.isPending ? '저장 중...' : '저장'}
+                          </Button>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+
               </CardHeader>
               <CardContent>
                 {/* 검색 및 필터 */}
@@ -5362,13 +6294,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                       />
                     </div>
                     <div className="w-full sm:w-48">
-                      <Select value={contactCodeCarrierFilter} onValueChange={setContactCodeCarrierFilter}>
+                      <Select value={contactCodeCarrierFilter} onValueChange={(v) => { setContactCodeCarrierFilter(v); setCcPage(1); }}>
                         <SelectTrigger>
-                          <SelectValue placeholder="통신사 필터" />
+                          <SelectValue placeholder="채널 필터" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">전체 통신사</SelectItem>
-                          {carriersList && carriersList.map((carrier: any) => (
+                          <SelectItem value="all">전체 채널</SelectItem>
+                          {carriersData && carriersData.map((carrier: any) => (
                             <SelectItem key={carrier.id} value={carrier.name}>
                               {carrier.name}
                             </SelectItem>
@@ -5399,27 +6331,137 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                 <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                   <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">엑셀 업로드 사용법</h4>
                   <div className="text-sm text-blue-700 dark:text-blue-300">
-                    <p className="mb-2">1. 위의 "양식 다운로드" 버튼을 클릭하여 템플릿을 다운로드하세요.</p>
-                    <p className="mb-2">2. 다운로드한 파일에 접점코드 데이터를 입력하세요:</p>
-                    <ul className="list-disc list-inside ml-4 space-y-1 mb-2">
-                      <li><strong>접점코드</strong>: 고유한 접점 코드 (예: 구)이다글로벌)</li>
-                      <li><strong>판매점명</strong>: 판매점 이름</li>
-                      <li><strong>실판매POS</strong>: 실제 판매 POS명 (선택사항)</li>
-                      <li><strong>통신사</strong>: 통신사명 (예: 후불)중고KT)</li>
-                      <li><strong>담당영업과장</strong>: 담당 영업과장명</li>
+                    <p className="mb-1">1. "양식 다운로드"를 클릭하여 템플릿을 받으세요 (3개 시트 포함).</p>
+                    <p className="mb-1">2. <strong>접점코드입력</strong> 시트에 데이터를 입력하세요:</p>
+                    <ul className="list-disc list-inside ml-4 space-y-0.5 mb-1">
+                      <li><strong>접점코드</strong>: 실제 개통 원장에 찍히는 코드 (예: K엠45172)</li>
+                      <li><strong>정산지급처선택</strong>: 아래 3가지 형식 모두 허용
+                        <ul className="list-none ml-4 text-xs mt-0.5 space-y-0.5">
+                          <li>① <code>[MCC0028] 썬플러스 중계</code> — 판매점원장참조 시트에서 복사</li>
+                          <li>② <code>MCC0028</code> — MCC코드 단독</li>
+                          <li>③ <code>썬플러스 중계</code> — 판매점명 단독 (중복 시 경고)</li>
+                        </ul>
+                      </li>
+                      <li><strong>실제판매점명</strong>: 하부점 또는 실제 개통 판매점명</li>
                     </ul>
-                    <p>3. 작성이 완료되면 "엑셀 업로드" 버튼을 클릭하여 파일을 업로드하세요.</p>
+                    <p className="text-xs text-blue-500">※ 판매점명 단독 입력 시 동일명 2개 이상이면 경고가 발생합니다.</p>
                   </div>
                 </div>
-                
-                {contactCodesLoading ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto"></div>
-                    <p className="mt-2 text-sm text-gray-500">접점코드 로딩 중...</p>
-                  </div>
-                ) : filteredContactCodes && filteredContactCodes.length > 0 ? (
+
+                {/* 그룹/목록 보기 전환 */}
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-gray-500">
+                    {ccGroupView ? `${groupedContactCodes.length}개 판매점 그룹` : `전체 ${ccTotal}개`}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => setCcGroupView(v => !v)}>
+                    {ccGroupView ? '목록 보기' : '그룹 보기'}
+                  </Button>
+                </div>
+
+                {/* 그룹 보기 */}
+                {ccGroupView ? (
+                  (allCCsLoading) ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto"></div>
+                      <p className="mt-2 text-sm text-gray-500">접점코드 로딩 중...</p>
+                    </div>
+                  ) : groupedContactCodes.length > 0 ? (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      {groupedContactCodes.map(group => {
+                        const isExpanded = expandedDealerGroups.has(group.key);
+                        const activeCnt = group.codes.filter(c => c.isActive !== false).length;
+                        const uniquePOS = new Set(group.codes.map(c => c.realSalesPOS).filter(Boolean)).size;
+                        return (
+                          <div key={group.key} className="border-b border-gray-100 last:border-b-0">
+                            {/* 그룹 헤더 */}
+                            <div
+                              className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
+                              onClick={() => toggleDealerGroup(group.key)}
+                            >
+                              {isExpanded ? <ChevronDown className="h-4 w-4 text-gray-500 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 text-gray-500 flex-shrink-0" />}
+                              <span className="font-mono text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{group.drCode || '미연결'}</span>
+                              <span className="font-medium text-sm text-gray-800 dark:text-gray-200">{group.drName || '(판매점 미연결)'}</span>
+                              <span className="text-xs text-gray-400 ml-auto flex gap-3">
+                                <span>접점코드 {group.codes.length}개</span>
+                                <span>활성 {activeCnt}개</span>
+                                {uniquePOS > 0 && <span>실제판매점 {uniquePOS}개</span>}
+                                {group.isContactPolicyPos && <span className="text-blue-600">접점정책점</span>}
+                                {group.isHiddenPos && <span className="text-purple-600">★히든</span>}
+                              </span>
+                            </div>
+                            {/* 상세 행 */}
+                            {isExpanded && (
+                              <table className="w-full text-xs">
+                                <thead className="bg-white dark:bg-gray-900 border-b border-gray-100">
+                                  <tr>
+                                    <th className="px-4 py-1.5 text-left font-medium text-gray-500">접점코드</th>
+                                    <th className="px-4 py-1.5 text-left font-medium text-gray-500">실제판매점명</th>
+                                    <th className="px-4 py-1.5 text-left font-medium text-gray-500">채널</th>
+                                    <th className="px-4 py-1.5 text-left font-medium text-gray-500">담당영업과장</th>
+                                    <th className="px-4 py-1.5 text-left font-medium text-gray-500">상태</th>
+                                    <th className="px-4 py-1.5 w-24"></th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                  {group.codes.map((cc: any) => {
+                                    const isSub = group.drName && cc.realSalesPOS && !isSameStoreName(group.drName, cc.realSalesPOS);
+                                    const posNotInRegistry = cc.realSalesPOS && !dealerBusinessNameSet.has(cc.realSalesPOS);
+                                    return (
+                                      <tr key={cc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                                        <td className="px-4 py-1.5 font-mono font-medium text-gray-900 dark:text-gray-100">{cc.code}</td>
+                                        <td className="px-4 py-1.5 text-gray-600 dark:text-gray-400">
+                                          <span className="flex items-center gap-1 flex-wrap">
+                                            {cc.realSalesPOS || '-'}
+                                            {isSub && <span className="text-xs bg-blue-100 text-blue-700 px-1 rounded">하부점</span>}
+                                            {posNotInRegistry && <span title="판매점 원장에 없음" className="text-xs bg-amber-100 text-amber-700 px-1 rounded">원장미등록</span>}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-1.5 text-gray-600 dark:text-gray-400">{cc.carrier || '-'}</td>
+                                        <td className="px-4 py-1.5 text-gray-600 dark:text-gray-400">{cc.salesManagerName || '-'}</td>
+                                        <td className="px-4 py-1.5">
+                                          <span className={`px-1.5 py-0.5 rounded text-xs ${cc.isActive !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            {cc.isActive !== false ? '활성' : '비활성'}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-1.5">
+                                          <div className="flex items-center gap-1">
+                                            <Button variant="ghost" size="sm" className="h-5 px-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="수정" onClick={() => handleEditContactCode(cc)}>
+                                              <Edit2 className="h-3 w-3" />
+                                            </Button>
+                                            <Button variant="ghost" size="sm" className="h-5 px-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50" title={cc.isActive !== false ? '비활성화' : '활성화'} onClick={() => handleDeactivateContactCode(cc)}>
+                                              {cc.isActive !== false ? '⏸' : '▶'}
+                                            </Button>
+                                            <Button variant="ghost" size="sm" className="h-5 px-1 text-red-400 hover:text-red-600 hover:bg-red-50" title="삭제" onClick={() => handleDeleteContactCode(cc.id)}>
+                                              <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Settings className="mx-auto h-12 w-12 text-gray-400" />
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">접점코드가 없습니다</h3>
+                      <p className="mt-1 text-sm text-gray-500">첫 번째 접점코드를 추가해보세요.</p>
+                    </div>
+                  )
+                ) : (
+                  /* 목록 보기 (기존 평면 테이블) */
+                  contactCodesLoading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto"></div>
+                      <p className="mt-2 text-sm text-gray-500">접점코드 로딩 중...</p>
+                    </div>
+                  ) : filteredContactCodes && filteredContactCodes.length > 0 ? (
                   <div className="space-y-4">
-                    {/* 전체 선택 체크박스 */}
                     <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <input
                         type="checkbox"
@@ -5429,88 +6471,101 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="selectAllContactCodes" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        전체 선택 ({filteredContactCodes.length}개)
+                        전체 선택 (이 페이지 {filteredContactCodes.length}개 / 전체 {ccTotal}개)
                       </label>
                     </div>
-
-                    <div className="max-h-[600px] overflow-y-auto border border-gray-200 rounded-lg p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="max-h-[600px] overflow-y-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left w-8"></th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">접점코드</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">정산지급처코드</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">정산지급처명</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">실제판매점명</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">채널</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">담당영업과장</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">상태</th>
+                            <th className="px-3 py-2 w-12"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                         {filteredContactCodes.map((code) => (
-                        <div key={code.id} className="border rounded-lg p-4 bg-white dark:bg-gray-900 relative">
-                          {/* 체크박스 */}
-                          <div className="absolute top-2 left-2">
+                        <tr key={code.id} className="bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <td className="px-3 py-2">
                             <input
                               type="checkbox"
                               checked={selectedContactCodes.includes(code.id || 0)}
                               onChange={(e) => handleSelectContactCode(code.id || 0, e.target.checked)}
                               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                             />
-                          </div>
-
-                          <div className="ml-6">
-                            <div className="flex items-center justify-between mb-3">
-                              <div>
-                                <h4 className="font-medium text-gray-900 dark:text-gray-100">{code.code}</h4>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{code.dealerName}</p>
-                                {(code as any).realSalesPOS && (
-                                  <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                                    실판매POS: {(code as any).realSalesPOS}
-                                  </p>
-                                )}
-                                {(code as any).salesManagerName && (
-                                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                    담당: {(code as any).salesManagerName}
-                                  </p>
-                                )}
-                                {/* 연결된 판매점 아이디 표시 */}
-                                {(() => {
-                                  const relatedDealer = dealers?.find((dealer: any) => 
-                                    dealer.businessName === code.dealerName || dealer.representativeName === code.dealerName
-                                  );
-                                  return relatedDealer ? (
-                                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                                      판매점 ID: {relatedDealer.username}
-                                    </p>
-                                  ) : null;
-                                })()}
-                              </div>
-                              <Badge variant="outline">{code.carrier}</Badge>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className={`text-xs px-2 py-1 rounded-full ${
-                                code.isActive 
-                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-                              }`}>
-                                {code.isActive ? '활성' : '비활성'}
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDeleteContactCode(code.id || 0)}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
+                          </td>
+                          <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{code.code}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{(code as any).drDealerCode || '-'}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
+                            <span className="flex items-center gap-1">
+                              {(code as any).drBusinessName || code.dealerName || '-'}
+                              {(code as any).drBusinessName && code.dealerName && (code as any).drBusinessName !== code.dealerName && (
+                                <span title={`저장된 판매점명: ${code.dealerName}`} className="text-amber-500 cursor-help text-xs">⚠</span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
+                            <span className="flex items-center gap-1">
+                              {(code as any).realSalesPOS || '-'}
+                              {(code as any).realSalesPOS && !dealerBusinessNameSet.has((code as any).realSalesPOS) && (
+                                <span title="판매점 원장에 없음" className="text-xs bg-amber-100 text-amber-700 px-1 rounded">원장미등록</span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{code.carrier || '-'}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{(code as any).salesManagerName || '-'}</td>
+                          <td className="px-3 py-2">
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              code.isActive
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                            }`}>
+                              {code.isActive ? '활성' : '비활성'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1">
+                              <Button variant="outline" size="sm" className="h-7 px-2 text-blue-600 hover:text-blue-700 border-blue-200" title="수정" onClick={() => handleEditContactCode(code)}>
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-7 px-2 text-gray-500 hover:text-gray-700 border-gray-200" title={code.isActive ? '비활성화' : '활성화'} onClick={() => handleDeactivateContactCode(code)}>
+                                {code.isActive ? '⏸' : '▶'}
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-7 px-2 text-red-600 hover:text-red-700 border-red-200" title="삭제" onClick={() => handleDeleteContactCode(code.id || 0)}>
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
-                          </div>
-                        </div>
+                          </td>
+                        </tr>
                         ))}
-                      </div>
+                        </tbody>
+                      </table>
                     </div>
+                    {ccTotalPages > 1 && (
+                      <div className="flex items-center justify-between pt-2">
+                        <span className="text-sm text-gray-500">
+                          {ccPage} / {ccTotalPages} 페이지 (총 {ccTotal}개)
+                        </span>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setCcPage(p => Math.max(1, p - 1))} disabled={ccPage <= 1}>이전</Button>
+                          <Button variant="outline" size="sm" onClick={() => setCcPage(p => Math.min(ccTotalPages, p + 1))} disabled={ccPage >= ccTotalPages}>다음</Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ) : contactCodes && contactCodes.length > 0 ? (
-                  <div className="text-center py-8">
-                    <Settings className="mx-auto h-12 w-12 text-gray-400" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">검색 결과가 없습니다</h3>
-                    <p className="mt-1 text-sm text-gray-500">다른 검색어를 시도해보세요.</p>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Settings className="mx-auto h-12 w-12 text-gray-400" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">접점코드가 없습니다</h3>
-                    <p className="mt-1 text-sm text-gray-500">첫 번째 접점코드를 추가해보세요.</p>
-                  </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Settings className="mx-auto h-12 w-12 text-gray-400" />
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">{debouncedCcSearch || (contactCodeCarrierFilter && contactCodeCarrierFilter !== 'all') ? '검색 결과가 없습니다' : '접점코드가 없습니다'}</h3>
+                      <p className="mt-1 text-sm text-gray-500">{debouncedCcSearch ? '다른 검색어를 시도해보세요.' : '첫 번째 접점코드를 추가해보세요.'}</p>
+                    </div>
+                  )
                 )}
               </CardContent>
             </Card>
@@ -5920,8 +6975,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                             />
                           </div>
 
-                          <div className="grid grid-cols-2 gap-4">
-                            <FormField
+                          <FormField
                               control={dealerForm.control}
                               name="password"
                               render={({ field }) => (
@@ -5934,20 +6988,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                 </FormItem>
                               )}
                             />
-                            <FormField
-                              control={dealerForm.control}
-                              name="contactEmail"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>이메일</FormLabel>
-                                  <FormControl>
-                                    <Input type="email" placeholder="연락처 이메일" {...field} data-testid="input-dealer-email" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <FormField
@@ -6056,21 +7096,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                             )}
                           />
 
-                          <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                              control={editDealerForm.control}
-                              name="contactEmail"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>이메일</FormLabel>
-                                  <FormControl>
-                                    <Input type="email" placeholder="연락처 이메일" {...field} data-testid="input-edit-dealer-email" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
+                          <FormField
                               control={editDealerForm.control}
                               name="contactPhone"
                               render={({ field }) => (
@@ -6083,7 +7109,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                 </FormItem>
                               )}
                             />
-                          </div>
 
                           <FormField
                             control={editDealerForm.control}
@@ -6166,9 +7191,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               <div>
-                                {dealer.contactEmail && (
-                                  <div data-testid={`text-dealer-email-${dealer.id}`}>{dealer.contactEmail}</div>
-                                )}
                                 {dealer.contactPhone && (
                                   <div data-testid={`text-dealer-phone-${dealer.id}`}>{dealer.contactPhone}</div>
                                 )}
@@ -6190,7 +7212,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                     name: dealer.name || '',
                                     username: dealer.username || '',
                                     password: '',
-                                    contactEmail: dealer.contactEmail || '',
                                     contactPhone: dealer.contactPhone || '',
                                     location: dealer.location || '',
                                     carrierCodes: {},
@@ -6990,6 +8011,33 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                         ))}
                       </tbody>
                     </table>
+
+                    {/* 페이지네이션 */}
+                    {docsTotalPages > 1 && (
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-200 mt-2">
+                        <span className="text-sm text-gray-500">
+                          {docsPage} / {docsTotalPages} 페이지 (총 {docsTotal}건)
+                        </span>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDocsPage(p => Math.max(1, p - 1))}
+                            disabled={docsPage <= 1}
+                          >
+                            이전
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDocsPage(p => Math.min(docsTotalPages, p + 1))}
+                            disabled={docsPage >= docsTotalPages}
+                          >
+                            다음
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-8">
@@ -8438,6 +9486,2187 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
           {/* POS별 히든 단가 관리 탭 */}
           <TabsContent value="hidden-pricing">
             <HiddenPricingManagement />
+          </TabsContent>
+
+          {/* 판매점 원장 관리 탭 */}
+          <TabsContent value="dealer-registrations">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>판매점 원장 관리</CardTitle>
+                  <CardDescription>판매점 사업자 정보, 계좌, 히든 운영점 여부를 관리합니다.</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={async () => {
+                    try {
+                      const sessionId = useAuth.getState().sessionId;
+                      const response = await fetch('/api/admin/dealer-registrations/export', {
+                        headers: { 'Authorization': `Bearer ${sessionId ?? ''}` },
+                      });
+                      if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(text || `서버 오류 (${response.status})`);
+                      }
+                      const contentType = response.headers.get("content-type") || "";
+                      if (!contentType.includes("spreadsheetml")) {
+                        const text = await response.text();
+                        throw new Error(`xlsx가 아닌 응답입니다: ${text.slice(0, 300)}`);
+                      }
+                      const arrayBuffer = await response.arrayBuffer();
+                      const blob = new Blob([arrayBuffer], {
+                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                      });
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      const cd = response.headers.get('content-disposition') || '';
+                      const nameMatch = cd.match(/filename\*=UTF-8''(.+)/i);
+                      a.download = nameMatch ? decodeURIComponent(nameMatch[1]) : '판매점원장_현재목록.xlsx';
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      window.URL.revokeObjectURL(url);
+                    } catch (e: any) {
+                      alert(`원장 다운로드 오류: ${e.message}`);
+                    }
+                  }}>
+                    <Download className="mr-2 h-4 w-4" />
+                    현재 원장 다운로드
+                  </Button>
+                  <Button variant="outline" onClick={() => { setDrUploadResult(null); setDrUploadDialogOpen(true); }}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    엑셀 업로드
+                  </Button>
+                  <McodeMasterUploadPanel onUploadSuccess={() => refetchDr()} />
+                  <Button onClick={() => {
+                    setDrForm({ businessName: '', representativeName: '', businessNumber: '', contactPhone: '', address: '', bankAccount: '', bankName: '', accountHolder: '', username: '', password: '', isHiddenPos: false, isContactPolicyPos: false, isActive: true, status: '승인' });
+                    setDrDialogOpen(true);
+                  }}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    판매점 원장 등록
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* 필터 */}
+                <div className="flex flex-wrap gap-3">
+                  <Input
+                    placeholder="판매점명 / 판매점코드 / 대표자명 검색"
+                    value={drSearch}
+                    onChange={(e) => setDrSearch(e.target.value)}
+                    className="max-w-sm"
+                  />
+                  <Select value={drHiddenFilter} onValueChange={(v: any) => setDrHiddenFilter(v)}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue placeholder="히든정책점" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체</SelectItem>
+                      <SelectItem value="hidden">히든정책점</SelectItem>
+                      <SelectItem value="normal">일반운영점</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={drActiveFilter} onValueChange={(v: any) => setDrActiveFilter(v)}>
+                    <SelectTrigger className="w-28">
+                      <SelectValue placeholder="활성상태" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체</SelectItem>
+                      <SelectItem value="active">활성</SelectItem>
+                      <SelectItem value="inactive">비활성</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* 목록 테이블 */}
+                <div className="border rounded-md overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">판매점코드</th>
+                        <th className="px-3 py-2 text-left font-medium">사업체명</th>
+                        <th className="px-3 py-2 text-left font-medium">M코드</th>
+                        <th className="px-3 py-2 text-left font-medium">KP번호</th>
+                        <th className="px-3 py-2 text-left font-medium">지역</th>
+                        <th className="px-3 py-2 text-left font-medium">상태</th>
+                        <th className="px-3 py-2 text-center font-medium">구분</th>
+                        <th className="px-3 py-2 text-center font-medium">활성</th>
+                        <th className="px-3 py-2 text-right font-medium">관리</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dealerRegistrationList.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} className="px-3 py-8 text-center text-gray-500">등록된 판매점 원장이 없습니다.</td>
+                        </tr>
+                      ) : dealerRegistrationList.map((dr: any) => (
+                        <tr key={dr.id} className="border-b hover:bg-gray-50">
+                          <td className="px-3 py-2 font-mono text-xs">{dr.dealerCode ?? '-'}</td>
+                          <td className="px-3 py-2 font-medium">
+                            <div>{dr.businessName}</div>
+                            {dr.subDealerName && <div className="text-xs text-gray-400">{dr.subDealerName}</div>}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-blue-700">{dr.mCode ?? '-'}</td>
+                          <td className="px-3 py-2 text-xs">{dr.kpNumber ?? '-'}</td>
+                          <td className="px-3 py-2 text-xs">{dr.regionName ?? '-'}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant={dr.status === '승인' ? 'default' : dr.status === '대기' ? 'secondary' : 'destructive'}>
+                              {dr.status}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {dr.isContactPolicyPos && <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">접점</Badge>}
+                              {dr.isHiddenPos && <Badge className="bg-orange-100 text-orange-800 border-orange-200 text-xs">히든</Badge>}
+                              {!dr.isContactPolicyPos && !dr.isHiddenPos && <span className="text-gray-400">-</span>}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {dr.isActive ? <Badge className="bg-green-100 text-green-800 border-green-200">활성</Badge> : <Badge variant="secondary">비활성</Badge>}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button size="sm" variant="outline" onClick={() => {
+                                setDrEditTarget(dr);
+                                setDrForm({
+                                  businessName: dr.businessName ?? '',
+                                  representativeName: dr.representativeName ?? '',
+                                  businessNumber: dr.businessNumber ?? '',
+                                  contactPhone: dr.contactPhone ?? '',
+                                  address: dr.address ?? '',
+                                  bankAccount: dr.bankAccount ?? '',
+                                  bankName: dr.bankName ?? '',
+                                  accountHolder: dr.accountHolder ?? '',
+                                  username: dr.username ?? '',
+                                  password: '',
+                                  isHiddenPos: dr.isHiddenPos ?? false,
+                                  isContactPolicyPos: dr.isContactPolicyPos ?? false,
+                                  isActive: dr.isActive ?? true,
+                                  status: dr.status ?? '승인',
+                                });
+                                setDrEditDialogOpen(true);
+                              }}>
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={() => {
+                                if (window.confirm(`"${dr.businessName}" 판매점 원장을 삭제하시겠습니까?`)) {
+                                  deleteDrMutation.mutate(dr.id);
+                                }
+                              }}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-500">총 {dealerRegistrationList.length}개</p>
+              </CardContent>
+            </Card>
+
+            {/* 엑셀 업로드 다이얼로그 */}
+            <Dialog open={drUploadDialogOpen} onOpenChange={setDrUploadDialogOpen}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>판매점 원장 엑셀 대량 업로드</DialogTitle>
+                  <DialogDescription>
+                    엑셀 파일(.xlsx/.xls)을 업로드하여 판매점 원장을 일괄 등록합니다.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800 space-y-1">
+                    <p className="font-semibold">필수 컬럼 (헤더 이름 정확히 입력)</p>
+                    <p>상호명 / 대표자명 / 사업자번호 / 연락처 / 주소 / 아이디 / 비밀번호</p>
+                    <p className="font-semibold mt-2">선택 컬럼</p>
+                    <p>은행명 / 계좌번호 / 예금주 / 히든운영점 (Y 또는 N)</p>
+                    <p className="text-xs text-blue-600 mt-1">판매점코드(MCC번호)는 서버가 자동 부여합니다. 사업자번호는 중복 가능합니다. 아이디 중복 시 skip됩니다.</p>
+                  </div>
+                  {!drUploadResult ? (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                      <input
+                        ref={drFileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleDrExcelUpload}
+                        className="hidden"
+                        disabled={drUploading}
+                      />
+                      <Upload className="mx-auto h-10 w-10 text-gray-400 mb-3" />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => drFileInputRef.current?.click()}
+                        disabled={drUploading}
+                      >
+                        {drUploading ? '업로드 중...' : '파일 선택'}
+                      </Button>
+                      <p className="mt-2 text-xs text-gray-500">.xlsx, .xls 파일만 지원됩니다</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                        <div className="p-2 bg-gray-50 rounded border">
+                          <p className="text-xs text-gray-500">전체</p>
+                          <p className="text-lg font-bold">{drUploadResult.totalRows}</p>
+                        </div>
+                        <div className="p-2 bg-green-50 rounded border border-green-200">
+                          <p className="text-xs text-green-600">등록 성공</p>
+                          <p className="text-lg font-bold text-green-700">{drUploadResult.created}</p>
+                        </div>
+                        <div className="p-2 bg-yellow-50 rounded border border-yellow-200">
+                          <p className="text-xs text-yellow-600">스킵</p>
+                          <p className="text-lg font-bold text-yellow-700">{drUploadResult.skipped}</p>
+                        </div>
+                      </div>
+                      {drUploadResult.errors.length > 0 && (
+                        <div className="max-h-40 overflow-y-auto border rounded p-2 bg-red-50 space-y-1">
+                          {drUploadResult.errors.map((e, i) => (
+                            <p key={i} className="text-xs text-red-700">{e}</p>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2 justify-end">
+                        <Button variant="outline" onClick={() => { setDrUploadResult(null); }}>
+                          다시 업로드
+                        </Button>
+                        <Button onClick={() => setDrUploadDialogOpen(false)}>닫기</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 등록 다이얼로그 */}
+            <Dialog open={drDialogOpen} onOpenChange={(open) => { setDrDialogOpen(open); if (!open) setDrForm({ businessName: '', representativeName: '', businessNumber: '', contactPhone: '', address: '', bankAccount: '', bankName: '', accountHolder: '', username: '', password: '', isHiddenPos: false, isContactPolicyPos: false, isActive: true, status: '승인' }); }}>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>판매점 원장 등록</DialogTitle>
+                  <DialogDescription>판매점 코드(MCC번호)는 자동으로 부여됩니다.</DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-4 py-2">
+                  <div className="space-y-1">
+                    <Label>사업체명 *</Label>
+                    <Input value={drForm.businessName} onChange={e => setDrForm(f => ({ ...f, businessName: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>대표자명 *</Label>
+                    <Input value={drForm.representativeName} onChange={e => setDrForm(f => ({ ...f, representativeName: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>사업자번호 *</Label>
+                    <Input placeholder="000-00-00000" value={drForm.businessNumber} onChange={e => setDrForm(f => ({ ...f, businessNumber: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>연락처 *</Label>
+                    <Input value={drForm.contactPhone} onChange={e => setDrForm(f => ({ ...f, contactPhone: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>상태</Label>
+                    <Select value={drForm.status} onValueChange={v => setDrForm(f => ({ ...f, status: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="승인">승인</SelectItem>
+                        <SelectItem value="대기">대기</SelectItem>
+                        <SelectItem value="거부">거부</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label>주소 *</Label>
+                    <Input value={drForm.address} onChange={e => setDrForm(f => ({ ...f, address: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>은행명</Label>
+                    <Input value={drForm.bankName} onChange={e => setDrForm(f => ({ ...f, bankName: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>계좌번호</Label>
+                    <Input value={drForm.bankAccount} onChange={e => setDrForm(f => ({ ...f, bankAccount: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>예금주</Label>
+                    <Input value={drForm.accountHolder} onChange={e => setDrForm(f => ({ ...f, accountHolder: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>로그인 ID *</Label>
+                    <Input value={drForm.username} onChange={e => setDrForm(f => ({ ...f, username: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>비밀번호 *</Label>
+                    <Input type="password" value={drForm.password} onChange={e => setDrForm(f => ({ ...f, password: e.target.value }))} />
+                  </div>
+                  <div className="flex items-center gap-3 col-span-2">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={drForm.isContactPolicyPos} onCheckedChange={v => setDrForm(f => ({ ...f, isContactPolicyPos: v }))} id="dr-contact" />
+                      <Label htmlFor="dr-contact">접점정책점</Label>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Switch checked={drForm.isHiddenPos} onCheckedChange={v => setDrForm(f => ({ ...f, isHiddenPos: v }))} id="dr-hidden" />
+                      <Label htmlFor="dr-hidden">히든정책점</Label>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Switch checked={drForm.isActive} onCheckedChange={v => setDrForm(f => ({ ...f, isActive: v }))} id="dr-active" />
+                      <Label htmlFor="dr-active">활성</Label>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setDrDialogOpen(false)}>취소</Button>
+                  <Button onClick={() => createDrMutation.mutate(drForm)} disabled={createDrMutation.isPending}>
+                    {createDrMutation.isPending ? '등록 중...' : '등록'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 수정 다이얼로그 */}
+            <Dialog open={drEditDialogOpen} onOpenChange={(open) => { setDrEditDialogOpen(open); if (!open) { setDrEditTarget(null); setDrForm({ businessName: '', representativeName: '', businessNumber: '', contactPhone: '', address: '', bankAccount: '', bankName: '', accountHolder: '', username: '', password: '', isHiddenPos: false, isContactPolicyPos: false, isActive: true, status: '승인' }); } }}>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>판매점 원장 수정</DialogTitle>
+                  <DialogDescription>판매점코드: {drEditTarget?.dealerCode ?? '-'}</DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-4 py-2">
+                  <div className="space-y-1">
+                    <Label>사업체명 *</Label>
+                    <Input value={drForm.businessName} onChange={e => setDrForm(f => ({ ...f, businessName: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>대표자명 *</Label>
+                    <Input value={drForm.representativeName} onChange={e => setDrForm(f => ({ ...f, representativeName: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>사업자번호 *</Label>
+                    <Input value={drForm.businessNumber} onChange={e => setDrForm(f => ({ ...f, businessNumber: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>연락처 *</Label>
+                    <Input value={drForm.contactPhone} onChange={e => setDrForm(f => ({ ...f, contactPhone: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>상태</Label>
+                    <Select value={drForm.status} onValueChange={v => setDrForm(f => ({ ...f, status: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="승인">승인</SelectItem>
+                        <SelectItem value="대기">대기</SelectItem>
+                        <SelectItem value="거부">거부</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label>주소 *</Label>
+                    <Input value={drForm.address} onChange={e => setDrForm(f => ({ ...f, address: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>은행명</Label>
+                    <Input value={drForm.bankName} onChange={e => setDrForm(f => ({ ...f, bankName: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>계좌번호</Label>
+                    <Input value={drForm.bankAccount} onChange={e => setDrForm(f => ({ ...f, bankAccount: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>예금주</Label>
+                    <Input value={drForm.accountHolder} onChange={e => setDrForm(f => ({ ...f, accountHolder: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>로그인 ID</Label>
+                    <Input value={drForm.username} onChange={e => setDrForm(f => ({ ...f, username: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>새 비밀번호 (변경 시만 입력)</Label>
+                    <Input type="password" placeholder="변경하지 않으면 비워두세요" value={drForm.password} onChange={e => setDrForm(f => ({ ...f, password: e.target.value }))} />
+                  </div>
+                  <div className="flex items-center gap-3 col-span-2">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={drForm.isContactPolicyPos} onCheckedChange={v => setDrForm(f => ({ ...f, isContactPolicyPos: v }))} id="dr-edit-contact" />
+                      <Label htmlFor="dr-edit-contact">접점정책점</Label>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Switch checked={drForm.isHiddenPos} onCheckedChange={v => setDrForm(f => ({ ...f, isHiddenPos: v }))} id="dr-edit-hidden" />
+                      <Label htmlFor="dr-edit-hidden">히든정책점</Label>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Switch checked={drForm.isActive} onCheckedChange={v => setDrForm(f => ({ ...f, isActive: v }))} id="dr-edit-active" />
+                      <Label htmlFor="dr-edit-active">활성</Label>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setDrEditDialogOpen(false)}>취소</Button>
+                  <Button onClick={() => updateDrMutation.mutate({ id: drEditTarget.id, data: drForm })} disabled={updateDrMutation.isPending}>
+                    {updateDrMutation.isPending ? '수정 중...' : '수정'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          {/* ── STEP 5D-6: 정산 결과 탭 ── */}
+          <TabsContent value="settlement-results">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>정산 결과 관리</CardTitle>
+                  <CardDescription>개통 데이터와 정책 단가를 매칭한 정산 결과를 조회·수정·확정합니다.</CardDescription>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <input
+                    ref={siActivationUploadRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={handleActivationUpload}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadActivationTemplate}
+                  >
+                    <FileText className="h-4 w-4 mr-1" />
+                    업로드 양식
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => siActivationUploadRef.current?.click()}
+                    disabled={siActivationUploading}
+                  >
+                    {siActivationUploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+                    개통 업로드
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSettlementExport}
+                    disabled={siExportLoading}
+                  >
+                    {siExportLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+                    엑셀 다운로드
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => siMatchMutation.mutate()}
+                    disabled={siMatchMutation.isPending}
+                  >
+                    {siMatchMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <TrendingUp className="h-4 w-4 mr-1" />}
+                    자동 매칭 실행
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => siRematchMutation.mutate()}
+                    disabled={siRematchMutation.isPending}
+                  >
+                    {siRematchMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                    미매칭 재매칭
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* 업무 흐름 안내 */}
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 space-y-1">
+                  <div className="font-semibold mb-1 flex items-center gap-1"><Info className="h-3.5 w-3.5" />정산 처리 순서</div>
+                  {[
+                    '정산 정책 탭에서 정책 차수와 단가 행을 먼저 등록합니다.',
+                    '업로드 양식 버튼으로 양식을 내려받아 개통 데이터를 작성합니다.',
+                    '개통 업로드 버튼으로 엑셀 파일을 업로드합니다.',
+                    '자동 매칭 실행을 눌러 개통 데이터와 정책 단가를 매칭합니다.',
+                    '검토필요·정책없음 건은 행 클릭 후 조정금액을 입력하거나 예외 정책을 지정합니다.',
+                    '확인 완료된 건은 정산 확정 버튼으로 확정하고 엑셀 다운로드로 저장합니다.',
+                  ].map((step, i) => (
+                    <div key={i} className="flex gap-2">
+                      <span className="shrink-0 font-bold">{i + 1}.</span>
+                      <span>{step}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 요약 카드 */}
+                {siData?.summary && (() => {
+                  const s = siData.summary;
+                  return (
+                    <div className="grid grid-cols-5 gap-3">
+                      {[
+                        { label: '전체', value: s.total, color: 'bg-gray-100' },
+                        { label: '자동매칭', value: s.autoMatch, color: 'bg-green-100' },
+                        { label: '검토필요', value: s.reviewRequired, color: 'bg-yellow-100' },
+                        { label: '정책없음', value: s.policyNotFound, color: 'bg-red-100' },
+                        { label: '정산완료', value: s.settlementDone, color: 'bg-blue-100' },
+                      ].map(c => (
+                        <div key={c.label} className={`rounded-lg p-3 text-center ${c.color}`}>
+                          <div className="text-2xl font-bold">{c.value}</div>
+                          <div className="text-xs text-gray-600 mt-1">{c.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {/* 필터 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs mb-1 block">정산상태</Label>
+                    <Select value={siFilterStatus || 'all'} onValueChange={v => { setSiFilterStatus(v === 'all' ? '' : v); setSiPage(1); }}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="전체" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">전체</SelectItem>
+                        <SelectItem value="미정산">미정산</SelectItem>
+                        <SelectItem value="정산완료">정산완료</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1 block">매칭상태</Label>
+                    <Select value={siFilterMatchStatus || 'all'} onValueChange={v => { setSiFilterMatchStatus(v === 'all' ? '' : v); setSiPage(1); }}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="전체" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">전체</SelectItem>
+                        <SelectItem value="AUTO_MATCH">자동매칭</SelectItem>
+                        <SelectItem value="REVIEW_REQUIRED">검토필요</SelectItem>
+                        <SelectItem value="POLICY_NOT_FOUND">정책없음</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1 block">개통일 시작</Label>
+                    <Input type="date" className="h-8 text-sm" value={siFilterFrom} onChange={e => { setSiFilterFrom(e.target.value); setSiPage(1); }} />
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1 block">개통일 종료</Label>
+                    <Input type="date" className="h-8 text-sm" value={siFilterTo} onChange={e => { setSiFilterTo(e.target.value); setSiPage(1); }} />
+                  </div>
+                </div>
+
+                {/* 판매점 그룹형 테이블 — 엑셀형 grid 스타일 */}
+                {siLoading ? (
+                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+                ) : (() => {
+                  const groups = siData?.groups ?? [];
+                  if (groups.length === 0) {
+                    return <div className="text-center py-8 text-gray-400 text-sm">데이터가 없습니다. 자동 매칭을 실행하세요.</div>;
+                  }
+
+                  /* ── 공통 스타일 상수 ── */
+                  const thG: React.CSSProperties = { border: '1px solid #475569', padding: '7px 8px', fontWeight: 700, whiteSpace: 'nowrap', background: '#334155', color: 'white' };
+                  const tdG: React.CSSProperties = { border: '1px solid #d1d5db', padding: '6px 8px', fontSize: '12px' };
+                  const thD: React.CSSProperties = { background: '#475569', color: 'white', border: '1px solid #64748b', padding: '5px 6px', fontWeight: 700, whiteSpace: 'nowrap', fontSize: '11px' };
+                  const tdD: React.CSSProperties = { border: '1px solid #e2e8f0', padding: '4px 6px', fontSize: '11px' };
+
+                  return (
+                    <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '4px' }}>
+                      {/* ━━ 집계 테이블 ━━ */}
+                      <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '860px' }}>
+                        <colgroup>
+                          <col style={{ width: '32px' }} />
+                          <col style={{ width: '170px' }} />
+                          <col style={{ width: '60px' }} />
+                          <col style={{ width: '60px' }} />
+                          <col style={{ width: '72px' }} />
+                          <col style={{ width: '60px' }} />
+                          <col style={{ width: '72px' }} />
+                          <col style={{ width: '112px' }} />
+                          <col style={{ width: '112px' }} />
+                          <col style={{ width: '112px' }} />
+                          <col />
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th style={thG}></th>
+                            <th style={{ ...thG, textAlign: 'left' }}>판매점명</th>
+                            <th style={{ ...thG, textAlign: 'center' }}>총건수</th>
+                            <th style={{ ...thG, textAlign: 'center', background: '#14532d', color: '#bbf7d0', borderColor: '#166534' }}>자동</th>
+                            <th style={{ ...thG, textAlign: 'center', background: '#78350f', color: '#fde68a', borderColor: '#92400e' }}>검토필요</th>
+                            <th style={{ ...thG, textAlign: 'center', background: '#7f1d1d', color: '#fecaca', borderColor: '#991b1b' }}>미매칭</th>
+                            <th style={{ ...thG, textAlign: 'center', background: '#1e3a5f', color: '#bfdbfe', borderColor: '#1d4ed8' }}>정산완료</th>
+                            <th style={{ ...thG, textAlign: 'right' }}>정책합계</th>
+                            <th style={{ ...thG, textAlign: 'right' }}>조정합계</th>
+                            <th style={{ ...thG, textAlign: 'right' }}>확정합계</th>
+                            <th style={{ ...thG, textAlign: 'center' }}>액션</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groups.map(g => {
+                            const isOpen = siExpandedDealers.has(g.dealerName);
+                            const groupBg = isOpen ? '#dbeafe' : '#eff6ff';
+                            return (
+                              <React.Fragment key={`g-${g.dealerName}`}>
+                                {/* 집계 행 */}
+                                <tr
+                                  style={{ background: groupBg, cursor: 'pointer', fontWeight: 500 }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = '#bfdbfe'; }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = groupBg; }}
+                                  onClick={() => setSiExpandedDealers(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(g.dealerName)) next.delete(g.dealerName);
+                                    else next.add(g.dealerName);
+                                    return next;
+                                  })}
+                                >
+                                  <td style={{ ...tdG, textAlign: 'center' }}>
+                                    {isOpen ? <ChevronDown className="h-3 w-3 text-blue-600 inline" /> : <ChevronRight className="h-3 w-3 text-blue-600 inline" />}
+                                  </td>
+                                  <td style={{ ...tdG, textAlign: 'left', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.dealerName}>
+                                    {g.dealerName}
+                                  </td>
+                                  <td style={{ ...tdG, textAlign: 'center' }}>{g.total}</td>
+                                  <td style={{ ...tdG, textAlign: 'center', background: '#f0fdf4', color: '#15803d', fontWeight: 700 }}>{g.autoMatch || '-'}</td>
+                                  <td style={{ ...tdG, textAlign: 'center', background: '#fffbeb', color: '#b45309', fontWeight: 700 }}>{g.reviewRequired || '-'}</td>
+                                  <td style={{ ...tdG, textAlign: 'center', background: '#fef2f2', color: '#dc2626', fontWeight: 700 }}>{g.policyNotFound || '-'}</td>
+                                  <td style={{ ...tdG, textAlign: 'center', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}>{g.settlementDone || '-'}</td>
+                                  <td style={{ ...tdG, textAlign: 'right' }}>{g.sumPolicy ? g.sumPolicy.toLocaleString() : '-'}</td>
+                                  <td style={{ ...tdG, textAlign: 'right' }}>{g.sumAdjusted ? g.sumAdjusted.toLocaleString() : '-'}</td>
+                                  <td style={{ ...tdG, textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>{g.sumConfirmed ? g.sumConfirmed.toLocaleString() : '-'}</td>
+                                  <td style={{ ...tdG }} onClick={e => e.stopPropagation()}>
+                                    <div className="flex items-center gap-1.5">
+                                      {g.settlementDone === g.total ? (
+                                        <Badge className="text-xs">전체완료</Badge>
+                                      ) : (
+                                        <>
+                                          {(g.reviewRequired > 0 || g.policyNotFound > 0) && (
+                                            <span className="text-yellow-600 text-xs" title="검토필요/미매칭 건 포함">⚠</span>
+                                          )}
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-6 px-2 text-xs border-blue-400 text-blue-700 hover:bg-blue-50"
+                                            disabled={siLockMutation.isPending}
+                                            onClick={() => {
+                                              const pending = g.items.filter((i: any) => i.status !== '정산완료');
+                                              if (pending.length === 0) return;
+                                              const hasIssue = g.reviewRequired > 0 || g.policyNotFound > 0;
+                                              const msg = hasIssue
+                                                ? `⚠ "${g.dealerName}" 에 검토필요/미매칭 건이 포함되어 있습니다.\n미정산 ${pending.length}건 모두 확정하시겠습니까?`
+                                                : `"${g.dealerName}" 미정산 ${pending.length}건을 모두 확정하시겠습니까?`;
+                                              if (confirm(msg)) {
+                                                pending.forEach((i: any) => siLockMutation.mutate(i.id));
+                                              }
+                                            }}
+                                          >
+                                            <CheckCircle className="h-3 w-3 mr-0.5" />
+                                            전체확정
+                                          </Button>
+                                          {g.settlementDone > 0 && (
+                                            <span className="text-xs text-gray-500">{g.settlementDone}/{g.total}</span>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* 상세 펼침 — nested 엑셀형 테이블 */}
+                                {isOpen && (
+                                  <tr>
+                                    <td colSpan={11} style={{ padding: 0, border: '1px solid #93c5fd', background: '#f8fafc' }}>
+                                      <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '2100px' }}>
+                                          <thead>
+                                            <tr>
+                                              {([
+                                                { label: '개통일',     w: '96px',  a: 'center' },
+                                                { label: '채널',       w: '120px', a: 'center' },
+                                                { label: '판매점명',   w: '140px', a: 'left'   },
+                                                { label: '고객명',     w: '80px',  a: 'center' },
+                                                { label: '개통번호',   w: '100px', a: 'center' },
+                                                { label: '접점코드',   w: '90px',  a: 'center' },
+                                                { label: '실판매점명', w: '120px', a: 'left'   },
+                                                { label: '구분',       w: '56px',  a: 'center' },
+                                                { label: '요금제',     w: '200px', a: 'left'   },
+                                                { label: '가입유형',   w: '60px',  a: 'center' },
+                                                { label: '고객구분',   w: '64px',  a: 'center' },
+                                                { label: '결합조건',   w: '80px',  a: 'center' },
+                                                { label: '부가서비스', w: '80px',  a: 'center' },
+                                                { label: '가입비',     w: '72px',  a: 'center' },
+                                                { label: '매칭상태',   w: '64px',  a: 'center' },
+                                                { label: '정책금액',   w: '88px',  a: 'right'  },
+                                                { label: '추가금',     w: '76px',  a: 'right'  },
+                                                { label: '차감금',     w: '76px',  a: 'right'  },
+                                                { label: '히든금액',   w: '76px',  a: 'right'  },
+                                                { label: '조정금액',   w: '88px',  a: 'right'  },
+                                                { label: '확정금액',   w: '88px',  a: 'right'  },
+                                                { label: '메모',       w: '100px', a: 'left'   },
+                                                { label: '수정/확정',  w: '68px',  a: 'center' },
+                                              ] as const).map(({ label, w, a }) => (
+                                                <th key={label} style={{ ...thD, width: w, textAlign: a as any }}>{label}</th>
+                                              ))}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {g.items.map((item: any) => {
+                                              const ar = item.activationRecord;
+                                              const isSubPos = ar?.realSalesPOS && item.dealerName && !isSameStoreName(item.dealerName, ar.realSalesPOS);
+                                              const matchStatus = item.matchStatus;
+                                              const matchBg    = matchStatus === 'AUTO_MATCH' ? '#f0fdf4' : matchStatus === 'REVIEW_REQUIRED' ? '#fffbeb' : '#fef2f2';
+                                              const matchColor = matchStatus === 'AUTO_MATCH' ? '#15803d' : matchStatus === 'REVIEW_REQUIRED' ? '#b45309' : '#dc2626';
+                                              const matchLabel = matchStatus === 'AUTO_MATCH' ? '자동'    : matchStatus === 'REVIEW_REQUIRED' ? '검토'   : '미매칭';
+                                              const rowBg      = item.status === '정산완료' ? '#f0f9ff' : 'white';
+
+                                              const finalAmount = (() => {
+                                                if (item.lockedAmount != null) return Number(item.lockedAmount);
+                                                const base = item.adjustedAmount != null ? Number(item.adjustedAmount) : (item.rebateAmount != null ? Number(item.rebateAmount) : null);
+                                                if (base == null) return null;
+                                                return base + (item.addAmount != null ? Number(item.addAmount) : 0) - (item.deductAmount != null ? Number(item.deductAmount) : 0) + (item.hiddenAmount != null ? Number(item.hiddenAmount) : 0);
+                                              })();
+
+                                              return (
+                                                <tr key={`d-${item.id}`}
+                                                  style={{ background: rowBg }}
+                                                  onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = '#fefce8'; }}
+                                                  onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = rowBg; }}
+                                                >
+                                                  {/* 개통일 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}>
+                                                    {ar?.activationDatetime ? format(new Date(ar.activationDatetime), 'yyyy-MM-dd HH:mm', { locale: ko }) : '-'}
+                                                  </td>
+                                                  {/* 채널 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.channel ?? ''}>{ar?.channel ?? '-'}</td>
+                                                  {/* 판매점명 */}
+                                                  <td style={{ ...tdD, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.dealerName ?? ''}>
+                                                    {item.dealerName ?? '-'}
+                                                  </td>
+                                                  {/* 고객명 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>{ar?.customerName ?? '-'}</td>
+                                                  {/* 개통번호 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>{ar?.activationNumber ?? ar?.activation_number ?? '-'}</td>
+                                                  {/* 접점코드 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>{ar?.contactCode ?? '-'}</td>
+                                                  {/* 실판매점명 */}
+                                                  <td style={{ ...tdD, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.realSalesPOS ?? ''}>
+                                                    {ar?.realSalesPOS ?? '-'}
+                                                  </td>
+                                                  {/* 구분 (본점/하부점) */}
+                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                    {ar?.realSalesPOS ? (
+                                                      isSubPos
+                                                        ? <span style={{ fontSize: 10, color: '#c2410c', background: '#ffedd5', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>하부점</span>
+                                                        : <span style={{ fontSize: 10, color: '#15803d', background: '#f0fdf4', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>본점</span>
+                                                    ) : '-'}
+                                                  </td>
+                                                  {/* 요금제 */}
+                                                  <td style={{ ...tdD, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.planName ?? ''}>{ar?.planName ?? '-'}</td>
+                                                  {/* 가입유형 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                    {ar?.customerType === '1' ? '신규' : ar?.customerType === '2' ? '번이' : ar?.customerType ?? '-'}
+                                                  </td>
+                                                  {/* 고객구분 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                    <span style={{
+                                                      fontSize: 10, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
+                                                      background: ar?.nationalityType === '외국인' ? '#fef3c7' : '#f0fdf4',
+                                                      color: ar?.nationalityType === '외국인' ? '#92400e' : '#15803d',
+                                                    }}>
+                                                      {ar?.nationalityType ?? '내국인'}
+                                                    </span>
+                                                  </td>
+                                                  {/* 결합조건 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.bundleType ?? ''}>{ar?.bundleType ?? '-'}</td>
+                                                  {/* 부가서비스 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.addService ?? ''}>{ar?.addService ?? '-'}</td>
+                                                  {/* 가입비 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>{ar?.regFeeType ?? '-'}</td>
+                                                  {/* 매칭상태 */}
+                                                  <td style={{ ...tdD, textAlign: 'center', background: matchBg }}>
+                                                    <span style={{ fontWeight: 700, color: matchColor }}>{matchLabel}</span>
+                                                  </td>
+                                                  {/* 정책금액 */}
+                                                  <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                                    {item.rebateAmount ? Number(item.rebateAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
+                                                  </td>
+                                                  {/* 추가금 */}
+                                                  <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap', color: '#15803d' }}>
+                                                    {item.addAmount != null ? Number(item.addAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
+                                                  </td>
+                                                  {/* 차감금 */}
+                                                  <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap', color: '#dc2626' }}>
+                                                    {item.deductAmount != null ? Number(item.deductAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
+                                                  </td>
+                                                  {/* 히든금액 */}
+                                                  <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap', color: '#7c3aed' }}>
+                                                    {item.hiddenAmount != null ? Number(item.hiddenAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
+                                                  </td>
+                                                  {/* 조정금액 */}
+                                                  <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                                    {item.adjustedAmount ? Number(item.adjustedAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
+                                                  </td>
+                                                  {/* 확정금액 */}
+                                                  <td style={{ ...tdD, textAlign: 'right', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', whiteSpace: 'nowrap' }}>
+                                                    {finalAmount != null ? finalAmount.toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
+                                                  </td>
+                                                  {/* 메모 */}
+                                                  <td style={{ ...tdD, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#9ca3af' }} title={item.memo ?? ''}>
+                                                    {item.memo || '-'}
+                                                  </td>
+                                                  {/* 수정/확정 */}
+                                                  <td style={{ ...tdD, textAlign: 'center' }}>
+                                                    <div className="flex items-center justify-center gap-0.5">
+                                                      <Button size="sm" variant="ghost" className="h-5 px-1 text-xs" disabled={item.status === '정산완료'}
+                                                        onClick={e => {
+                                                          e.stopPropagation();
+                                                          setSiEditTarget(item);
+                                                          setSiEditForm({
+                                                            adjustedAmount: item.adjustedAmount ?? '',
+                                                            addAmount: item.addAmount != null ? Number(item.addAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '',
+                                                            deductAmount: item.deductAmount != null ? Number(item.deductAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '',
+                                                            hiddenAmount: item.hiddenAmount != null ? Number(item.hiddenAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '',
+                                                            status: item.status ?? '',
+                                                            memo: item.memo ?? '',
+                                                            forcePolicyVersionId: item.forcePolicyVersionId ? String(item.forcePolicyVersionId) : '',
+                                                            forceReason: item.forceReason ?? '',
+                                                          });
+                                                          setSiEditDialogOpen(true);
+                                                        }}>
+                                                        <Edit className="h-3 w-3" />
+                                                      </Button>
+                                                      {item.status !== '정산완료' && (
+                                                        <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 hover:bg-blue-50"
+                                                          disabled={siLockMutation.isPending}
+                                                          onClick={e => {
+                                                            e.stopPropagation();
+                                                            if (confirm(`ID ${item.id} 건을 정산 확정하시겠습니까?\n확정 후 수정 불가합니다.`)) {
+                                                              siLockMutation.mutate(item.id);
+                                                            }
+                                                          }}>
+                                                          <CheckCircle className="h-3 w-3" />
+                                                        </Button>
+                                                      )}
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+
+                {/* 페이징 */}
+                {(() => {
+                  const isLastPage = siPage * siLimit >= (siData?.totalGroups ?? 0);
+                  return (
+                    <div className="flex items-center justify-between mt-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-500">표시 개수</span>
+                        {([30, 50, 100] as const).map(n => (
+                          <Button
+                            key={n}
+                            variant={siLimit === n ? 'default' : 'outline'}
+                            size="sm"
+                            className="px-2 h-7 text-xs"
+                            onClick={() => { setSiLimit(n); setSiPage(1); }}
+                          >
+                            {n}행
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" disabled={siPage <= 1} onClick={() => setSiPage(p => p - 1)}>이전</Button>
+                        <span className="text-sm px-2 py-1">{siPage} 페이지</span>
+                        <Button variant="outline" size="sm" disabled={isLastPage} onClick={() => setSiPage(p => p + 1)}>다음</Button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+
+            {/* 수정 다이얼로그 */}
+            <Dialog open={siEditDialogOpen} onOpenChange={setSiEditDialogOpen}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>정산 항목 수정</DialogTitle>
+                  <DialogDescription>
+                    {siEditTarget && `ID: ${siEditTarget.id} | 판매점: ${siEditTarget.dealerName ?? '-'}`}
+                  </DialogDescription>
+                </DialogHeader>
+                {siEditTarget && (
+                  <div className="space-y-3">
+                    {/* 읽기 전용 정보 */}
+                    <div className="bg-gray-50 rounded p-3 text-xs grid grid-cols-2 gap-2">
+                      <div><span className="text-gray-500">매칭상태:</span> <span className="font-medium">{siEditTarget.matchStatus}</span></div>
+                      <div><span className="text-gray-500">정책금액:</span> <span className="font-medium">{siEditTarget.rebateAmount ? Number(siEditTarget.rebateAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}</span></div>
+                      <div><span className="text-gray-500">채널:</span> <span className="font-medium">{siEditTarget.activationRecord?.channel ?? '-'}</span></div>
+                      <div><span className="text-gray-500">요금제:</span> <span className="font-medium">{siEditTarget.activationRecord?.planName ?? '-'}</span></div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-sm">수동 조정금액</Label>
+                      <Input
+                        type="number"
+                        placeholder="조정금액 입력 (숫자)"
+                        value={siEditForm.adjustedAmount}
+                        onChange={e => setSiEditForm(f => ({ ...f, adjustedAmount: e.target.value }))}
+                      />
+                      <p className="text-xs text-gray-400">입력 시 기본정책금액을 대체합니다.</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-sm text-green-700">추가금</Label>
+                        <Input
+                          type="text"
+                          placeholder="예: 5,000"
+                          value={siEditForm.addAmount}
+                          onChange={e => setSiEditForm(f => ({ ...f, addAmount: e.target.value }))}
+                        />
+                        <p className="text-xs text-gray-400">기본정책금액에 더해질 금액입니다.</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-sm text-red-600">차감금</Label>
+                        <Input
+                          type="text"
+                          placeholder="예: 3,000"
+                          value={siEditForm.deductAmount}
+                          onChange={e => setSiEditForm(f => ({ ...f, deductAmount: e.target.value }))}
+                        />
+                        <p className="text-xs text-gray-400">기본정책금액에서 차감될 금액입니다. 음수가 아닌 양수로 입력하세요.</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm text-purple-700">히든금액</Label>
+                      <Input
+                        type="text"
+                        placeholder="예: 10,000"
+                        value={siEditForm.hiddenAmount}
+                        onChange={e => setSiEditForm(f => ({ ...f, hiddenAmount: e.target.value }))}
+                      />
+                      <p className="text-xs text-gray-400">히든정책으로 추가 지급될 금액입니다. 자동 계산 후 수동 조정 가능합니다.</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">정산상태</Label>
+                      <Select value={siEditForm.status || 'current'} onValueChange={v => setSiEditForm(f => ({ ...f, status: v === 'current' ? f.status : v }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="미정산">미정산</SelectItem>
+                          <SelectItem value="보류">보류</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">예외 정책차수 ID</Label>
+                      <Input
+                        type="number"
+                        placeholder="강제 지정할 정책차수 ID"
+                        value={siEditForm.forcePolicyVersionId}
+                        onChange={e => setSiEditForm(f => ({ ...f, forcePolicyVersionId: e.target.value }))}
+                      />
+                    </div>
+                    {siEditForm.forcePolicyVersionId && (
+                      <div className="space-y-1">
+                        <Label className="text-sm">예외사유 <span className="text-red-500">*</span></Label>
+                        <Input
+                          placeholder="예외사유 필수 입력"
+                          value={siEditForm.forceReason}
+                          onChange={e => setSiEditForm(f => ({ ...f, forceReason: e.target.value }))}
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <Label className="text-sm">메모</Label>
+                      <Textarea
+                        rows={2}
+                        placeholder="메모 입력"
+                        value={siEditForm.memo}
+                        onChange={e => setSiEditForm(f => ({ ...f, memo: e.target.value }))}
+                      />
+                    </div>
+                    <div className="flex justify-between gap-2 pt-1">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={siEditTarget.status === '정산완료' || siLockMutation.isPending}
+                        onClick={() => {
+                          if (confirm(`ID ${siEditTarget.id} 항목을 정산 확정하시겠습니까?\n확정 후에는 수정할 수 없습니다.`)) {
+                            siLockMutation.mutate(siEditTarget.id);
+                          }
+                        }}
+                      >
+                        {siLockMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
+                        정산 확정
+                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setSiEditDialogOpen(false)}>취소</Button>
+                        <Button
+                          size="sm"
+                          disabled={siEditTarget.status === '정산완료' || siUpdateMutation.isPending}
+                          onClick={() => {
+                            const rawAdd = siEditForm.addAmount.replace(/,/g, '');
+                            const rawDeduct = siEditForm.deductAmount.replace(/,/g, '');
+                            const rawHidden = siEditForm.hiddenAmount.replace(/,/g, '');
+                            if (rawAdd !== '' && isNaN(Number(rawAdd))) {
+                              toast({ title: '오류', description: '추가금은 숫자로 입력해주세요.', variant: 'destructive' }); return;
+                            }
+                            if (rawDeduct !== '' && isNaN(Number(rawDeduct))) {
+                              toast({ title: '오류', description: '차감금은 숫자로 입력해주세요.', variant: 'destructive' }); return;
+                            }
+                            if (rawHidden !== '' && isNaN(Number(rawHidden))) {
+                              toast({ title: '오류', description: '히든금액은 숫자로 입력해주세요.', variant: 'destructive' }); return;
+                            }
+                            if (rawAdd !== '' && Number(rawAdd) < 0) {
+                              toast({ title: '오류', description: '추가금은 양수로 입력해주세요.', variant: 'destructive' }); return;
+                            }
+                            if (rawDeduct !== '' && Number(rawDeduct) < 0) {
+                              toast({ title: '오류', description: '차감금은 양수로 입력해주세요.', variant: 'destructive' }); return;
+                            }
+                            const patch: any = {};
+                            if (siEditForm.adjustedAmount !== '') patch.adjustedAmount = siEditForm.adjustedAmount;
+                            patch.addAmount    = rawAdd    !== '' ? rawAdd    : null;
+                            patch.deductAmount = rawDeduct !== '' ? rawDeduct : null;
+                            patch.hiddenAmount = rawHidden !== '' ? rawHidden : null;
+                            if (siEditForm.status)            patch.status = siEditForm.status;
+                            if (siEditForm.memo !== '')        patch.memo = siEditForm.memo;
+                            if (siEditForm.forcePolicyVersionId !== '') {
+                              patch.forcePolicyVersionId = Number(siEditForm.forcePolicyVersionId);
+                              patch.forceReason = siEditForm.forceReason;
+                            }
+                            siUpdateMutation.mutate({ id: siEditTarget.id, data: patch });
+                          }}
+                        >
+                          {siUpdateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                          저장
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          {/* ── STEP 5D-7: 정산 정책 탭 ── */}
+          <TabsContent value="policy-versions">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              {/* 좌측: 정책 차수 목록 */}
+              <div className="md:col-span-2">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-3">
+                    <CardTitle className="text-base">정책 차수 목록</CardTitle>
+                    <Button size="sm" onClick={() => { setPvForm({ policyNo: '', policyName: '', effectiveFrom: '', effectiveTo: '', memo: '' }); setPvCreateOpen(true); }}>
+                      <Plus className="h-3 w-3 mr-1" />신규
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {pvLoading ? (
+                      <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
+                    ) : (policyVersions ?? []).length === 0 ? (
+                      <p className="text-center text-sm text-gray-400 py-6">정책 차수가 없습니다.</p>
+                    ) : (
+                      <ul className="divide-y">
+                        {(policyVersions ?? []).map((pv: any) => (
+                          <li
+                            key={pv.id}
+                            className={`px-4 py-3 cursor-pointer hover:bg-gray-50 flex items-start justify-between gap-2 ${pvSelectedId === pv.id ? 'bg-blue-50' : ''}`}
+                            onClick={() => setPvSelectedId(pv.id)}
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm truncate">{pv.policyName}</span>
+                                {pv.isActive ? (
+                                  <Badge className="text-xs shrink-0">활성</Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-xs shrink-0">비활성</Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5">{pv.policyNo} · {pv.effectiveFrom ? pv.effectiveFrom.slice(0, 10) : '-'}</div>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <Button
+                                size="sm" variant="ghost" className="h-6 w-6 p-0"
+                                onClick={e => { e.stopPropagation(); setPvEditTarget(pv); setPvForm({ policyNo: pv.policyNo, policyName: pv.policyName, effectiveFrom: pv.effectiveFrom?.slice(0,10) ?? '', effectiveTo: pv.effectiveTo?.slice(0,10) ?? '', memo: pv.memo ?? '' }); setPvEditOpen(true); }}
+                              ><Edit className="h-3 w-3" /></Button>
+                              {pv.isActive && (
+                                <Button
+                                  size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                  onClick={e => { e.stopPropagation(); if (confirm(`"${pv.policyName}" 을 비활성화합니까?`)) pvDeactivateMutation.mutate(pv.id); }}
+                                ><Trash2 className="h-3 w-3" /></Button>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* 우측: 단가 행 */}
+              <div className="md:col-span-3">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-3">
+                    <div>
+                      <CardTitle className="text-base">
+                        {pvSelectedId ? `단가 행 — v${pvSelectedId}` : '단가 행'}
+                      </CardTitle>
+                      <CardDescription className="text-xs mt-0.5">
+                        {pvSelectedId ? '좌측 차수를 클릭하면 단가 행을 확인합니다.' : '좌측에서 정책 차수를 선택하세요.'}
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => { setPeFile(null); setPePvId(pvSelectedId ? String(pvSelectedId) : '__auto__'); setPeResult(null); setPeOpen(true); if (peFileRef.current) peFileRef.current.value = ''; }}>
+                        엑셀 업로드
+                      </Button>
+                      {pvSelectedId && (
+                        <Button size="sm" onClick={() => { setPrForm({ channel: '', planName: '', customerType: '1', simCount: '', bundleType: '', addService: '', regFeeType: '', rebateAmount: '', memo: '' }); setPrCreateOpen(true); }}>
+                          <Plus className="h-3 w-3 mr-1" />행 추가
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {/* 단가 행 필터 */}
+                    {pvSelectedId && (
+                      <div className="flex flex-wrap gap-2 p-2 border-b bg-gray-50 text-xs">
+                        <select
+                          className="border rounded h-7 px-1.5 text-xs bg-white"
+                          value={prFilterChannel}
+                          onChange={e => setPrFilterChannel(e.target.value)}
+                        >
+                          <option value="">채널 전체</option>
+                          {Array.from(new Set((policyRowsData ?? []).map((r: any) => r.channel).filter(Boolean))).sort().map((ch: any) => (
+                            <option key={ch} value={ch}>{ch}</option>
+                          ))}
+                        </select>
+                        <input
+                          className="border rounded h-7 px-1.5 text-xs w-40"
+                          placeholder="요금제 검색"
+                          value={prFilterPlan}
+                          onChange={e => setPrFilterPlan(e.target.value)}
+                        />
+                        <select
+                          className="border rounded h-7 px-1.5 text-xs bg-white"
+                          value={prFilterNat}
+                          onChange={e => setPrFilterNat(e.target.value)}
+                        >
+                          <option value="all">국적 전체</option>
+                          <option value="내국인">내국인</option>
+                          <option value="외국인">외국인</option>
+                          <option value="공통">공통(NULL)</option>
+                        </select>
+                        <select
+                          className="border rounded h-7 px-1.5 text-xs bg-white"
+                          value={prFilterType}
+                          onChange={e => setPrFilterType(e.target.value)}
+                        >
+                          <option value="all">유형 전체</option>
+                          <option value="1">신규</option>
+                          <option value="2">번이</option>
+                        </select>
+                        <select
+                          className="border rounded h-7 px-1.5 text-xs bg-white"
+                          value={prFilterActive}
+                          onChange={e => setPrFilterActive(e.target.value)}
+                        >
+                          <option value="active">활성만</option>
+                          <option value="all">전체</option>
+                          <option value="inactive">비활성만</option>
+                        </select>
+                        <button
+                          className="border rounded h-7 px-2 text-xs bg-white hover:bg-gray-100"
+                          onClick={() => { setPrFilterChannel(''); setPrFilterPlan(''); setPrFilterNat('all'); setPrFilterType('all'); setPrFilterActive('active'); }}
+                        >초기화</button>
+                        <span className="text-gray-400 self-center">
+                          {(() => {
+                            const filtered = (policyRowsData ?? []).filter((row: any) => {
+                              if (prFilterChannel && row.channel !== prFilterChannel) return false;
+                              if (prFilterPlan && !String(row.planName ?? '').includes(prFilterPlan)) return false;
+                              if (prFilterNat !== 'all') {
+                                if (prFilterNat === '공통') { if (row.nationalityType != null && row.nationalityType !== '') return false; }
+                                else { if (row.nationalityType !== prFilterNat) return false; }
+                              }
+                              if (prFilterType !== 'all' && row.customerType !== prFilterType) return false;
+                              if (prFilterActive === 'active' && row.isActive === false) return false;
+                              if (prFilterActive === 'inactive' && row.isActive !== false) return false;
+                              return true;
+                            });
+                            return `${filtered.length}/${(policyRowsData ?? []).length}건`;
+                          })()}
+                        </span>
+                      </div>
+                    )}
+                    {!pvSelectedId ? (
+                      <p className="text-center text-sm text-gray-400 py-8">정책 차수를 선택하세요.</p>
+                    ) : (policyRowsData ?? []).length === 0 ? (
+                      <p className="text-center text-sm text-gray-400 py-8">단가 행이 없습니다. "행 추가"를 눌러 추가하세요.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b">
+                              {['채널','요금제','유형','국적','유심','결합조건','부가서비스조건','가입비조건','기본정책금액','상태',''].map(h => (
+                                <th key={h} className="text-left px-2 py-2 font-medium text-gray-600 whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(policyRowsData ?? []).filter((row: any) => {
+                              if (prFilterChannel && row.channel !== prFilterChannel) return false;
+                              if (prFilterPlan && !String(row.planName ?? '').includes(prFilterPlan)) return false;
+                              if (prFilterNat !== 'all') {
+                                if (prFilterNat === '공통') { if (row.nationalityType != null && row.nationalityType !== '') return false; }
+                                else { if (row.nationalityType !== prFilterNat) return false; }
+                              }
+                              if (prFilterType !== 'all' && row.customerType !== prFilterType) return false;
+                              if (prFilterActive === 'active' && row.isActive === false) return false;
+                              if (prFilterActive === 'inactive' && row.isActive !== false) return false;
+                              return true;
+                            }).map((row: any) => (
+                              <tr key={row.id} className={`border-b ${row.isActive === false ? 'opacity-40' : 'hover:bg-gray-50'}`}>
+                                <td className="px-2 py-2 max-w-[80px] truncate" title={row.channel}>{row.channel}</td>
+                                <td className="px-2 py-2 max-w-[100px] truncate" title={row.planName}>{row.planName}</td>
+                                <td className="px-2 py-2 whitespace-nowrap">{row.customerType === '1' ? '신규' : row.customerType === '2' ? '번이' : row.customerType}</td>
+                                <td className="px-2 py-2 whitespace-nowrap">
+                                  {row.nationalityType
+                                    ? <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: row.nationalityType === '외국인' ? '#fef3c7' : '#f0fdf4', color: row.nationalityType === '외국인' ? '#92400e' : '#15803d' }}>{row.nationalityType}</span>
+                                    : <span className="text-gray-400 text-xs">전체</span>
+                                  }
+                                </td>
+                                <td className="px-2 py-2">{row.simCount ?? '-'}</td>
+                                <td className="px-2 py-2 max-w-[60px] truncate">{row.bundleType ?? '-'}</td>
+                                <td className="px-2 py-2 max-w-[60px] truncate">{row.addService ?? '-'}</td>
+                                <td className="px-2 py-2">{row.regFeeType ?? '-'}</td>
+                                <td className="px-2 py-2 text-right font-medium">{row.rebateAmount ? Number(row.rebateAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}</td>
+                                <td className="px-2 py-2">
+                                  <Badge variant={row.isActive !== false ? 'default' : 'secondary'} className="text-xs">
+                                    {row.isActive !== false ? '활성' : '비활성'}
+                                  </Badge>
+                                </td>
+                                <td className="px-2 py-2">
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      size="sm" variant="ghost" className="h-5 w-5 p-0 text-gray-400 hover:text-blue-600"
+                                      onClick={() => {
+                                        setPrEditTarget(row);
+                                        setPrEditForm({
+                                          channel: row.channel ?? '',
+                                          planName: row.planName ?? '',
+                                          customerType: row.customerType ?? '1',
+                                          nationalityType: row.nationalityType ?? '',
+                                          simCount: row.simCount != null ? String(row.simCount) : '',
+                                          bundleType: row.bundleType ?? '',
+                                          addService: row.addService ?? '',
+                                          regFeeType: row.regFeeType ?? '',
+                                          rebateAmount: row.rebateAmount != null ? Number(row.rebateAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '',
+                                          memo: row.memo ?? '',
+                                          isActive: row.isActive !== false,
+                                        });
+                                        setPrEditOpen(true);
+                                      }}
+                                    ><Edit2 className="h-3 w-3" /></Button>
+                                    {row.isActive !== false && (
+                                      <Button
+                                        size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-400 hover:text-red-600"
+                                        onClick={() => { if (confirm('이 단가 행을 비활성화합니까?')) prDeactivateMutation.mutate(row.id); }}
+                                      ><Trash2 className="h-3 w-3" /></Button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* ── 추가/차감 규칙 섹션 ── */}
+            {pvSelectedId && (
+              <div className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-sm font-semibold">추가/차감 규칙</CardTitle>
+                      <p className="text-xs text-gray-500 mt-0.5">신규 정산 항목 생성 시 조건에 맞는 규칙이 자동 적용됩니다.</p>
+                    </div>
+                    <Button size="sm" onClick={() => { setArForm(arFormDefault); setArCreateOpen(true); }}>
+                      <Plus className="h-3 w-3 mr-1" />규칙 추가
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {(arData ?? []).length === 0 ? (
+                      <p className="text-center text-sm text-gray-400 py-6">등록된 규칙이 없습니다.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b">
+                              {['상태','채널','요금제','유형','조건종류','조건값','구분','금액','메모','관리'].map(h => (
+                                <th key={h} className="text-left px-2 py-2 font-medium text-gray-600 whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(arData ?? []).map((rule: any) => (
+                              <tr key={rule.id} className={`border-b ${rule.isActive === false ? 'opacity-40' : 'hover:bg-gray-50'}`}>
+                                <td className="px-2 py-2"><Badge variant={rule.isActive !== false ? 'default' : 'secondary'} className="text-xs">{rule.isActive !== false ? '활성' : '비활성'}</Badge></td>
+                                <td className="px-2 py-2">{rule.channel || '전체'}</td>
+                                <td className="px-2 py-2 max-w-[100px] truncate" title={rule.planName}>{rule.planName || '전체'}</td>
+                                <td className="px-2 py-2 whitespace-nowrap">{rule.customerType === '1' ? '신규' : rule.customerType === '2' ? '번이' : rule.customerType || '전체'}</td>
+                                <td className="px-2 py-2 whitespace-nowrap text-blue-700">{rule.conditionType}</td>
+                                <td className="px-2 py-2">{rule.conditionValue || '-'}</td>
+                                <td className="px-2 py-2"><Badge variant={rule.adjustmentType === 'ADD' ? 'default' : 'destructive'} className="text-xs">{rule.adjustmentType === 'ADD' ? '추가' : '차감'}</Badge></td>
+                                <td className="px-2 py-2 text-right font-medium">{rule.amount ? Number(rule.amount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}</td>
+                                <td className="px-2 py-2 text-gray-400 max-w-[80px] truncate">{rule.memo || '-'}</td>
+                                <td className="px-2 py-2">
+                                  <div className="flex items-center gap-1">
+                                    <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-gray-400 hover:text-blue-600" onClick={() => { setArEditTarget(rule); setArEditForm({ channel: rule.channel ?? '', planName: rule.planName ?? '', customerType: rule.customerType ?? '', conditionType: rule.conditionType ?? 'BUNDLE_EXISTS', conditionValue: rule.conditionValue ?? '', adjustmentType: rule.adjustmentType ?? 'ADD', amount: rule.amount != null ? Number(rule.amount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '', isActive: rule.isActive !== false, memo: rule.memo ?? '' }); setArEditOpen(true); }}><Edit2 className="h-3 w-3" /></Button>
+                                    {rule.isActive !== false && (
+                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" onClick={() => { if (confirm('이 규칙을 비활성화합니까?')) arDeactivateMutation.mutate(rule.id); }}><Trash2 className="h-3 w-3" /></Button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* ── 히든정책 섹션 ── */}
+            <div className="mt-4">
+              <Card>
+                <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold">히든정책 관리</CardTitle>
+                    <p className="text-xs text-gray-500 mt-0.5">히든정책 판매점(isHiddenPos=true)에 대한 히든금액 자동 적용 규칙입니다.</p>
+                  </div>
+                  <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => { setHpRecalcResult(null); setHpRecalcOpen(true); }}>
+                    히든금액 재계산
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => { setHpForm(hpFormDefault); setHpCreateOpen(true); }}>
+                    <Plus className="h-3 w-3 mr-1" />추가
+                  </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-2">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          {['활성','판매점','접점코드','채널','요금제','유형','히든금액','적용시작일','적용종료일','메모','관리'].map(h => (
+                            <th key={h} className="text-left px-2 py-2 font-medium text-gray-600 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(hpData ?? []).map((row: any) => {
+                          const drMatch = row.dealerRegistrationId != null ? (dealerListForCC as any[]).find((d: any) => d.id === row.dealerRegistrationId) : null;
+                          const dealerLabel = drMatch ? `[${drMatch.dealerCode ?? drMatch.id}] ${drMatch.businessName}${drMatch.isHiddenPos ? ' ★' : ''}` : (row.dealerRegistrationId != null ? `ID:${row.dealerRegistrationId}` : '전체');
+                          return (
+                          <tr key={row.id} className={`border-b ${row.isActive === false ? 'opacity-40' : 'hover:bg-gray-50'}`}>
+                            <td className="px-2 py-2"><Badge variant={row.isActive !== false ? 'default' : 'secondary'} className="text-xs">{row.isActive !== false ? '활성' : '비활성'}</Badge></td>
+                            <td className="px-2 py-2 whitespace-nowrap max-w-[160px] truncate" title={dealerLabel}>{dealerLabel}</td>
+                            <td className="px-2 py-2">{row.contactCode || '전체'}</td>
+                            <td className="px-2 py-2">{row.channel || '전체'}</td>
+                            <td className="px-2 py-2 max-w-[120px] truncate" title={row.planName}>{row.planName || '전체'}</td>
+                            <td className="px-2 py-2 whitespace-nowrap">{row.customerType === '1' ? '신규' : row.customerType === '2' ? '번이' : row.customerType || '전체'}</td>
+                            <td className="px-2 py-2 text-right font-medium text-purple-700">{row.hiddenAmount ? Number(row.hiddenAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}</td>
+                            <td className="px-2 py-2 whitespace-nowrap">{row.effectiveFrom ? new Date(row.effectiveFrom).toLocaleDateString('ko-KR') : '-'}</td>
+                            <td className="px-2 py-2 whitespace-nowrap">{row.effectiveTo ? new Date(row.effectiveTo).toLocaleDateString('ko-KR') : '-'}</td>
+                            <td className="px-2 py-2 text-gray-400 max-w-[80px] truncate">{row.memo || '-'}</td>
+                            <td className="px-2 py-2">
+                              <div className="flex items-center gap-1">
+                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-gray-400 hover:text-blue-600" onClick={() => {
+                                  setHpEditTarget(row);
+                                  const editDrId = row.dealerRegistrationId != null ? String(row.dealerRegistrationId) : '';
+                                  setHpEditForm({
+                                    dealerRegistrationId: editDrId,
+                                    contactCode: row.contactCode ?? '',
+                                    channel: row.channel ?? '',
+                                    planName: row.planName ?? '',
+                                    customerType: row.customerType ?? '',
+                                    hiddenAmount: row.hiddenAmount != null ? Number(row.hiddenAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '',
+                                    effectiveFrom: row.effectiveFrom ? new Date(row.effectiveFrom).toISOString().slice(0,10) : '',
+                                    effectiveTo: row.effectiveTo ? new Date(row.effectiveTo).toISOString().slice(0,10) : '',
+                                    isActive: row.isActive !== false,
+                                    memo: row.memo ?? '',
+                                  });
+                                  loadHpDialogCCList(editDrId);
+                                  setHpEditOpen(true);
+                                }}><Edit2 className="h-3 w-3" /></Button>
+                                {row.isActive !== false && (
+                                  <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" onClick={() => { if (confirm('이 히든정책을 비활성화합니까?')) hpDeactivateMutation.mutate(row.id); }}><Trash2 className="h-3 w-3" /></Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ); })}
+                        {(hpData ?? []).length === 0 && (
+                          <tr><td colSpan={11} className="px-2 py-4 text-center text-gray-400">등록된 히든정책이 없습니다.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* 히든금액 재계산 다이얼로그 */}
+            <Dialog open={hpRecalcOpen} onOpenChange={o => { setHpRecalcOpen(o); if (!o) { setHpRecalcResult(null); setHpRecalcDebugCC(''); } }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>히든금액 재계산</DialogTitle>
+                  <DialogDescription>미확정 정산건의 hiddenAmount만 재계산합니다. 확정 건과 lockedAmount는 변경되지 않습니다.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">개통일 시작 <span className="text-gray-400">(미입력=전체)</span></Label>
+                      <Input type="date" value={hpRecalcFrom} onChange={e => setHpRecalcFrom(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">개통일 종료 <span className="text-gray-400">(미입력=전체)</span></Label>
+                      <Input type="date" value={hpRecalcTo} onChange={e => setHpRecalcTo(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">접점코드 진단 <span className="text-gray-400">(입력 시 해당 코드의 처리 흐름 상세 추적)</span></Label>
+                    <Input placeholder="예: K엠45172 (선택 사항)" value={hpRecalcDebugCC} onChange={e => setHpRecalcDebugCC(e.target.value)} className="font-mono text-xs" />
+                  </div>
+                  {hpRecalcResult && (
+                    <div className={`rounded border p-3 text-xs space-y-1 ${hpRecalcResult.dryRun ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+                      <div className={`font-semibold mb-1 ${hpRecalcResult.dryRun ? 'text-yellow-800' : 'text-green-800'}`}>
+                        {hpRecalcResult.dryRun ? '시뮬레이션 결과 (DB 미반영)' : '재계산 완료'}
+                      </div>
+                      <div>대상: <span className="font-medium">{hpRecalcResult.totalTargets}건</span></div>
+                      <div>업데이트: <span className="font-medium text-green-700">{hpRecalcResult.updated}건</span></div>
+                      <div>초기화(null): <span className="font-medium">{hpRecalcResult.cleared}건</span>
+                        {hpRecalcResult.cleared > 0 && (
+                          <span className="text-gray-400 ml-1">
+                            (판매점 미연결: {hpRecalcResult.skippedNoDealer ?? 0}건,
+                            히든POS 아님: {hpRecalcResult.skippedNotHiddenPos ?? 0}건,
+                            정책 없음: {hpRecalcResult.skippedNoPolicy ?? 0}건)
+                          </span>
+                        )}
+                      </div>
+                      {hpRecalcResult.skippedNoPolicy > 0 && hpRecalcResult.policyMismatchDetail && (() => {
+                        const d = hpRecalcResult.policyMismatchDetail;
+                        const parts: string[] = [];
+                        if (d.dealerMismatch) parts.push(`딜러: ${d.dealerMismatch}`);
+                        if (d.contactCodeMismatch) parts.push(`접점코드: ${d.contactCodeMismatch}`);
+                        if (d.channelMismatch) parts.push(`채널: ${d.channelMismatch}`);
+                        if (d.planNameMismatch) parts.push(`요금제: ${d.planNameMismatch}`);
+                        if (d.customerTypeMismatch) parts.push(`유형: ${d.customerTypeMismatch}`);
+                        if (d.periodMismatch) parts.push(`기간: ${d.periodMismatch}`);
+                        return parts.length > 0 ? (
+                          <div className="text-gray-400 ml-2">↳ 불일치 사유: {parts.join(', ')}</div>
+                        ) : null;
+                      })()}
+                      <div className="text-gray-500">확정 제외: {hpRecalcResult.skippedLocked}건</div>
+                      <div className="text-gray-500">접점코드 없음: {hpRecalcResult.skippedNoContactCode}건</div>
+                      {hpRecalcResult.errors?.length > 0 && (
+                        <div className="text-red-600">오류: {hpRecalcResult.errors.length}건</div>
+                      )}
+                      {hpRecalcResult.debug && (() => {
+                        const dbg = hpRecalcResult.debug;
+                        const cf = dbg.currentFlow;
+                        const rf = dbg.realSalesPOSFlow;
+                        return (
+                          <div className="mt-2 border-t pt-2 border-yellow-300">
+                            <div className="font-semibold text-yellow-800 mb-1">진단: {dbg.contactCode}</div>
+                            <div className={dbg.inTargetSet ? 'text-green-700' : 'text-red-600'}>
+                              대상 포함: {dbg.inTargetSet ? `✅ (siId=${dbg.siId}, status=${dbg.siStatus})` : '❌ 대상 기간에 없음'}
+                            </div>
+                            {dbg.inTargetSet && (
+                              <>
+                                <div className="mt-1 font-medium text-yellow-700">[현재 흐름 — 정산지급처 DR 기준]</div>
+                                <div>dealerRegId: {cf.dealerRegIdFromCC ?? 'null'}</div>
+                                {cf.drByRegId && <div>DR: {cf.drByRegId.dealerCode} / {cf.drByRegId.businessName} / isHiddenPos={String(cf.isHiddenPosByRegId)}</div>}
+                                {cf.skipReason && <div className="text-red-600">⛔ 스킵: {cf.skipReason}</div>}
+                                {cf.policyTrace?.length > 0 && (
+                                  <div className="ml-2 space-y-0.5">
+                                    {cf.policyTrace.map((t: any, i: number) => (
+                                      <div key={i} className={t.result === 'MATCH' ? 'text-green-700' : 'text-gray-500'}>
+                                        {t.result === 'MATCH' ? `✓ policy#${t.policyId} → ${t.hiddenAmount}원` : `✗ policy#${t.policyId}: ${t.reason}`}
+                                      </div>
+                                    ))}
+                                    <div className="font-medium">합계: {cf.hiddenAmount}원</div>
+                                  </div>
+                                )}
+                                <div className="mt-1 font-medium text-blue-700">[realSalesPOS 흐름 — 참고]</div>
+                                <div>realSalesPOS: {rf.realSalesPOS ?? 'null'}</div>
+                                {rf.note && <div className="text-blue-600">{rf.note}</div>}
+                                {rf.policyTrace?.length > 0 && (
+                                  <div className="ml-2 space-y-0.5">
+                                    {rf.policyTrace.map((t: any, i: number) => (
+                                      <div key={i} className={t.result === 'MATCH' ? 'text-green-700' : 'text-gray-500'}>
+                                        {t.result === 'MATCH' ? `✓ policy#${t.policyId} → ${t.hiddenAmount}원` : `✗ policy#${t.policyId}: ${t.reason}`}
+                                      </div>
+                                    ))}
+                                    <div className="font-medium text-blue-700">합계: {rf.hiddenAmount}원</div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" size="sm" onClick={() => setHpRecalcOpen(false)}>닫기</Button>
+                  <Button variant="secondary" size="sm" disabled={hpRecalcRunning} onClick={() => handleHpRecalc(true)}>
+                    {hpRecalcRunning ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}시뮬레이션
+                  </Button>
+                  <Button size="sm" disabled={hpRecalcRunning} onClick={async () => {
+                    if (!confirm('현재 조건의 미확정 정산건 히든금액만 재계산합니다.\n확정 건과 최종확정금액은 변경되지 않습니다.\n진행하시겠습니까?')) return;
+                    await handleHpRecalc(false);
+                  }}>
+                    {hpRecalcRunning ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}실행
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 히든정책 등록 다이얼로그 */}
+            <Dialog open={hpCreateOpen} onOpenChange={o => { setHpCreateOpen(o); if (!o) { setHpForm(hpFormDefault); setHpDialogCCList([]); } }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader><DialogTitle>히든정책 등록</DialogTitle></DialogHeader>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">판매점 <span className="text-gray-400">(선택 안 함 = 전체)</span></Label>
+                    <Select value={hpForm.dealerRegistrationId || '__all__'} onValueChange={v => { const newId = v === '__all__' ? '' : v; setHpForm(f => ({ ...f, dealerRegistrationId: newId, contactCode: '' })); loadHpDialogCCList(newId); }}>
+                      <SelectTrigger><SelectValue placeholder="판매점 선택 (전체)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">전체 (판매점 무관)</SelectItem>
+                        {(dealerListForCC as any[]).map((d: any) => (
+                          <SelectItem key={d.id} value={String(d.id)}>
+                            [{d.dealerCode ?? d.id}] {d.businessName}{d.isHiddenPos ? ' ★히든' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">접점코드 <span className="text-gray-400">(빈칸=전체)</span></Label>
+                    {hpForm.dealerRegistrationId && hpDialogCCList.length > 0 ? (
+                      <Select value={hpForm.contactCode || '__all__'} onValueChange={v => setHpForm(f => ({ ...f, contactCode: v === '__all__' ? '' : v }))}>
+                        <SelectTrigger><SelectValue placeholder="접점코드 선택 (전체)" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">전체 (접점코드 무관)</SelectItem>
+                          {hpDialogCCList.map((cc: any) => (
+                            <SelectItem key={cc.id} value={cc.code}>{cc.code}{cc.realSalesPOS ? ` (${cc.realSalesPOS})` : ''}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input placeholder="예: M0001" value={hpForm.contactCode} onChange={e => setHpForm(f => ({ ...f, contactCode: e.target.value }))} />
+                    )}
+                    {hpForm.dealerRegistrationId && hpDialogCCList.length > 0 && hpForm.contactCode && !hpDialogCCList.some((cc: any) => cc.code === hpForm.contactCode) && (
+                      <p className="text-xs text-amber-600 mt-1">⚠ 이 접점코드는 선택된 판매점에 등록되지 않았습니다.</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">채널 <span className="text-gray-400">(빈칸=전체)</span></Label>
+                    <Input placeholder="예: 후불)엠모바일" value={hpForm.channel} onChange={e => setHpForm(f => ({ ...f, channel: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">요금제 <span className="text-gray-400">(빈칸=전체)</span></Label>
+                    <Input placeholder="예: 이동의즐거움 5G" value={hpForm.planName} onChange={e => setHpForm(f => ({ ...f, planName: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">유형 <span className="text-gray-400">(빈칸=전체)</span></Label>
+                    <Select value={hpForm.customerType || '__all__'} onValueChange={v => setHpForm(f => ({ ...f, customerType: v === '__all__' ? '' : v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">전체</SelectItem>
+                        <SelectItem value="1">신규</SelectItem>
+                        <SelectItem value="2">번이</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-purple-700">히든금액 *</Label>
+                    <Input placeholder="예: 10,000" value={hpForm.hiddenAmount} onChange={e => setHpForm(f => ({ ...f, hiddenAmount: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">적용시작일</Label>
+                    <Input type="date" value={hpForm.effectiveFrom} onChange={e => setHpForm(f => ({ ...f, effectiveFrom: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">적용종료일</Label>
+                    <Input type="date" value={hpForm.effectiveTo} onChange={e => setHpForm(f => ({ ...f, effectiveTo: e.target.value }))} />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">메모</Label>
+                    <Input placeholder="메모 입력" value={hpForm.memo} onChange={e => setHpForm(f => ({ ...f, memo: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setHpCreateOpen(false)}>취소</Button>
+                  <Button disabled={hpCreateMutation.isPending} onClick={() => {
+                    const rawAmt = hpForm.hiddenAmount.replace(/,/g, '');
+                    if (!rawAmt || isNaN(Number(rawAmt))) { toast({ title: '오류', description: '히든금액은 숫자로 입력해주세요.', variant: 'destructive' }); return; }
+                    const data: any = { hiddenAmount: rawAmt, isActive: hpForm.isActive };
+                    if (hpForm.dealerRegistrationId) data.dealerRegistrationId = Number(hpForm.dealerRegistrationId);
+                    if (hpForm.contactCode.trim()) data.contactCode = hpForm.contactCode.trim();
+                    if (hpForm.channel.trim()) data.channel = hpForm.channel.trim();
+                    if (hpForm.planName.trim()) data.planName = hpForm.planName.trim();
+                    if (hpForm.customerType) data.customerType = hpForm.customerType;
+                    if (hpForm.effectiveFrom) data.effectiveFrom = hpForm.effectiveFrom;
+                    if (hpForm.effectiveTo) data.effectiveTo = hpForm.effectiveTo;
+                    if (hpForm.memo.trim()) data.memo = hpForm.memo.trim();
+                    hpCreateMutation.mutate(data);
+                  }}>{hpCreateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}등록</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 히든정책 수정 다이얼로그 */}
+            <Dialog open={hpEditOpen} onOpenChange={o => { setHpEditOpen(o); if (!o) { setHpEditTarget(null); setHpDialogCCList([]); } }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader><DialogTitle>히든정책 수정</DialogTitle><DialogDescription>id:{hpEditTarget?.id}</DialogDescription></DialogHeader>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">판매점 <span className="text-gray-400">(선택 안 함 = 전체)</span></Label>
+                    <Select value={hpEditForm.dealerRegistrationId || '__all__'} onValueChange={v => { const newId = v === '__all__' ? '' : v; setHpEditForm(f => ({ ...f, dealerRegistrationId: newId, contactCode: '' })); loadHpDialogCCList(newId); }}>
+                      <SelectTrigger><SelectValue placeholder="판매점 선택 (전체)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">전체 (판매점 무관)</SelectItem>
+                        {(dealerListForCC as any[]).map((d: any) => (
+                          <SelectItem key={d.id} value={String(d.id)}>
+                            [{d.dealerCode ?? d.id}] {d.businessName}{d.isHiddenPos ? ' ★히든' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">접점코드 <span className="text-gray-400">(빈칸=전체)</span></Label>
+                    {hpEditForm.dealerRegistrationId && hpDialogCCList.length > 0 ? (
+                      <Select value={hpEditForm.contactCode || '__all__'} onValueChange={v => setHpEditForm(f => ({ ...f, contactCode: v === '__all__' ? '' : v }))}>
+                        <SelectTrigger><SelectValue placeholder="접점코드 선택 (전체)" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">전체 (접점코드 무관)</SelectItem>
+                          {hpDialogCCList.map((cc: any) => (
+                            <SelectItem key={cc.id} value={cc.code}>{cc.code}{cc.realSalesPOS ? ` (${cc.realSalesPOS})` : ''}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input placeholder="예: M0001" value={hpEditForm.contactCode} onChange={e => setHpEditForm(f => ({ ...f, contactCode: e.target.value }))} />
+                    )}
+                    {hpEditForm.dealerRegistrationId && hpDialogCCList.length > 0 && hpEditForm.contactCode && !hpDialogCCList.some((cc: any) => cc.code === hpEditForm.contactCode) && (
+                      <p className="text-xs text-amber-600 mt-1">⚠ 이 접점코드는 선택된 판매점에 등록되지 않았습니다.</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">채널 <span className="text-gray-400">(빈칸=전체)</span></Label>
+                    <Input placeholder="예: 후불)엠모바일" value={hpEditForm.channel} onChange={e => setHpEditForm(f => ({ ...f, channel: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">요금제 <span className="text-gray-400">(빈칸=전체)</span></Label>
+                    <Input placeholder="예: 이동의즐거움 5G" value={hpEditForm.planName} onChange={e => setHpEditForm(f => ({ ...f, planName: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">유형 <span className="text-gray-400">(빈칸=전체)</span></Label>
+                    <Select value={hpEditForm.customerType || '__all__'} onValueChange={v => setHpEditForm(f => ({ ...f, customerType: v === '__all__' ? '' : v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">전체</SelectItem>
+                        <SelectItem value="1">신규</SelectItem>
+                        <SelectItem value="2">번이</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-purple-700">히든금액 *</Label>
+                    <Input placeholder="예: 10,000" value={hpEditForm.hiddenAmount} onChange={e => setHpEditForm(f => ({ ...f, hiddenAmount: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">적용시작일</Label>
+                    <Input type="date" value={hpEditForm.effectiveFrom} onChange={e => setHpEditForm(f => ({ ...f, effectiveFrom: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">적용종료일</Label>
+                    <Input type="date" value={hpEditForm.effectiveTo} onChange={e => setHpEditForm(f => ({ ...f, effectiveTo: e.target.value }))} />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">메모</Label>
+                    <Input placeholder="메모 입력" value={hpEditForm.memo} onChange={e => setHpEditForm(f => ({ ...f, memo: e.target.value }))} />
+                  </div>
+                  <div className="col-span-2 flex items-center gap-2 pt-1">
+                    <input type="checkbox" id="hp-edit-active" checked={hpEditForm.isActive} onChange={e => setHpEditForm(f => ({ ...f, isActive: e.target.checked }))} />
+                    <Label htmlFor="hp-edit-active" className="text-xs cursor-pointer">활성</Label>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setHpEditOpen(false)}>취소</Button>
+                  <Button disabled={hpUpdateMutation.isPending} onClick={() => {
+                    const rawAmt = hpEditForm.hiddenAmount.replace(/,/g, '');
+                    if (!rawAmt || isNaN(Number(rawAmt))) { toast({ title: '오류', description: '히든금액은 숫자로 입력해주세요.', variant: 'destructive' }); return; }
+                    const data: any = { hiddenAmount: rawAmt, isActive: hpEditForm.isActive };
+                    if (hpEditForm.dealerRegistrationId) data.dealerRegistrationId = Number(hpEditForm.dealerRegistrationId);
+                    else data.dealerRegistrationId = null;
+                    data.contactCode = hpEditForm.contactCode.trim() || null;
+                    data.channel = hpEditForm.channel.trim() || null;
+                    data.planName = hpEditForm.planName.trim() || null;
+                    data.customerType = hpEditForm.customerType || null;
+                    data.effectiveFrom = hpEditForm.effectiveFrom || null;
+                    data.effectiveTo = hpEditForm.effectiveTo || null;
+                    data.memo = hpEditForm.memo.trim() || null;
+                    hpUpdateMutation.mutate({ id: hpEditTarget.id, data });
+                  }}>{hpUpdateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}저장</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 정책 차수 생성 다이얼로그 */}
+            <Dialog open={pvCreateOpen} onOpenChange={setPvCreateOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>정책 차수 생성</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  {[
+                    { label: '정책번호 *', key: 'policyNo', ph: 'POL-2025-001' },
+                    { label: '정책명 *', key: 'policyName', ph: '2025년 1차 정책' },
+                    { label: '적용 시작일 *', key: 'effectiveFrom', type: 'date' },
+                    { label: '적용 종료일', key: 'effectiveTo', type: 'date' },
+                  ].map(f => (
+                    <div key={f.key} className="space-y-1">
+                      <Label className="text-sm">{f.label}</Label>
+                      <Input
+                        type={f.type ?? 'text'} placeholder={f.ph}
+                        value={(pvForm as any)[f.key]}
+                        onChange={e => setPvForm(p => ({ ...p, [f.key]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                  <div className="space-y-1">
+                    <Label className="text-sm">메모</Label>
+                    <Textarea rows={2} value={pvForm.memo} onChange={e => setPvForm(p => ({ ...p, memo: e.target.value }))} />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setPvCreateOpen(false)}>취소</Button>
+                    <Button
+                      disabled={pvCreateMutation.isPending}
+                      onClick={() => {
+                        if (!pvForm.policyNo || !pvForm.policyName || !pvForm.effectiveFrom) {
+                          toast({ title: '오류', description: '정책번호·정책명·적용시작일은 필수입니다.', variant: 'destructive' }); return;
+                        }
+                        pvCreateMutation.mutate({ ...pvForm, effectiveTo: pvForm.effectiveTo || null });
+                      }}
+                    >
+                      {pvCreateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}생성
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 정책 차수 수정 다이얼로그 */}
+            <Dialog open={pvEditOpen} onOpenChange={setPvEditOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>정책 차수 수정</DialogTitle>
+                  <DialogDescription>{pvEditTarget?.policyNo}</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  {[
+                    { label: '정책번호', key: 'policyNo' },
+                    { label: '정책명', key: 'policyName' },
+                    { label: '적용 시작일', key: 'effectiveFrom', type: 'date' },
+                    { label: '적용 종료일', key: 'effectiveTo', type: 'date' },
+                  ].map(f => (
+                    <div key={f.key} className="space-y-1">
+                      <Label className="text-sm">{f.label}</Label>
+                      <Input
+                        type={f.type ?? 'text'}
+                        value={(pvForm as any)[f.key]}
+                        onChange={e => setPvForm(p => ({ ...p, [f.key]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                  <div className="space-y-1">
+                    <Label className="text-sm">메모</Label>
+                    <Textarea rows={2} value={pvForm.memo} onChange={e => setPvForm(p => ({ ...p, memo: e.target.value }))} />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setPvEditOpen(false)}>취소</Button>
+                    <Button
+                      disabled={pvUpdateMutation.isPending}
+                      onClick={() => pvUpdateMutation.mutate({ id: pvEditTarget.id, data: { ...pvForm, effectiveTo: pvForm.effectiveTo || null } })}
+                    >
+                      {pvUpdateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}수정
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 단가 행 추가 다이얼로그 */}
+            <Dialog open={prCreateOpen} onOpenChange={setPrCreateOpen}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>단가 행 추가</DialogTitle>
+                  <DialogDescription>정책 차수 v{pvSelectedId}에 단가 행을 추가합니다.</DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* 채널: carriers 목록 Select */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">채널 *</Label>
+                    <Select value={prForm.channel} onValueChange={v => setPrForm(p => ({ ...p, channel: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="운영 채널 선택" /></SelectTrigger>
+                      <SelectContent>
+                        {(carriersData as any[]).filter(c => c.isActive).map((c: any) => (
+                          <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {[
+                    { label: '요금제 *', key: 'planName', ph: '스선)363/3M' },
+                    { label: '부가서비스조건', key: 'addService', ph: '비우면 와일드카드' },
+                    { label: '결합조건', key: 'bundleType', ph: '비우면 와일드카드' },
+                    { label: '가입비조건', key: 'regFeeType', ph: '비우면 와일드카드' },
+                    { label: '유심개수', key: 'simCount', ph: '', type: 'number' },
+                  ].map(f => (
+                    <div key={f.key} className="space-y-1">
+                      <Label className="text-xs">{f.label}</Label>
+                      <Input
+                        type={f.type ?? 'text'} placeholder={f.ph} className="h-8 text-sm"
+                        value={(prForm as any)[f.key]}
+                        onChange={e => setPrForm(p => ({ ...p, [f.key]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                  {/* 유형: 1(신규) / 2(번이) */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">유형 * <span className="text-gray-400 font-normal">(1=신규 2=번이)</span></Label>
+                    <Select value={prForm.customerType} onValueChange={v => setPrForm(p => ({ ...p, customerType: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 (신규)</SelectItem>
+                        <SelectItem value="2">2 (번이)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">정책금액 *</Label>
+                    <Input
+                      type="number" placeholder="30000" className="h-8 text-sm"
+                      value={prForm.rebateAmount}
+                      onChange={e => setPrForm(p => ({ ...p, rebateAmount: e.target.value }))}
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">메모</Label>
+                    <Input className="h-8 text-sm" value={prForm.memo} onChange={e => setPrForm(p => ({ ...p, memo: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setPrCreateOpen(false)}>취소</Button>
+                  <Button
+                    disabled={prCreateMutation.isPending}
+                    onClick={() => {
+                      if (!prForm.channel || !prForm.planName || !prForm.rebateAmount) {
+                        toast({ title: '오류', description: '채널·요금제·리베이트금액은 필수입니다.', variant: 'destructive' }); return;
+                      }
+                      prCreateMutation.mutate({
+                        channel: prForm.channel,
+                        planName: prForm.planName,
+                        customerType: prForm.customerType,
+                        simCount: prForm.simCount ? Number(prForm.simCount) : null,
+                        bundleType: prForm.bundleType || null,
+                        addService: prForm.addService || null,
+                        regFeeType: prForm.regFeeType || null,
+                        rebateAmount: prForm.rebateAmount,
+                        memo: prForm.memo || null,
+                      });
+                    }}
+                  >
+                    {prCreateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}추가
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 단가 행 수정 다이얼로그 */}
+            <Dialog open={prEditOpen} onOpenChange={o => { setPrEditOpen(o); if (!o) setPrEditTarget(null); }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>단가 행 수정</DialogTitle>
+                  <DialogDescription>id:{prEditTarget?.id} 단가 행을 수정합니다.</DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">채널 *</Label>
+                    <Select value={prEditForm.channel} onValueChange={v => setPrEditForm(p => ({ ...p, channel: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="채널 선택" /></SelectTrigger>
+                      <SelectContent>
+                        {(carriersData as any[]).filter(c => c.isActive).map((c: any) => (
+                          <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {[
+                    { label: '요금제 *', key: 'planName', ph: '' },
+                    { label: '결합조건', key: 'bundleType', ph: '비우면 전체 조건', desc: '특정 결합명 조건이 있을 때만 입력하세요. 비우면 전체 조건으로 적용됩니다.' },
+                    { label: '부가서비스조건', key: 'addService', ph: '예: 캐치콜+', desc: '예: 캐치콜+. 금액을 입력하는 칸이 아닙니다.' },
+                    { label: '가입비조건', key: 'regFeeType', ph: '비우면 전체 조건', desc: '가입비 조건이 있을 때만 입력하세요. 비우면 전체 조건으로 적용됩니다.' },
+                    { label: '유심개수', key: 'simCount', ph: '', type: 'number' },
+                  ].map(f => (
+                    <div key={f.key} className="space-y-1">
+                      <Label className="text-xs">{f.label}</Label>
+                      <Input type={f.type ?? 'text'} placeholder={f.ph} className="h-8 text-sm"
+                        value={(prEditForm as any)[f.key]}
+                        onChange={e => setPrEditForm(p => ({ ...p, [f.key]: e.target.value }))} />
+                      {(f as any).desc && <p className="text-xs text-gray-400 leading-tight">{(f as any).desc}</p>}
+                    </div>
+                  ))}
+                  <div className="space-y-1">
+                    <Label className="text-xs">유형 * <span className="text-gray-400 font-normal">(1=신규 2=번이)</span></Label>
+                    <Select value={prEditForm.customerType} onValueChange={v => setPrEditForm(p => ({ ...p, customerType: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 (신규)</SelectItem>
+                        <SelectItem value="2">2 (번이)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">국적구분 <span className="text-gray-400 font-normal">(비우면 공통정책)</span></Label>
+                    <Select value={prEditForm.nationalityType} onValueChange={v => setPrEditForm(p => ({ ...p, nationalityType: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="공통(전체)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">공통(내외국인 모두)</SelectItem>
+                        <SelectItem value="내국인">내국인</SelectItem>
+                        <SelectItem value="외국인">외국인</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">기본정책금액 *</Label>
+                    <Input type="text" placeholder="예: 110,000" className="h-8 text-sm"
+                      value={prEditForm.rebateAmount}
+                      onChange={e => setPrEditForm(p => ({ ...p, rebateAmount: e.target.value }))} />
+                    <p className="text-xs text-gray-400 leading-tight">기본 지급 정책 금액입니다. 추가금/차감금은 추후 별도 정책에서 처리합니다.</p>
+                  </div>
+                  <div className="space-y-1 col-span-2 flex items-center gap-2">
+                    <input type="checkbox" id="pr-edit-active" checked={prEditForm.isActive}
+                      onChange={e => setPrEditForm(p => ({ ...p, isActive: e.target.checked }))} />
+                    <Label htmlFor="pr-edit-active" className="text-xs cursor-pointer">활성</Label>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">메모</Label>
+                    <Input className="h-8 text-sm" value={prEditForm.memo}
+                      onChange={e => setPrEditForm(p => ({ ...p, memo: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setPrEditOpen(false)}>취소</Button>
+                  <Button disabled={prUpdateMutation.isPending}
+                    onClick={() => {
+                      if (!prEditForm.channel || !prEditForm.planName) {
+                        toast({ title: '오류', description: '채널·요금제는 필수입니다.', variant: 'destructive' }); return;
+                      }
+                      const rawAmount = prEditForm.rebateAmount.replace(/,/g, '');
+                      if (!rawAmount || isNaN(Number(rawAmount))) {
+                        toast({ title: '오류', description: '기본정책금액을 숫자로 입력해주세요.', variant: 'destructive' }); return;
+                      }
+                      prUpdateMutation.mutate({ rowId: prEditTarget.id, data: {
+                        channel: prEditForm.channel,
+                        planName: prEditForm.planName,
+                        customerType: prEditForm.customerType,
+                        nationalityType: prEditForm.nationalityType || null,
+                        simCount: prEditForm.simCount ? Number(prEditForm.simCount) : null,
+                        bundleType: prEditForm.bundleType || null,
+                        addService: prEditForm.addService || null,
+                        regFeeType: prEditForm.regFeeType || null,
+                        rebateAmount: rawAmount,
+                        isActive: prEditForm.isActive,
+                        memo: prEditForm.memo || null,
+                      }});
+                    }}>
+                    {prUpdateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}저장
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 추가/차감 규칙 등록 다이얼로그 */}
+            <Dialog open={arCreateOpen} onOpenChange={o => { setArCreateOpen(o); if (!o) setArForm(arFormDefault); }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader><DialogTitle>추가/차감 규칙 등록</DialogTitle></DialogHeader>
+                <ArRuleForm form={arForm} setForm={setArForm} carriersData={carriersData as any[]} />
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setArCreateOpen(false)}>취소</Button>
+                  <Button disabled={arCreateMutation.isPending} onClick={() => {
+                    const rawAmt = arForm.amount.replace(/,/g, '');
+                    const numAmt = Number(rawAmt);
+                    if (!rawAmt || isNaN(numAmt)) { toast({ title: '오류', description: '금액은 숫자로 입력해주세요.', variant: 'destructive' }); return; }
+                    if (numAmt <= 0) { toast({ title: '오류', description: '금액은 0보다 커야 합니다.', variant: 'destructive' }); return; }
+                    const needsVal = ['BUNDLE_MATCH','ADD_SERVICE_MATCH','ADD_SERVICE_NOT_MATCH','REGFEE_MATCH','SIM_COUNT_MATCH'];
+                    if (needsVal.includes(arForm.conditionType) && !arForm.conditionValue.trim()) { toast({ title: '오류', description: '이 조건 종류는 조건값이 필요합니다.', variant: 'destructive' }); return; }
+                    arCreateMutation.mutate({ ...arForm, amount: rawAmt });
+                  }}>{arCreateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}등록</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 추가/차감 규칙 수정 다이얼로그 */}
+            <Dialog open={arEditOpen} onOpenChange={o => { setArEditOpen(o); if (!o) setArEditTarget(null); }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader><DialogTitle>추가/차감 규칙 수정</DialogTitle><DialogDescription>id:{arEditTarget?.id}</DialogDescription></DialogHeader>
+                <ArRuleForm form={arEditForm} setForm={setArEditForm} carriersData={carriersData as any[]} />
+                <div className="space-y-1 pt-1 flex items-center gap-2">
+                  <input type="checkbox" id="ar-edit-active" checked={arEditForm.isActive} onChange={e => setArEditForm(f => ({ ...f, isActive: e.target.checked }))} />
+                  <Label htmlFor="ar-edit-active" className="text-xs cursor-pointer">활성</Label>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setArEditOpen(false)}>취소</Button>
+                  <Button disabled={arUpdateMutation.isPending} onClick={() => {
+                    const rawAmt = arEditForm.amount.replace(/,/g, '');
+                    const numAmt = Number(rawAmt);
+                    if (!rawAmt || isNaN(numAmt)) { toast({ title: '오류', description: '금액은 숫자로 입력해주세요.', variant: 'destructive' }); return; }
+                    if (numAmt <= 0) { toast({ title: '오류', description: '금액은 0보다 커야 합니다.', variant: 'destructive' }); return; }
+                    const needsVal = ['BUNDLE_MATCH','ADD_SERVICE_MATCH','ADD_SERVICE_NOT_MATCH','REGFEE_MATCH','SIM_COUNT_MATCH'];
+                    if (needsVal.includes(arEditForm.conditionType) && !arEditForm.conditionValue.trim()) { toast({ title: '오류', description: '이 조건 종류는 조건값이 필요합니다.', variant: 'destructive' }); return; }
+                    arUpdateMutation.mutate({ ruleId: arEditTarget.id, data: { ...arEditForm, amount: rawAmt } });
+                  }}>{arUpdateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}저장</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 정책 엑셀 업로드 다이얼로그 */}
+            <Dialog open={peOpen} onOpenChange={o => { setPeOpen(o); if (!o) setPeResult(null); }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>정산 정책 엑셀 업로드</DialogTitle>
+                  <DialogDescription>정산 정책 전용 양식을 업로드하여 policy_rows에 일괄 등록합니다.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {/* 양식 안내 */}
+                  <div className="rounded bg-blue-50 border border-blue-200 p-3 text-xs space-y-1.5">
+                    <div className="font-semibold text-blue-800 mb-1">정산 정책 업로드 양식 안내</div>
+                    <div className="text-blue-700">
+                      <span className="font-medium">✅ 10컬럼 국적형 (권장):</span> 채널 · 요금제 · 내국인_신규 · 내국인_번이 · 외국인_신규 · 외국인_번이 · 결합조건 · 부가서비스조건 · 가입비조건 · 메모
+                    </div>
+                    <div className="text-blue-700">
+                      <span className="font-medium">8컬럼 구형 가로형 (하위호환):</span> 채널 · 요금제 · 신규 · 번이 · 결합조건 · 부가서비스조건 · 가입비조건 · 메모 → 국적 '내국인' 고정
+                    </div>
+                    <div className="text-blue-700">
+                      <span className="font-medium">세로형 (하위호환):</span> 유형(1/2) + 정책금액(원단위) → 국적 와일드카드(전체 적용)
+                    </div>
+                    <div className="text-blue-600 mt-1 space-y-0.5">
+                      <div>· <span className="font-medium">금액 단위:</span> 만원 소수점 — 3.0 → 30,000원 / 47.5 → 475,000원</div>
+                      <div>· <span className="font-medium">빈 칸:</span> 해당 유형 행을 생성하지 않음</div>
+                      <div>· <span className="font-medium">국적 매칭:</span> 정확일치 → AUTO_MATCH / 와일드카드(null) → REVIEW_REQUIRED</div>
+                    </div>
+                    <div className="flex gap-2 mt-1.5 flex-wrap">
+                      <Button
+                        size="sm" variant="outline" className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100"
+                        onClick={() => {
+                          const headers = ['채널', '요금제', '내국인_신규', '내국인_번이', '외국인_신규', '외국인_번이', '결합조건', '부가서비스조건', '가입비조건', '메모'];
+                          const guide = ['※ 금액 단위: 만원 소수점 (3.0 = 30,000원). 빈 칸 = 해당 행 미생성.'];
+                          const ex1 = ['후불)엠모바일', '엠)M 프리미엄 100GB(밀리의서재)', 3.0, 15.0, 4.0, 16.0, '', '', '', ''];
+                          const ex2 = ['후불)엠모바일', '엠)데이터 선택 11GB+', '', 10.0, '', 11.0, '', '', '', '번이만 예시'];
+                          const ex3 = ['후불)엠모바일', '엠)안심 요금제 5GB', 5.0, '', '', '', '', '', '선납', '가입비조건 예시'];
+                          const ws = XLSX.utils.aoa_to_sheet([headers, ex1, ex2, ex3, [], guide]);
+                          ws['!cols'] = [
+                            { wch: 24 }, { wch: 42 }, { wch: 11 }, { wch: 11 },
+                            { wch: 11 }, { wch: 11 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 20 },
+                          ];
+                          const wb2 = XLSX.utils.book_new();
+                          XLSX.utils.book_append_sheet(wb2, ws, '정산정책');
+                          XLSX.writeFile(wb2, '정산정책_업로드_내외국인_가로형_양식.xlsx');
+                        }}
+                      >
+                        내외국인 양식 (10컬럼)
+                      </Button>
+                      <Button
+                        size="sm" variant="outline" className="h-7 text-xs border-gray-300 text-gray-600 hover:bg-gray-50"
+                        onClick={() => {
+                          const headers = ['채널', '요금제', '신규', '번이', '결합조건', '부가서비스조건', '가입비조건', '메모'];
+                          const guide = ['※ 금액 단위: 만원 소수점. 국적 = 내국인 고정.'];
+                          const ex1 = ['후불)엠모바일', '엠)M 프리미엄 100GB(밀리의서재)', 3.0, 15.0, '', '', '', ''];
+                          const ex2 = ['후불)엠모바일', '엠)데이터 선택 11GB+', '', 10.0, '', '', '', '번이만 예시'];
+                          const ws = XLSX.utils.aoa_to_sheet([headers, ex1, ex2, [], guide]);
+                          ws['!cols'] = [
+                            { wch: 24 }, { wch: 42 }, { wch: 8 }, { wch: 8 },
+                            { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 20 },
+                          ];
+                          const wb2 = XLSX.utils.book_new();
+                          XLSX.utils.book_append_sheet(wb2, ws, '정산정책');
+                          XLSX.writeFile(wb2, '정산정책_업로드_가로형_양식.xlsx');
+                        }}
+                      >
+                        구형 양식 (8컬럼)
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* 파일 선택 */}
+                  <div className="space-y-1">
+                    <Label className="text-sm">파일 선택 *</Label>
+                    <input
+                      ref={peFileRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="block w-full text-sm text-gray-600 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      onChange={e => setPeFile(e.target.files?.[0] ?? null)}
+                    />
+                  </div>
+
+                  {/* 정책 차수 선택 */}
+                  <div className="space-y-1">
+                    <Label className="text-sm">정책 차수</Label>
+                    <Select value={pePvId} onValueChange={setPePvId}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="새 차수 자동 생성" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__auto__">새 정책 차수 자동 생성</SelectItem>
+                        {(policyVersions ?? []).map((pv: any) => (
+                          <SelectItem key={pv.id} value={String(pv.id)}>{pv.policyName} ({pv.policyNo})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-400">비워두면 오늘 날짜로 새 차수를 자동 생성합니다.</p>
+                  </div>
+
+                  {/* 업로드 결과 */}
+                  {peResult && (
+                    <div className="rounded bg-green-50 border border-green-200 p-3 text-sm space-y-1">
+                      <div className="font-medium text-green-800">업로드 완료 — 차수: {peResult.versionName} (ID: {peResult.versionId})</div>
+                      <div className="text-green-700">엑셀 행: {peResult.totalRows}개 / 등록: <strong>{peResult.inserted}</strong>개 / 건너뜀(중복): {peResult.skipped}개</div>
+                      {peResult.errors?.length > 0 && (
+                        <div className="text-red-600 text-xs mt-1">오류 {peResult.errors.length}건: {peResult.errors.slice(0, 3).join('; ')}</div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" onClick={() => setPeOpen(false)}>닫기</Button>
+                    <Button disabled={peUploading || !peFile} onClick={handlePeUpload}>
+                      {peUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                      {peUploading ? '업로드 중...' : '업로드'}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
         </Tabs>

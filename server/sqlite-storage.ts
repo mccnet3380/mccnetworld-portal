@@ -816,4 +816,57 @@ export class SQLiteStorage implements IStorage {
   async getDocumentsForExport(): Promise<any[]> {
     return [];
   }
+
+  // ── 정산 엔진 스텁 (STEP 5C — SQLiteStorage는 미사용, PostgreSQLStorage에서 구현) ──
+
+  async getPolicyVersions(): Promise<any[]> { return []; }
+  async getPolicyVersionById(_id: number): Promise<any | null> { return null; }
+  async getActivePolicyVersion(): Promise<any | null> { return null; }
+  async createPolicyVersion(data: any): Promise<any> { return data; }
+  async updatePolicyVersion(_id: number, data: any): Promise<any> { return data; }
+  async deletePolicyVersion(_id: number): Promise<void> { }
+
+  async getPolicyRowsByVersionId(_policyVersionId: number): Promise<any[]> { return []; }
+  async createPolicyRow(data: any): Promise<any> { return data; }
+  async bulkCreatePolicyRows(_data: any[]): Promise<number> { return 0; }
+  async updatePolicyRow(_id: number, data: any): Promise<any> { return data; }
+  async deletePolicyRow(_id: number): Promise<void> { }
+  async deletePolicyRowsByVersionId(_policyVersionId: number): Promise<number> { return 0; }
+
+  async getPolicyFilesByVersionId(_policyVersionId: number): Promise<any[]> { return []; }
+  async createPolicyFile(data: any): Promise<any> { return data; }
+  async deletePolicyFile(_id: number): Promise<void> { }
+
+  async getActivationRecords(_filters?: any): Promise<{ data: any[]; page: number; limit: number }> {
+    return { data: [], page: 1, limit: 50 };
+  }
+  async getActivationRecordById(_id: number): Promise<any | null> { return null; }
+  async createActivationRecord(data: any): Promise<any> { return data; }
+  async updateActivationRecord(_id: number, data: any): Promise<any> { return data; }
+  async deleteActivationRecord(_id: number): Promise<void> { }
+
+  async getSettlementItems(_filters?: any): Promise<{ data: any[]; page: number; limit: number; summary: { total: number; autoMatch: number; reviewRequired: number; policyNotFound: number; settlementDone: number }; groups: any[]; totalGroups: number }> {
+    return { data: [], page: 1, limit: 50, summary: { total: 0, autoMatch: 0, reviewRequired: 0, policyNotFound: 0, settlementDone: 0 }, groups: [], totalGroups: 0 };
+  }
+  async getSettlementItemById(_id: number): Promise<any | null> { return null; }
+  async getSettlementItemByActivationId(_activationId: number): Promise<any | null> { return null; }
+  async createSettlementItem(data: any): Promise<any> { return data; }
+  async updateSettlementItem(_id: number, data: any): Promise<any> { return data; }
+  async lockSettlementItem(_id: number, _adminId: number): Promise<any> { return null; }
+
+  async getSettlementFilesByItemId(_settlementItemId: number): Promise<any[]> { return []; }
+  async createSettlementFile(data: any): Promise<any> { return data; }
+  async deleteSettlementFile(_id: number): Promise<void> { }
+
+  async getAdjustmentRulesByVersionId(_policyVersionId: number): Promise<any[]> { return []; }
+  async createAdjustmentRule(data: any): Promise<any> { return data; }
+  async updateAdjustmentRule(_id: number, data: any): Promise<any> { return data; }
+  async calculateSettlementAdjustments(_record: any, _policyVersionId: number): Promise<{ addAmount: number; deductAmount: number }> { return { addAmount: 0, deductAmount: 0 }; }
+
+  async getHiddenPolicyRows(_filters?: any): Promise<any[]> { return []; }
+  async createHiddenPolicyRow(data: any): Promise<any> { return data; }
+  async updateHiddenPolicyRow(_id: number, data: any): Promise<any> { return data; }
+  async calculateHiddenAmount(_record: any): Promise<number> { return 0; }
+  async recalculateHiddenAmounts(_options: any): Promise<any> { return { totalTargets: 0, updated: 0, cleared: 0, skippedLocked: 0, skippedNoContactCode: 0, skippedNoDealer: 0, skippedNotHiddenPos: 0, skippedNoPolicy: 0, policyMismatchDetail: { dealerMismatch: 0, contactCodeMismatch: 0, channelMismatch: 0, planNameMismatch: 0, customerTypeMismatch: 0, periodMismatch: 0 }, errors: [], debug: null }; }
+  async diagnoseHiddenAmount(_contactCode: string, _dateFrom?: string, _dateTo?: string): Promise<any> { return { error: 'SQLite storage does not support this operation' }; }
 }

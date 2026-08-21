@@ -61,6 +61,54 @@ let pool: Pool | null = null;
 let db_: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let initialized = false;
 
+/** DB 스키마 가용성 플래그 — 미반영 컬럼/테이블 방어 처리에 사용 */
+export interface DBSchemaInfo {
+  siHasExtended: boolean;     // settlement_items: hidden_amount / add_amount / deduct_amount / locked_amount
+  drHasExtended: boolean;     // dealer_registrations: is_hidden_pos / is_contact_policy_pos / settlement_only
+  ccHasExtended: boolean;     // contact_codes: real_sales_pos / dealer_registration_id
+  hasHiddenPolicyRows: boolean;
+  hasAdjustmentRules: boolean;
+}
+
+let _schemaInfo: DBSchemaInfo = {
+  siHasExtended: false,
+  drHasExtended: false,
+  ccHasExtended: false,
+  hasHiddenPolicyRows: false,
+  hasAdjustmentRules: false,
+};
+
+export const getSchemaInfo = (): DBSchemaInfo => _schemaInfo;
+
+async function probeDBSchema(p: Pool): Promise<void> {
+  try {
+    const r = await p.query(`
+      SELECT
+        (SELECT COUNT(*)>0 FROM information_schema.columns
+          WHERE table_name='settlement_items' AND column_name='hidden_amount')  AS si,
+        (SELECT COUNT(*)>0 FROM information_schema.columns
+          WHERE table_name='dealer_registrations' AND column_name='is_hidden_pos') AS dr,
+        (SELECT COUNT(*)>0 FROM information_schema.columns
+          WHERE table_name='contact_codes' AND column_name='real_sales_pos')  AS cc,
+        (SELECT COUNT(*)>0 FROM information_schema.tables
+          WHERE table_name='hidden_policy_rows')  AS hp,
+        (SELECT COUNT(*)>0 FROM information_schema.tables
+          WHERE table_name='adjustment_rules')    AS ar
+    `);
+    const row = r.rows[0];
+    _schemaInfo = {
+      siHasExtended:       !!row.si,
+      drHasExtended:       !!row.dr,
+      ccHasExtended:       !!row.cc,
+      hasHiddenPolicyRows: !!row.hp,
+      hasAdjustmentRules:  !!row.ar,
+    };
+    console.log('[SCHEMA PROBE]', _schemaInfo);
+  } catch (e) {
+    console.warn('[SCHEMA PROBE] 실패, 안전 기본값(false) 사용:', e);
+  }
+}
+
 /** 환경변수 URL 깨끗하게 (접두어/따옴표 제거) */
 function cleanDatabaseUrl(raw?: string): string {
   if (!raw) return "";
@@ -152,12 +200,16 @@ export async function initializeDatabase() {
   console.log("단일 PostgreSQL Pool 초기화 중…");
   console.log("DB_URL (masked):", maskDbUrl(connectionString));
 
+  // sslmode=disable이 URL에 포함되어 있거나 localhost/127.0.0.1이면 SSL 비활성화
+  const isLocalConnection =
+    /127\.0\.0\.1|localhost/.test(connectionString) ||
+    /sslmode=disable/.test(connectionString);
+
   const cfg: PoolConfig = {
     connectionString,
-    // Render/일반 Postgres: sslmode=require에서 서버 인증서 검증은 생략(호환 목적)
-    ssl: { rejectUnauthorized: false },
-    idleTimeoutMillis: 10_000, // 10s
-    connectionTimeoutMillis: 30_000, // 30s
+    ssl: isLocalConnection ? false : { rejectUnauthorized: false },
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 30_000,
     max: 10,
   };
 
@@ -176,6 +228,9 @@ export async function initializeDatabase() {
     3,
     500,
   );
+
+  // 스키마 프로브: 미반영 컬럼/테이블 감지 (실패해도 서버 부팅 계속)
+  await probeDBSchema(pool);
 
   db_ = drizzle(pool, { schema });
   initialized = true;

@@ -12,7 +12,7 @@ import { randomUUID } from "crypto";
 import { getStorage } from "./storage";
 import { ChatWebSocketServer } from './websocket';
 import { getDatabase, checkPostgreSQLHealth } from "./db";
-import { sql } from "drizzle-orm";
+import { sql, eq, and, gte, lte } from "drizzle-orm";
 
 // 중복 제출 방지를 위한 최근 제출 요청 추적
 interface SubmissionRecord {
@@ -605,6 +605,379 @@ router.put('/api/admin/dealers/:id', requireAdmin, async (req, res) => {
   }
 });
 // PATCH_END
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 판매점 원장 (dealer_registrations) CRUD
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 목록 조회 (JSON)
+router.get('/api/admin/dealer-registrations', requireAdmin, async (req, res) => {
+  try {
+    const { search, isHiddenPos, isContactPolicyPos, includeInactive, isActive } = req.query;
+    const options: any = {};
+    if (search) options.search = String(search);
+    if (isHiddenPos !== undefined) options.isHiddenPos = isHiddenPos === 'true';
+    if (isContactPolicyPos !== undefined) options.isContactPolicyPos = isContactPolicyPos === 'true';
+    if (includeInactive === 'true') {
+      options.includeInactive = true;
+    } else if (isActive === 'false') {
+      options.isActive = false;
+    }
+    const list = await getStorage().getDealerRegistrations(options);
+    res.json(list);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 현재 원장 전체 엑셀 다운로드
+// IMPORTANT: 반드시 /:id 라우트보다 먼저 선언해야 함 (Express 라우트 순서 규칙)
+router.get('/api/admin/dealer-registrations/export', requireAdmin, async (req, res) => {
+  console.log('[dealer export] HIT', req.method, req.originalUrl, req.path, req.params, req.query);
+  try {
+    const dealers = await getStorage().getDealerRegistrations({ includeInactive: true });
+
+    const wb = XLSX.utils.book_new();
+    const rows = (dealers as any[]).map((d: any) => ({
+      '판매점코드': d.dealerCode ?? '',
+      '판매점명': d.businessName ?? '',
+      '사업자번호': d.businessNumber ?? '',
+      '대표자명': d.representativeName ?? '',
+      '연락처': d.contactPhone ?? '',
+      '주소': d.address ?? '',
+      '상태': d.status ?? '',
+      '히든정책대상': d.isHiddenPos ? 'Y' : 'N',
+      '접점정책대상': d.isContactPolicyPos ? 'Y' : 'N',
+      '정산전용': d.settlementOnly ? 'Y' : 'N',
+      '생성일': d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : '',
+      '수정일': d.updatedAt ? new Date(d.updatedAt).toISOString().slice(0, 10) : '',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 14 },
+      { wch: 16 }, { wch: 32 }, { wch: 8 },
+      { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, '판매점원장');
+
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const raw = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+
+    console.log('[dealer export] rows length:', rows.length);
+    console.log('[dealer export] buffer length:', buffer.length);
+    console.log('[dealer export] first bytes:', buffer.slice(0, 2).toString('ascii'));
+
+    const filename = encodeURIComponent(`판매점원장_현재목록_${today}.xlsx`);
+    res.status(200);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    return res.end(buffer);
+  } catch (error: any) {
+    console.error('[dealer export] ERROR:', error);
+    return res.status(500).json({ error: '원장 다운로드 중 오류가 발생했습니다.' });
+  }
+});
+
+// 단건 조회 — IMPORTANT: /export 선언 이후에 위치해야 함
+router.get('/api/admin/dealer-registrations/:id', requireAdmin, async (req, res) => {
+  console.log('[dealer detail] HIT', req.method, req.originalUrl, req.params);
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: '잘못된 ID입니다.' });
+    const item = await getStorage().getDealerRegistration(id);
+    if (!item) return res.status(404).json({ error: '판매점을 찾을 수 없습니다.' });
+    res.json(item);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 등록
+router.post('/api/admin/dealer-registrations', requireAdmin, async (req, res) => {
+  try {
+    const {
+      businessName, representativeName, businessNumber,
+      contactPhone, contactEmail, address,
+      bankAccount, bankName, accountHolder,
+      username, password,
+      isHiddenPos, isContactPolicyPos, isActive, status,
+    } = req.body;
+
+    if (!businessName || !representativeName || !businessNumber ||
+        !contactPhone || !address || !username || !password) {
+      return res.status(400).json({ error: '필수 항목이 누락되었습니다.' });
+    }
+
+    const created = await getStorage().createDealerRegistration({
+      businessName, representativeName, businessNumber,
+      contactPhone, contactEmail: contactEmail || null, address,
+      bankAccount, bankName, accountHolder,
+      username, password,
+      isHiddenPos: isHiddenPos ?? false,
+      isContactPolicyPos: isContactPolicyPos ?? false,
+      isActive: isActive ?? true,
+      status: status ?? '승인',
+    });
+
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 수정
+router.put('/api/admin/dealer-registrations/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: '잘못된 ID입니다.' });
+
+    const updated = await getStorage().updateDealerRegistration(id, req.body);
+    if (!updated) return res.status(404).json({ error: '판매점을 찾을 수 없습니다.' });
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 비활성화 (소프트 삭제)
+router.delete('/api/admin/dealer-registrations/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: '잘못된 ID입니다.' });
+    const updated = await getStorage().updateDealerRegistration(id, { isActive: false });
+    if (!updated) return res.status(404).json({ error: '판매점을 찾을 수 없습니다.' });
+    res.json({ success: true, message: '판매점 원장이 비활성화되었습니다.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 엑셀 대량 업로드
+router.post('/api/admin/dealer-registrations/upload-excel', requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: '파일이 없습니다.' });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
+
+    if (rows.length === 0) {
+      return res.status(400).json({ error: '엑셀 파일에 데이터가 없습니다.' });
+    }
+
+    const REQUIRED = ['상호명', '대표자명', '사업자번호', '연락처', '주소', '아이디', '비밀번호'];
+    const COL_MAP: Record<string, string> = {
+      '상호명': 'businessName',
+      '대표자명': 'representativeName',
+      '사업자번호': 'businessNumber',
+      '연락처': 'contactPhone',
+      '주소': 'address',
+      '아이디': 'username',
+      '비밀번호': 'password',
+      '은행명': 'bankName',
+      '계좌번호': 'bankAccount',
+      '예금주': 'accountHolder',
+      '히든정책점': 'isHiddenPos',
+      '접점정책점': 'isContactPolicyPos',
+    };
+
+    let created = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2; // 헤더 포함 1-indexed
+      const raw = rows[i];
+
+      // 필수값 검사
+      const missing = REQUIRED.filter(col => !String(raw[col] ?? '').trim());
+      if (missing.length > 0) {
+        errors.push(`행 ${rowNum}: 필수 항목 누락 (${missing.join(', ')})`);
+        skipped++;
+        continue;
+      }
+
+      // 필드 매핑
+      const data: any = {};
+      for (const [ko, en] of Object.entries(COL_MAP)) {
+        const val = String(raw[ko] ?? '').trim();
+        if (en === 'isHiddenPos' || en === 'isContactPolicyPos') {
+          data[en] = /^(y|yes|true|1|히든|접점)$/i.test(val);
+        } else {
+          data[en] = val || null;
+        }
+      }
+      data.isActive = true;
+      data.status = '승인';
+
+      try {
+        await getStorage().createDealerRegistration(data);
+        created++;
+      } catch (err: any) {
+        const msg = String(err.message ?? '');
+        if (msg.includes('unique') || msg.includes('duplicate') || msg.includes('중복') || msg.includes('already exists')) {
+          if (msg.includes('username')) {
+            errors.push(`행 ${rowNum}: 아이디 중복 (${data.username})`);
+          } else {
+            errors.push(`행 ${rowNum}: 중복 오류 — ${msg.substring(0, 80)}`);
+          }
+        } else {
+          errors.push(`행 ${rowNum}: 오류 — ${msg.substring(0, 80)}`);
+        }
+        skipped++;
+      }
+    }
+
+    res.json({
+      success: true,
+      totalRows: rows.length,
+      created,
+      skipped,
+      errors,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Backfill: 기존 dealer_registrations와 users를 username으로 매칭해 dealer_registration_id 채우기
+router.post('/api/admin/dealer-registrations/backfill-users', requireAdmin, async (req, res) => {
+  try {
+    const result = await getStorage().backfillDealerRegistrationIds();
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// M코드 기준 원장 업로드 — dealer_registrations + contact_codes 동시 upsert
+// IMPORTANT: /:id 라우트보다 먼저 선언해야 함 (Express 라우팅 순서)
+router.post('/api/admin/dealer-registrations/mcode-master-upload', requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
+
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    // header:1 로 배열 파싱 (B열=접점코드, H열=접점코드 같은 중복 헤더 안전 처리)
+    const aoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false }) as any[][];
+    if (aoa.length < 2) return res.status(400).json({ error: '헤더 포함 최소 2행 이상 필요합니다.' });
+
+    const dataRows = aoa.slice(1);
+
+    // 엑셀 컬럼 위치 (0-indexed): A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 J=9
+    const IDX = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5, G: 6, H: 7, I: 8, J: 9 };
+
+    const EXCLUSION_KEYWORDS = ['삭제점', '제외', '개인', '테스트'];
+
+    const stats = {
+      totalRows: dataRows.length,
+      readRows: 0,
+      drCreated: 0,
+      drUpdated: 0,
+      ccCreated: 0,
+      ccUpdated: 0,
+      needReview: 0,
+      failed: 0,
+    };
+    const reviewItems: { row: number; reason: string; mCode?: string; name?: string }[] = [];
+    const failedItems: { row: number; reason: string }[] = [];
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      const rowNum = i + 2;
+      const gc = (idx: number) => String(row[idx] ?? '').trim();
+
+      const sourceName    = gc(IDX.A); // A: 판매점명
+      const contactCodeB  = gc(IDX.B); // B: 접점코드
+      const codeName      = gc(IDX.C); // C: 판매점명(수식)
+      const alias         = gc(IDX.D); // D: 별칭
+      const subDealer     = gc(IDX.E); // E: 하부점명
+      const channel       = gc(IDX.F); // F: 채널
+      const mCode         = gc(IDX.G); // G: M코드
+      const contactCodeH  = gc(IDX.H); // H: 접점코드
+      const kpNumber      = gc(IDX.I); // I: KP번호
+      const region        = gc(IDX.J); // J: 지역명
+
+      // 완전 빈 행 skip
+      if (![sourceName, contactCodeB, codeName, subDealer, channel, mCode, contactCodeH, kpNumber, region].some(v => v)) continue;
+      stats.readRows++;
+
+      // 제외 키워드 검사
+      const allText = [sourceName, codeName, subDealer, channel].join(' ');
+      const excludeKw = EXCLUSION_KEYWORDS.find(kw => allText.includes(kw));
+      if (excludeKw) {
+        reviewItems.push({ row: rowNum, reason: `제외 키워드 포함: "${excludeKw}"`, mCode, name: codeName || sourceName });
+        stats.needReview++;
+        continue;
+      }
+
+      // M코드 없으면 검토필요
+      if (!mCode) {
+        reviewItems.push({ row: rowNum, reason: 'M코드 없음', name: codeName || sourceName });
+        stats.needReview++;
+        continue;
+      }
+
+      // business_name 결정: C열 > A열 > E열
+      const businessName = codeName || sourceName || subDealer || mCode;
+      // 실제 접점코드: H열 > B열
+      const contactCode = contactCodeH || contactCodeB;
+
+      try {
+        // ─── dealer_registrations upsert ───
+        const drResult = await getStorage().upsertDealerRegistrationByMCode({
+          mCode, businessName, sourceDealerName: sourceName, subDealerName: subDealer, kpNumber, regionName: region,
+        });
+
+        if (drResult.action === 'created') stats.drCreated++;
+        else if (drResult.action === 'updated') stats.drUpdated++;
+        else {
+          reviewItems.push({ row: rowNum, reason: drResult.reason || 'M코드 중복 검토', mCode, name: businessName });
+          stats.needReview++;
+          // 중복검토여도 접점코드는 처리 시도
+        }
+
+        // ─── contact_codes upsert ───
+        if (contactCode) {
+          const ccResult = await getStorage().upsertContactCode({
+            code: contactCode,
+            dealerName: businessName,
+            carrier: '미지정',
+            dealerRegistrationId: drResult.record?.id ?? null,
+            mCode, channel, kpNumber, regionName: region,
+            aliasName: alias, subDealerName: subDealer,
+            sourceDealerName: sourceName,
+            codeName: codeName || contactCodeB || contactCode,
+          });
+          if (ccResult.action === 'created') stats.ccCreated++;
+          else stats.ccUpdated++;
+        }
+
+      } catch (err: any) {
+        failedItems.push({ row: rowNum, reason: (err.message ?? '').substring(0, 120) });
+        stats.failed++;
+      }
+    }
+
+    return res.json({
+      success: true,
+      ...stats,
+      reviewSamples: reviewItems.slice(0, 20),
+      failedSamples: failedItems.slice(0, 20),
+    });
+
+  } catch (error: any) {
+    console.error('[mcode-master-upload] ERROR:', error);
+    return res.status(500).json({ error: error.message || '업로드 처리 중 오류가 발생했습니다.' });
+  }
+});
 
 router.post('/api/admin/users', requireAdmin, async (req, res) => {
   try {
@@ -1308,9 +1681,20 @@ router.get('/api/contact-codes/auto-match', requireAuth, async (req, res) => {
 router.get('/api/contact-codes', requireAuth, async (req, res) => {
   try {
     const carrier = req.query.carrier as string | undefined;
-    const contactCodes = await getStorage().getContactCodes(carrier);
-    console.log(`✅ Contact codes API - Returning ${contactCodes.length} codes${carrier && carrier !== 'all' ? ` (carrier: ${carrier})` : ''}`);
-    res.json(contactCodes);
+    const page = req.query.page !== undefined ? Number(req.query.page) : undefined;
+    const limit = req.query.limit !== undefined ? Number(req.query.limit) : undefined;
+    const search = req.query.search as string | undefined;
+    const dealerRegistrationId = req.query.dealerRegistrationId !== undefined ? Number(req.query.dealerRegistrationId) : undefined;
+    const includeRealSalesPOSMatch = req.query.includeRealSalesPOSMatch === 'true';
+
+    const options = (page !== undefined || limit !== undefined || search || dealerRegistrationId !== undefined || includeRealSalesPOSMatch)
+      ? { page, limit, search, dealerRegistrationId, includeRealSalesPOSMatch: includeRealSalesPOSMatch || undefined }
+      : undefined;
+
+    const result = await getStorage().getContactCodes(carrier, options);
+    const logCount = Array.isArray(result) ? result.length : result.total;
+    console.log(`✅ Contact codes API - Returning ${logCount} codes${carrier && carrier !== 'all' ? ` (carrier: ${carrier})` : ''}${options ? ` [paginated page=${page}]` : ''}`);
+    res.json(result);
   } catch (error: any) {
     console.error('❌ Contact codes API error:', error);
     res.status(500).json({ error: error.message });
@@ -1319,10 +1703,10 @@ router.get('/api/contact-codes', requireAuth, async (req, res) => {
 
 router.post('/api/admin/contact-codes', requireAdmin, async (req, res) => {
   try {
-    const { code, dealerName, carrier, realSalesPOS, salesManagerId, salesManagerName } = req.body;
-    
+    const { code, dealerName, carrier, realSalesPOS, realSalesPosCode, salesManagerId, salesManagerName, dealerRegistrationId, memo } = req.body;
+
     if (!code || !dealerName || !carrier) {
-      return res.status(400).json({ error: '접점코드, 판매점명, 통신사가 필요합니다.' });
+      return res.status(400).json({ error: '접점코드, 판매점명, 채널이 필요합니다.' });
     }
 
     const contactCode = await getStorage().createContactCode({
@@ -1330,10 +1714,13 @@ router.post('/api/admin/contact-codes', requireAdmin, async (req, res) => {
       dealerName,
       carrier,
       realSalesPOS: realSalesPOS || null,
+      realSalesPosCode: realSalesPosCode || null,
       salesManagerId: salesManagerId || null,
-      salesManagerName: salesManagerName || null
+      salesManagerName: salesManagerName || null,
+      dealerRegistrationId: dealerRegistrationId || null,
+      memo: memo || null,
     });
-    
+
     res.json(contactCode);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -1859,7 +2246,7 @@ router.get('/api/documents', requireAuth, async (req: any, res) => {
   try {
     // [수정 목적] 개통완료 관리 페이지 검색 기능 수정
     // - activatedByType 파라미터 추가하여 작업자구분 필터링 지원
-    const { status, search, startDate, endDate, contactCode, carrier, activationStatus, allWorkers, includeActivatedBy, excludeWorkRequests, excludeDeleted, activatedByType } = req.query;
+    const { status, search, startDate, endDate, contactCode, carrier, activationStatus, allWorkers, includeActivatedBy, excludeWorkRequests, excludeDeleted, activatedByType, page, limit } = req.query;
     
     console.log('Documents API request:', {
       status,
@@ -1882,14 +2269,15 @@ router.get('/api/documents', requireAuth, async (req: any, res) => {
     const sessionUserType = req.session?.userType;
     const sessionUserId = req.session?.userId;
     let dealerId = null;
-    
-    // Check if user is a dealer (has dealerId)
+    let dealerRegistrationId = null;
+
     if (sessionUserType === 'user' && sessionUserId) {
       const user = await getStorage().getUserById(sessionUserId);
-      dealerId = user?.dealerId;
-      console.log('[ROUTE] User check - dealerId:', dealerId, 'userType:', sessionUserType);
+      dealerId = user?.dealerId ?? null;
+      dealerRegistrationId = user?.dealerRegistrationId ?? null;
+      console.log('[ROUTE] User check - dealerId:', dealerId, 'dealerRegistrationId:', dealerRegistrationId, 'userType:', sessionUserType);
     }
-    
+
     const filters = {
       status,
       search,
@@ -1899,6 +2287,8 @@ router.get('/api/documents', requireAuth, async (req: any, res) => {
       carrier,
       activationStatus,
       activatedByType,
+      page: page !== undefined ? Number(page) : undefined,
+      limit: limit !== undefined ? Number(limit) : undefined,
       userId: allWorkers === 'true' ? null : req.session?.userId,
       includeActivatedBy: includeActivatedBy === 'true',
       excludeWorkRequests: excludeWorkRequests === 'true',
@@ -1906,12 +2296,14 @@ router.get('/api/documents', requireAuth, async (req: any, res) => {
       // Permission-based filtering
       userType: sessionUserType,
       dealerId: dealerId,
+      dealerRegistrationId: dealerRegistrationId,
       allWorkers: allWorkers === 'true'
     };
     
     console.log('[ROUTE] Calling getStorage().getDocuments() with filters:', filters);
     const documents = await getStorage().getDocuments(filters, sessionUserId, sessionUserType);
-    console.log('[ROUTE] getDocuments() returned, count:', documents.length);
+    const logCount = Array.isArray(documents) ? documents.length : documents.total;
+    console.log('[ROUTE] getDocuments() returned, count:', logCount);
     res.json(documents);
   } catch (error: any) {
     console.error('[ROUTE ERROR] Documents API failed:', error);
@@ -3146,109 +3538,358 @@ router.get('/api/document-templates', requireAdmin, async (req, res) => {
   }
 });
 
+// 접점코드 엑셀 양식 다운로드 (시트3장: 입력 + 판매점원장참조 + 작성가이드)
+router.get('/api/admin/contact-codes/template', requireAdmin, async (req, res) => {
+  try {
+    const dealers = await getStorage().getDealerRegistrations({ includeInactive: true });
+    const wb = XLSX.utils.book_new();
+
+    // 시트1: 접점코드입력
+    const inputHeaders = [['접점코드', '정산지급처선택', '실판매점코드', '실제판매점명', '채널', '담당영업과장', '메모']];
+    const sampleRows = [
+      ['K엠45172', '[MCC0028] 썬플러스 중계', '', '진심모바일', '후불)엠모바일', '홍길동', '하부점 기준'],
+      ['L프638840', '[MCC0029] 썬플러스', '', '썬플러스 본점', '후불)KT', '김영희', ''],
+    ];
+    const ws1 = XLSX.utils.aoa_to_sheet([...inputHeaders, ...sampleRows]);
+    ws1['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 16 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, ws1, '접점코드입력');
+
+    // 시트2: 판매점원장참조
+    const refHeaders = [['판매점코드', '판매점명', '사업자번호', '대표자명', '연락처', '주소']];
+    const refRows = dealers.map((d: any) => [
+      d.dealerCode || '',
+      d.businessName || '',
+      d.businessNumber || '',
+      d.representativeName || '',
+      d.contactPhone || '',
+      d.address || '',
+    ]);
+    const ws2 = XLSX.utils.aoa_to_sheet([...refHeaders, ...refRows]);
+    ws2['!cols'] = [{ wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 32 }];
+    XLSX.utils.book_append_sheet(wb, ws2, '판매점원장참조');
+
+    // 시트3: 작성가이드
+    const guideData = [
+      ['MCC NetWorld 포털 — 접점코드 업로드 작성 가이드'],
+      [''],
+      ['■ 컬럼 설명'],
+      ['컬럼', '설명'],
+      ['접점코드', '실제 개통 원장에 표시되는 접점코드 (예: K엠45172, L프638840)'],
+      ['정산지급처선택', '아래 3가지 형식 모두 허용: ① [MCC0028] 썬플러스 중계  ② MCC0028  ③ 썬플러스 중계 (판매점명 단독, 중복 시 경고)'],
+      ['실판매점코드', '실판매점 코드 (선택사항, 비워두면 자동 생성: SP0001 형식)'],
+      ['실제판매점명', '실제 개통이 발생한 하부점 또는 현장 판매점명 (정산지급처명과 달라도 됩니다, 선택사항)'],
+      ['채널', '개통 채널 (예: 후불)엠모바일, 후불)KT)'],
+      ['담당영업과장', '담당 영업과장명 (선택사항)'],
+      ['메모', '기타 참고사항 (선택사항)'],
+      [''],
+      ['■ 중요 안내'],
+      ['1. dealerRegistrationId(시스템 내부 ID)는 입력하지 않습니다. 정산지급처선택으로 자동 연결됩니다.'],
+      ['2. 기존 양식의 정산지급처코드 컬럼도 계속 지원됩니다. (예: MCC0028 단독 입력)'],
+      ['3. 실판매점코드가 비어 있고 실제판매점명이 있으면 동일 정산지급처 내 기존 실판매점명을 재사용하거나 자동 생성합니다.'],
+      ['4. 정산지급처명과 실제판매점명이 같으면 본점, 다르면 하부점으로 자동 판단합니다.'],
+      ['5. 동일한 접점코드가 있으면 수정됩니다.'],
+      [''],
+      ['■ 작성 예시'],
+      ['접점코드', '정산지급처선택', '실판매점코드', '실제판매점명', '채널', '담당영업과장', '메모'],
+      ['K엠45172', '[MCC0028] 썬플러스', '', '썬플러스 중계', '후불)엠모바일', '홍길동', '하부점 기준'],
+      ['L프638840', '[MCC0029] 썬플러스', '', '썬플러스', '후불)KT', '김영희', '본점 직접 개통'],
+    ];
+    const ws3 = XLSX.utils.aoa_to_sheet(guideData);
+    ws3['!cols'] = [{ wch: 22 }, { wch: 60 }];
+    XLSX.utils.book_append_sheet(wb, ws3, '작성가이드');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename*=UTF-8\'\'%EC%A0%91%EC%A0%90%EC%BD%94%EB%93%9C_%EC%97%85%EB%A1%9C%EB%93%9C_%EC%96%91%EC%8B%9D.xlsx');
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Contact code template download error:', error);
+    res.status(500).json({ error: '양식 다운로드 중 오류가 발생했습니다.' });
+  }
+});
+
 // Contact code bulk upload (메모리 버퍼 사용)
 router.post('/api/admin/contact-codes/bulk-upload', requireAdmin, contactCodeUpload.single('file'), async (req: any, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '파일을 선택해주세요.' });
     }
-    
+
     try {
       const headers = extractCsvHeadersFromUploadedFile(req.file as any);
       logCsvHeaders("접점코드", headers);
     } catch (e) {
       if (LOG_CSV_HEADERS) console.warn("[CSV][접점코드] 헤더 추출 실패:", e);
     }
-    
+
+    let workbook;
     try {
-      let workbook;
-      
       if (req.file.originalname.endsWith('.csv')) {
-        // CSV 파일 처리 (BOM 제거)
         let csvData = req.file.buffer.toString('utf8');
-        if (csvData.charCodeAt(0) === 0xFEFF) {
-          csvData = csvData.substring(1);
-        }
+        if (csvData.charCodeAt(0) === 0xFEFF) csvData = csvData.substring(1);
         workbook = XLSX.read(csvData, { type: 'string' });
       } else {
-        // Excel 파일 처리 (버퍼 사용)
         workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
       }
-      
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
-      
-      if (jsonData.length === 0) {
-        return res.status(400).json({ error: '파일에 데이터가 없습니다.' });
-      }
-
-      // Process data and create contact codes with batch processing
-      console.log(`🔄 접점코드 업로드 시작: 총 ${jsonData.length}개 행 처리`);
-      const errors: string[] = [];
-      const validCodes: any[] = [];
-      
-      // Validate and prepare data
-      for (let i = 0; i < jsonData.length; i++) {
-        const rowData = jsonData[i] as any;
-        
-        // 다양한 컬럼명 지원
-        const code = rowData['접점코드'] || rowData['코드'] || rowData['code'] || rowData['Code'];
-        const dealerName = rowData['판매점명'] || rowData['딜러명'] || rowData['dealer'] || rowData['Dealer'] || rowData['dealerName'];
-        const realSalesPOS = rowData['실판매POS'] || rowData['실판매점'] || rowData['realSalesPOS'] || '';
-        const carrier = rowData['통신사'] || rowData['carrier'] || rowData['Carrier'] || '';
-        const salesManagerName = rowData['담당영업과장'] || rowData['영업과장'] || rowData['salesManager'] || '';
-        
-        if (!code || !dealerName) {
-          errors.push(`행 ${i + 1}: 접점코드 또는 판매점명이 누락됨`);
-          continue;
-        }
-        
-        if (!carrier) {
-          errors.push(`행 ${i + 1}: 통신사가 누락됨`);
-          continue;
-        }
-        
-        validCodes.push({
-          code: String(code).trim(),
-          dealerName: String(dealerName).trim(),
-          realSalesPOS: realSalesPOS ? String(realSalesPOS).trim() : null,
-          carrier: String(carrier).trim(),
-          salesManagerName: salesManagerName ? String(salesManagerName).trim() : null
-        });
-      }
-      
-      console.log(`✅ 유효 데이터: ${validCodes.length}개, 오류: ${errors.length}개`);
-      
-      // Batch insert with progress logging
-      let successCount = 0;
-      const batchSize = 500;
-      
-      for (let i = 0; i < validCodes.length; i += batchSize) {
-        const batch = validCodes.slice(i, i + batchSize);
-        try {
-          await getStorage().bulkCreateContactCodes(batch);
-          successCount += batch.length;
-          console.log(`✅ 접점코드 업로드 진행: ${successCount}/${validCodes.length} (${Math.round(successCount / validCodes.length * 100)}%)`);
-        } catch (error: any) {
-          console.error(`❌ 배치 업로드 오류 (${i}-${i + batch.length}):`, error.message);
-          errors.push(`배치 ${i}-${i + batch.length}: ${error.message}`);
-        }
-      }
-      
-      const errorCount = jsonData.length - successCount;
-      console.log(`✅ 접점코드 업로드 완료: 성공 ${successCount}건, 실패 ${errorCount}건`);
-
-      res.json({
-        success: true,
-        message: `일괄 업로드 완료: 성공 ${successCount}건, 실패 ${errorCount}건`,
-        successCount,
-        errorCount,
-        errors: errors.slice(0, 10) // 최대 10개 오류만 반환
-      });
     } catch (parseError: any) {
       return res.status(400).json({ error: `파일 파싱 오류: ${parseError.message}` });
     }
+
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
+
+    if (jsonData.length === 0) {
+      return res.status(400).json({ error: '파일에 데이터가 없습니다.' });
+    }
+
+    console.log(`🔄 접점코드 업로드 시작: 총 ${jsonData.length}개 행`);
+
+    // 전체 판매점 미리 로드 (dealerCode 캐시 초기화 + businessName 폴백 매칭용)
+    const allDealers = await getStorage().getDealerRegistrations({ includeInactive: false });
+    const dealerCodeCache = new Map<string, { id: number | null; businessName: string | null }>();
+    const dealerByName = new Map<string, number[]>(); // businessName → [dealerRegistrationId, ...]
+    for (const d of allDealers) {
+      if (d.dealerCode) dealerCodeCache.set(d.dealerCode, { id: d.id, businessName: d.businessName });
+      if (d.businessName) {
+        const ids = dealerByName.get(d.businessName) || [];
+        ids.push(d.id);
+        dealerByName.set(d.businessName, ids);
+      }
+    }
+    const dealerBusinessNameSet = new Set(dealerByName.keys());
+
+    // 실판매점코드 자동 생성을 위한 캐시: `${dealerRegistrationId}:${realSalesPOS}` → code
+    const realPosCodeCache = new Map<string, string>();
+    // 실판매점코드 최대 시퀀스 캐시: dealerRegistrationId → maxSeq
+    const realPosMaxSeq = new Map<number, number>();
+
+    const resolveRealSalesPosCode = async (
+      dealerRegistrationId: number,
+      realSalesPOS: string,
+      providedCode: string | null
+    ): Promise<string | null> => {
+      if (providedCode) return providedCode;
+      if (!realSalesPOS) return null;
+
+      const cacheKey = `${dealerRegistrationId}:${realSalesPOS.trim()}`;
+      if (realPosCodeCache.has(cacheKey)) return realPosCodeCache.get(cacheKey)!;
+
+      // 해당 정산지급처의 모든 접점코드를 getContactCodes로 조회 (캐시 미스 시)
+      const allCodesForDealer = await getStorage().getContactCodes(undefined, { dealerRegistrationId, limit: 10000 });
+      const codeList = Array.isArray(allCodesForDealer) ? allCodesForDealer : (allCodesForDealer?.data ?? []);
+
+      // 최대 SP시퀀스 계산
+      let maxSeq = realPosMaxSeq.get(dealerRegistrationId) ?? 0;
+      for (const cc of codeList) {
+        if (cc.realSalesPosCode && /^SP\d+$/.test(cc.realSalesPosCode)) {
+          const n = parseInt(cc.realSalesPosCode.slice(2), 10);
+          if (n > maxSeq) maxSeq = n;
+        }
+        // 기존 동일 실판매점명 코드 캐시
+        if (cc.realSalesPOS) {
+          const key = `${dealerRegistrationId}:${cc.realSalesPOS.trim()}`;
+          if (!realPosCodeCache.has(key) && cc.realSalesPosCode) {
+            realPosCodeCache.set(key, cc.realSalesPosCode);
+          }
+        }
+      }
+      realPosMaxSeq.set(dealerRegistrationId, maxSeq);
+
+      if (realPosCodeCache.has(cacheKey)) return realPosCodeCache.get(cacheKey)!;
+
+      // 새 코드 생성
+      maxSeq++;
+      realPosMaxSeq.set(dealerRegistrationId, maxSeq);
+      const newCode = `SP${String(maxSeq).padStart(4, '0')}`;
+      realPosCodeCache.set(cacheKey, newCode);
+      return newCode;
+    };
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let dealerMatchSuccess = 0;
+    let dealerMatchFailed = 0;
+    let realSalesPOSMatchSuccess = 0;
+    let realSalesPOSUnregistered = 0;
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    for (let i = 0; i < jsonData.length; i++) {
+      const rowNum = i + 2; // 헤더 포함 1-indexed
+      const raw = jsonData[i];
+
+      // 공통 컬럼 추출
+      const code = String(raw['접점코드'] || raw['코드'] || raw['code'] || raw['Code'] || raw['contactCode'] || '').trim();
+      const realSalesPOS = String(raw['실제판매점명'] || raw['실판매점명'] || raw['실판매POS'] || raw['실판매점'] || raw['realSalesPOS'] || raw['real_sales_pos'] || '').trim() || null;
+      const rawRealSalesPosCode = String(raw['실판매점코드'] || raw['실판매POS코드'] || raw['realSalesPosCode'] || raw['real_sales_pos_code'] || '').trim() || null;
+      const carrier = String(raw['채널'] || raw['통신사'] || raw['carrier'] || raw['Carrier'] || raw['channel'] || raw['Channel'] || '').trim();
+      const salesManagerName = String(raw['담당영업과장'] || raw['영업담당자'] || raw['영업과장'] || raw['salesManagerName'] || raw['sales_manager_name'] || raw['salesManager'] || '').trim() || null;
+      const memo = String(raw['메모'] || raw['memo'] || '').trim() || null;
+      const isActiveRaw = String(raw['사용여부'] || '').trim();
+      const isActive = isActiveRaw === '' ? true : /^(y|yes|true|1|사용|사용중)$/i.test(isActiveRaw);
+
+      // 정산지급처 파싱: 1순위=정산지급처선택, 2순위=정산지급처코드, 3순위=정산지급처명
+      const dealerSelectionRaw = String(raw['정산지급처선택'] || '').trim();
+      let dealerCodeRaw = '';
+      let dealerNameForFallback = '';
+
+      if (dealerSelectionRaw) {
+        // 형식1: [MCC0028] 판매점명
+        const selMatch = dealerSelectionRaw.match(/^\[([^\]]+)\]/);
+        if (selMatch) {
+          dealerCodeRaw = selMatch[1].trim();
+        } else if (/^MCC\d+$/i.test(dealerSelectionRaw)) {
+          // 형식2: MCC0028 단독
+          dealerCodeRaw = dealerSelectionRaw;
+        } else {
+          // 형식3: 판매점명 단독
+          dealerNameForFallback = dealerSelectionRaw;
+        }
+      } else {
+        // 기존 컬럼 폴백
+        dealerCodeRaw = String(raw['정산지급처코드'] || raw['판매점코드'] || raw['dealerCode'] || raw['dealer_code'] || '').trim();
+        if (!dealerCodeRaw) {
+          // 3순위: 정산지급처명으로 보조 매칭
+          dealerNameForFallback = String(raw['정산지급처명'] || raw['판매점명'] || raw['딜러명'] || raw['dealer'] || raw['dealerName'] || '').trim();
+        }
+      }
+
+      // 접점코드 필수 검사
+      if (!code) {
+        errors.push(`행 ${rowNum}: 접점코드가 비어 있습니다.`);
+        skipped++;
+        continue;
+      }
+
+      if (!dealerCodeRaw && !dealerNameForFallback) {
+        errors.push(`행 ${rowNum}: 정산지급처선택 또는 정산지급처코드가 비어 있습니다.`);
+        skipped++;
+        continue;
+      }
+
+      // 판매점 매칭
+      let dealerRegistrationId: number | null = null;
+      let dealerName = '';
+
+      if (dealerCodeRaw) {
+        // 코드 기준 매칭
+        if (dealerCodeCache.has(dealerCodeRaw)) {
+          const cached = dealerCodeCache.get(dealerCodeRaw)!;
+          dealerRegistrationId = cached.id;
+          dealerName = cached.businessName || dealerCodeRaw;
+        } else {
+          const dr = await getStorage().getDealerRegistrationByDealerCode(dealerCodeRaw);
+          if (dr) {
+            dealerRegistrationId = dr.id;
+            dealerCodeCache.set(dealerCodeRaw, { id: dr.id, businessName: dr.businessName });
+            dealerName = dr.businessName || dealerCodeRaw;
+          } else {
+            dealerCodeCache.set(dealerCodeRaw, { id: null, businessName: null });
+          }
+        }
+
+        if (dealerRegistrationId === null) {
+          dealerMatchFailed++;
+          errors.push(`행 ${rowNum}: 정산지급처코드 '${dealerCodeRaw}'를 판매점 원장에서 찾을 수 없습니다.`);
+          skipped++;
+          continue;
+        }
+      } else if (dealerNameForFallback) {
+        // 판매점명 단독 매칭 (3순위, 보조)
+        const matchIds = dealerByName.get(dealerNameForFallback) || [];
+        if (matchIds.length === 1) {
+          const dr = allDealers.find((d: any) => d.id === matchIds[0]);
+          if (dr) {
+            dealerRegistrationId = dr.id;
+            dealerName = dr.businessName || dealerNameForFallback;
+            warnings.push(`행 ${rowNum}: 판매점명 '${dealerNameForFallback}'으로 자동 매칭했습니다. 정산지급처선택 사용을 권장합니다.`);
+          }
+        } else if (matchIds.length > 1) {
+          dealerMatchFailed++;
+          errors.push(`행 ${rowNum}: 판매점명 '${dealerNameForFallback}'이 ${matchIds.length}건 검색되어 자동 매칭할 수 없습니다. 정산지급처선택 값을 사용하세요.`);
+          skipped++;
+          continue;
+        } else {
+          dealerMatchFailed++;
+          errors.push(`행 ${rowNum}: 판매점명 '${dealerNameForFallback}'를 판매점 원장에서 찾을 수 없습니다.`);
+          skipped++;
+          continue;
+        }
+      }
+
+      if (dealerRegistrationId === null) {
+        dealerMatchFailed++;
+        skipped++;
+        continue;
+      }
+      dealerMatchSuccess++;
+
+      // 최종 dealerName 결정
+      if (!dealerName) dealerName = dealerCodeRaw || dealerNameForFallback;
+
+      // realSalesPOS 원장 매칭 확인 (경고만, 오류 아님)
+      if (realSalesPOS) {
+        if (dealerBusinessNameSet.has(realSalesPOS)) {
+          realSalesPOSMatchSuccess++;
+        } else {
+          realSalesPOSUnregistered++;
+          warnings.push(`행 ${rowNum}: 실제판매점명 '${realSalesPOS}'이 판매점 원장에 없습니다. 히든정책 하부점 기준 적용이 제한될 수 있습니다.`);
+        }
+      }
+
+      // 실판매점코드 자동 생성 (실판매점명 있고 코드 없을 때)
+      let resolvedRealSalesPosCode: string | null = rawRealSalesPosCode;
+      if (!resolvedRealSalesPosCode && realSalesPOS && dealerRegistrationId) {
+        try {
+          resolvedRealSalesPosCode = await resolveRealSalesPosCode(dealerRegistrationId, realSalesPOS, null);
+        } catch (e) {
+          // 자동 생성 실패 시 null로 진행 (오류 아님)
+        }
+      }
+
+      try {
+        const result = await getStorage().upsertContactCode({
+          code,
+          dealerName,
+          realSalesPOS,
+          realSalesPosCode: resolvedRealSalesPosCode,
+          carrier: carrier || '',
+          salesManagerName,
+          dealerRegistrationId,
+          memo,
+          isActive,
+        });
+        if (result.action === 'created') created++;
+        else updated++;
+      } catch (err: any) {
+        errors.push(`행 ${rowNum}: ${String(err.message).substring(0, 80)}`);
+        skipped++;
+      }
+    }
+
+    const processed = created + updated;
+    console.log(`✅ 접점코드 업로드 완료: 신규 ${created}건, 수정 ${updated}건, 실패 ${skipped}건, 경고 ${warnings.length}건`);
+
+    res.json({
+      success: true,
+      message: `업로드 완료: 신규 ${created}건, 수정 ${updated}건, 실패 ${skipped}건`,
+      totalRows: jsonData.length,
+      created,
+      updated,
+      skipped,
+      dealerMatchSuccess,
+      dealerMatchFailed,
+      realSalesPOSMatchSuccess,
+      realSalesPOSUnregistered,
+      warnings,
+      errors,
+      // 기존 UI 호환 필드
+      processed,
+      successCount: processed,
+      errorCount: skipped,
+      duplicatesSkipped: 0,
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -3258,10 +3899,22 @@ router.post('/api/admin/contact-codes/bulk-upload', requireAdmin, contactCodeUpl
 router.put('/api/admin/contact-codes/:id', requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { code, dealerName } = req.body;
-    
-    await getStorage().createContactCode({ code, dealerName });
-    res.json({ success: true, message: '접점코드가 수정되었습니다.' });
+    const { code, dealerName, carrier, salesManagerId, salesManagerName, realSalesPOS, realSalesPosCode, isActive, dealerRegistrationId, memo } = req.body;
+
+    if (!id || isNaN(id)) {
+      return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+    }
+
+    const updateData: any = { code, dealerName, carrier, salesManagerId, salesManagerName, realSalesPOS };
+    if (realSalesPosCode !== undefined) updateData.realSalesPosCode = realSalesPosCode || null;
+    if (memo !== undefined) updateData.memo = memo || null;
+    if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+    if (dealerRegistrationId !== undefined) updateData.dealerRegistrationId = dealerRegistrationId === null ? null : Number(dealerRegistrationId);
+    const updated = await getStorage().updateContactCode(id, updateData);
+    if (!updated) {
+      return res.status(404).json({ error: '접점코드를 찾을 수 없습니다.' });
+    }
+    res.json({ success: true, message: '접점코드가 수정되었습니다.', data: updated });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
@@ -3542,10 +4195,21 @@ router.get('/api/dealer/applications', (req, res, next) => {
     }
     
     let rows: any[] = [];
-    if (user.dealerId) {
+    if (user.dealerRegistrationId) {
+      // 신규 dealer 계정: dealerRegistrationId 기준 조회 (Path A OR B)
+      rows = await getStorage().getDocuments({ userType: 'user', dealerRegistrationId: user.dealerRegistrationId }, userId, userType);
+      console.log('[DEALER_DASHBOARD] by dealerRegistrationId', { dealerRegistrationId: user.dealerRegistrationId, count: rows.length });
+
+      if (rows.length === 0 && FALLBACK) {
+        const r2 = await getStorage().getDocuments({ userType: 'user', userId }, userId, userType);
+        console.log('[DEALER_DASHBOARD] fallback userId (dealerRegistrationId path)', { userId, count: r2.length });
+        rows = r2;
+      }
+    } else if (user.dealerId) {
+      // 구 dealer 계정: 기존 dealerId 로직 유지
       rows = await getStorage().getDocuments({ userType: 'user', dealerId: user.dealerId }, userId, userType);
       console.log('[DEALER_DASHBOARD] by dealerId', { dealerId: user.dealerId, count: rows.length });
-      
+
       if (rows.length === 0 && FALLBACK) {
         const r2 = await getStorage().getDocuments({ userType: 'user', userId }, userId, userType);
         console.log('[DEALER_DASHBOARD] fallback userId', { userId, count: r2.length });
@@ -3727,6 +4391,1500 @@ router.post('/api/chat/mark-read', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Mark read error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// STEP 5D-1: 정책 관리 API (policy_versions / policy_rows / policy_files)
+// ============================================================
+
+// 1. GET /api/admin/policies — 정책 차수 목록 조회
+router.get('/api/admin/policies', requireAdmin, async (req, res) => {
+  try {
+    const versions = await getStorage().getPolicyVersions();
+    res.json(versions);
+  } catch (error: any) {
+    console.error('getPolicyVersions error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. GET /api/admin/policies/:id — 정책 차수 단건 + rows + files 포함 조회
+router.get('/api/admin/policies/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const version = await getStorage().getPolicyVersionById(id);
+    if (!version) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const [rows, files] = await Promise.all([
+      getStorage().getPolicyRowsByVersionId(id),
+      getStorage().getPolicyFilesByVersionId(id),
+    ]);
+
+    res.json({ ...version, rows, files });
+  } catch (error: any) {
+    console.error('getPolicyVersionById error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. POST /api/admin/policies — 정책 차수 생성
+router.post('/api/admin/policies', requireAdmin, async (req, res) => {
+  try {
+    const adminId = req.session?.userId;
+    const { policyNo, policyName, effectiveFrom, effectiveTo, memo } = req.body;
+
+    if (!policyNo || !policyName || !effectiveFrom) {
+      return res.status(400).json({ error: 'policyNo, policyName, effectiveFrom은 필수입니다.' });
+    }
+
+    const version = await getStorage().createPolicyVersion({
+      policyNo,
+      policyName,
+      effectiveFrom: new Date(effectiveFrom),
+      effectiveTo: effectiveTo ? new Date(effectiveTo) : null,
+      isActive: true,
+      memo: memo || null,
+      createdBy: adminId,
+    });
+
+    res.status(201).json(version);
+  } catch (error: any) {
+    console.error('createPolicyVersion error:', error);
+    if (error.message?.includes('unique') || error.code === '23505') {
+      return res.status(409).json({ error: '이미 존재하는 정책 번호입니다.' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. PUT /api/admin/policies/:id — 정책 차수 수정
+router.put('/api/admin/policies/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const existing = await getStorage().getPolicyVersionById(id);
+    if (!existing) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const { policyName, effectiveFrom, effectiveTo, isActive, memo } = req.body;
+
+    const updated = await getStorage().updatePolicyVersion(id, {
+      ...(policyName !== undefined && { policyName }),
+      ...(effectiveFrom !== undefined && { effectiveFrom: new Date(effectiveFrom) }),
+      ...(effectiveTo !== undefined && { effectiveTo: effectiveTo ? new Date(effectiveTo) : null }),
+      ...(isActive !== undefined && { isActive }),
+      ...(memo !== undefined && { memo }),
+    });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('updatePolicyVersion error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. DELETE /api/admin/policies/:id — 하드 삭제 금지 / is_active=false 처리
+router.delete('/api/admin/policies/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const existing = await getStorage().getPolicyVersionById(id);
+    if (!existing) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const updated = await getStorage().updatePolicyVersion(id, { isActive: false });
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    console.error('deactivatePolicyVersion error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. GET /api/admin/policies/:id/rows — 정책 단가 행 목록 조회
+router.get('/api/admin/policies/:id/rows', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const rows = await getStorage().getPolicyRowsByVersionId(id);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('getPolicyRowsByVersionId error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 7. POST /api/admin/policies/:id/rows — 단가 행 단건 추가
+router.post('/api/admin/policies/:id/rows', requireAdmin, async (req, res) => {
+  try {
+    const policyVersionId = parseInt(req.params.id, 10);
+    if (isNaN(policyVersionId)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const version = await getStorage().getPolicyVersionById(policyVersionId);
+    if (!version) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const { channel, planName, customerType, simCount, bundleType, addService, regFeeType, rebateAmount, memo } = req.body;
+
+    if (!channel || !planName || !customerType || rebateAmount === undefined) {
+      return res.status(400).json({ error: 'channel, planName, customerType, rebateAmount는 필수입니다.' });
+    }
+
+    const row = await getStorage().createPolicyRow({
+      policyVersionId,
+      channel,
+      planName,
+      customerType,
+      simCount: simCount ?? null,
+      bundleType: bundleType ?? null,
+      addService: addService ?? null,
+      regFeeType: regFeeType ?? null,
+      rebateAmount: String(rebateAmount),
+      isActive: true,
+      memo: memo ?? null,
+    });
+
+    res.status(201).json(row);
+  } catch (error: any) {
+    console.error('createPolicyRow error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 8. POST /api/admin/policies/:id/rows/bulk — 단가 행 일괄 추가
+router.post('/api/admin/policies/:id/rows/bulk', requireAdmin, async (req, res) => {
+  try {
+    const policyVersionId = parseInt(req.params.id, 10);
+    if (isNaN(policyVersionId)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const version = await getStorage().getPolicyVersionById(policyVersionId);
+    if (!version) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const { rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'rows 배열이 필요합니다.' });
+    }
+
+    for (const row of rows) {
+      if (!row.channel || !row.planName || !row.customerType || row.rebateAmount === undefined) {
+        return res.status(400).json({ error: '각 행에 channel, planName, customerType, rebateAmount가 필요합니다.' });
+      }
+    }
+
+    const data = rows.map((row: any) => ({
+      policyVersionId,
+      channel: row.channel,
+      planName: row.planName,
+      customerType: row.customerType,
+      simCount: row.simCount ?? null,
+      bundleType: row.bundleType ?? null,
+      addService: row.addService ?? null,
+      regFeeType: row.regFeeType ?? null,
+      rebateAmount: String(row.rebateAmount),
+      isActive: true,
+      memo: row.memo ?? null,
+    }));
+
+    const count = await getStorage().bulkCreatePolicyRows(data);
+    res.status(201).json({ inserted: count });
+  } catch (error: any) {
+    console.error('bulkCreatePolicyRows error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 8-2. POST /api/admin/policies/upload-excel — 정산 정책 업로드
+// 10컬럼 국적형(권장): 채널, 요금제, 내국인_신규, 내국인_번이, 외국인_신규, 외국인_번이, 결합조건, 부가서비스조건, 가입비조건, 메모
+//   - nationality_type 값 포함, 금액 단위: 만원 소수점
+// 8컬럼 가로형(하위 호환): 채널, 요금제, 신규, 번이, 결합조건, 부가서비스조건, 가입비조건, 메모
+//   - nationality_type = '내국인' 고정
+// 세로형 양식(하위 호환): 채널, 요금제, 유형, 정책금액, 결합, 부가, 가입비, 메모
+//   - 유형: 1=신규, 2=번이 / 정책금액: 원 단위 / nationality_type = null(와일드카드)
+router.post('/api/admin/policies/upload-excel', requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
+
+    const policyVersionIdParam = req.body.policyVersionId ? parseInt(req.body.policyVersionId, 10) : null;
+
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = wb.SheetNames.includes('정산정책') ? '정산정책' : wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    if (!ws) return res.status(400).json({ error: '읽을 수 있는 시트가 없습니다.' });
+
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
+    if (aoa.length < 2) return res.status(400).json({ error: '데이터 행이 없습니다.' });
+
+    const headers = (aoa[0] as any[]).map((h: any) => String(h ?? '').trim());
+
+    const isHorizontal = headers.includes('신규') || headers.includes('번이') ||
+      headers.includes('내국인_신규') || headers.includes('내국인_번이') ||
+      headers.includes('외국인_신규') || headers.includes('외국인_번이');
+    const isVertical   = headers.includes('유형') && headers.includes('정책금액');
+
+    if (!headers.includes('채널') || !headers.includes('요금제')) {
+      return res.status(400).json({ error: `필수 헤더 "채널", "요금제"가 없습니다. 현재 헤더: ${headers.join(', ')}` });
+    }
+    if (!isHorizontal && !isVertical) {
+      return res.status(400).json({
+        error: `지원하지 않는 양식입니다. 가로형(신규/번이 컬럼) 또는 세로형(유형/정책금액 컬럼)이 필요합니다. 현재 헤더: ${headers.join(', ')}`,
+      });
+    }
+
+    // 정책 차수 확인 또는 자동 생성
+    let policyVersion: any;
+    if (policyVersionIdParam && !isNaN(policyVersionIdParam)) {
+      policyVersion = await getStorage().getPolicyVersionById(policyVersionIdParam);
+      if (!policyVersion) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+    } else {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const policyNo = `AUTO-${stamp}-${Date.now().toString().slice(-5)}`;
+      policyVersion = await getStorage().createPolicyVersion({
+        policyNo,
+        policyName: `자동생성 ${stamp}`,
+        effectiveFrom: now,
+        effectiveTo: null,
+        isActive: true,
+        memo: '엑셀 업로드 자동 생성',
+        createdBy: req.session?.userId ?? null,
+      });
+    }
+
+    const existingRows = await getStorage().getPolicyRowsByVersionId(policyVersion.id);
+    const existingKeys = new Set<string>(
+      existingRows.map((r: any) => `${r.channel}:${r.planName}:${r.customerType}:${r.nationalityType ?? ''}`)
+    );
+
+    const idxChannel  = headers.indexOf('채널');
+    const idxPlanName = headers.indexOf('요금제');
+    const dataRows = (aoa.slice(1) as any[][]).filter(r =>
+      String(r[idxChannel] ?? '').trim() && String(r[idxPlanName] ?? '').trim()
+    );
+
+    const toInsert: any[] = [];
+    const errors: string[] = [];
+    let skipped = 0;
+
+    if (isHorizontal) {
+      // ── 가로형 파싱 ──
+      // 10컬럼 국적형: 내국인_신규/내국인_번이/외국인_신규/외국인_번이
+      // 8컬럼 구형: 신규/번이 → nationality_type = '내국인' 고정
+      const idxNatNew     = headers.indexOf('내국인_신규');
+      const idxNatPort    = headers.indexOf('내국인_번이');
+      const idxForeignNew = headers.indexOf('외국인_신규');
+      const idxForeignPort= headers.indexOf('외국인_번이');
+      const isNationalityFmt = idxNatNew >= 0 || idxNatPort >= 0 || idxForeignNew >= 0 || idxForeignPort >= 0;
+
+      const idxNew    = headers.indexOf('신규');
+      const idxPort   = headers.indexOf('번이');
+      const idxBundle = headers.indexOf('결합조건');
+      const idxAddSvc = headers.indexOf('부가서비스조건');
+      const idxRegFee = headers.indexOf('가입비조건');
+      const idxMemo   = headers.indexOf('메모');
+
+      for (let ri = 0; ri < dataRows.length; ri++) {
+        const row      = dataRows[ri];
+        const rowNum   = ri + 2;
+        const channel  = String(row[idxChannel]  ?? '').trim();
+        const planName = String(row[idxPlanName] ?? '').trim();
+        const bundleType = idxBundle >= 0 ? (String(row[idxBundle] ?? '').trim() || null) : null;
+        const addService = idxAddSvc >= 0 ? (String(row[idxAddSvc] ?? '').trim() || null) : null;
+        const regFeeType = idxRegFee >= 0 ? (String(row[idxRegFee] ?? '').trim() || null) : null;
+        const memo       = idxMemo   >= 0 ? (String(row[idxMemo]   ?? '').trim() || null) : null;
+
+        const candidates: Array<{ ct: string; nat: string; label: string; rawVal: any }> = [];
+
+        if (isNationalityFmt) {
+          if (idxNatNew     >= 0 && row[idxNatNew]      !== '' && row[idxNatNew]      != null) candidates.push({ ct: '1', nat: '내국인', label: '내국인_신규', rawVal: row[idxNatNew] });
+          if (idxNatPort    >= 0 && row[idxNatPort]     !== '' && row[idxNatPort]     != null) candidates.push({ ct: '2', nat: '내국인', label: '내국인_번이', rawVal: row[idxNatPort] });
+          if (idxForeignNew >= 0 && row[idxForeignNew]  !== '' && row[idxForeignNew]  != null) candidates.push({ ct: '1', nat: '외국인', label: '외국인_신규', rawVal: row[idxForeignNew] });
+          if (idxForeignPort>= 0 && row[idxForeignPort] !== '' && row[idxForeignPort] != null) candidates.push({ ct: '2', nat: '외국인', label: '외국인_번이', rawVal: row[idxForeignPort] });
+        } else {
+          if (idxNew  >= 0 && row[idxNew]  !== '' && row[idxNew]  != null) candidates.push({ ct: '1', nat: '내국인', label: '신규', rawVal: row[idxNew] });
+          if (idxPort >= 0 && row[idxPort] !== '' && row[idxPort] != null) candidates.push({ ct: '2', nat: '내국인', label: '번이', rawVal: row[idxPort] });
+        }
+
+        if (candidates.length === 0) {
+          errors.push(`행 ${rowNum}: 금액이 모두 비어 있어 건너뜀 (채널: ${channel})`);
+          continue;
+        }
+
+        for (const { ct, nat, label, rawVal } of candidates) {
+          const parsed = parseFloat(String(rawVal).replace(/,/g, ''));
+          if (isNaN(parsed) || parsed <= 0) {
+            errors.push(`행 ${rowNum}: 유효하지 않은 금액 "${rawVal}" (${label}) — 건너뜀`);
+            continue;
+          }
+          // 만원 → 원 변환 (소수 오차 방지)
+          const rebateAmount = Math.round(parsed * 10000);
+          const key = `${channel}:${planName}:${ct}:${nat}`;
+          if (existingKeys.has(key)) {
+            skipped++;
+          } else {
+            existingKeys.add(key);
+            toInsert.push({
+              policyVersionId: policyVersion.id,
+              channel, planName,
+              customerType: ct,
+              nationalityType: nat,
+              simCount: null,
+              bundleType, addService, regFeeType,
+              rebateAmount: String(rebateAmount),
+              isActive: true, memo,
+            });
+          }
+        }
+      }
+    } else {
+      // ── 세로형 파싱 (하위 호환): 유형 1/2, 정책금액 원 단위 ──
+      const idxCustType = headers.indexOf('유형');
+      const idxRebate   = headers.indexOf('정책금액');
+      const idxBundle   = headers.indexOf('결합');
+      const idxAddSvc   = headers.indexOf('부가');
+      const idxRegFee   = headers.indexOf('가입비');
+      const idxMemo     = headers.indexOf('메모');
+
+      for (let ri = 0; ri < dataRows.length; ri++) {
+        const row        = dataRows[ri];
+        const rowNum     = ri + 2;
+        const channel    = String(row[idxChannel]  ?? '').trim();
+        const planName   = String(row[idxPlanName] ?? '').trim();
+        const customerType = String(row[idxCustType] ?? '').trim();
+        const rebateAmount = isNaN(Number(row[idxRebate])) ? 0 : Number(row[idxRebate]);
+        const bundleType   = idxBundle >= 0 ? (String(row[idxBundle] ?? '').trim() || null) : null;
+        const addService   = idxAddSvc >= 0 ? (String(row[idxAddSvc] ?? '').trim() || null) : null;
+        const regFeeType   = idxRegFee >= 0 ? (String(row[idxRegFee] ?? '').trim() || null) : null;
+        const memo         = idxMemo   >= 0 ? (String(row[idxMemo]   ?? '').trim() || null) : null;
+
+        if (customerType !== '1' && customerType !== '2') {
+          errors.push(`행 ${rowNum}: 유효하지 않은 유형 "${customerType}" — 1(신규) 또는 2(번이)만 허용`);
+          continue;
+        }
+        const key = `${channel}:${planName}:${customerType}:`;
+        if (existingKeys.has(key)) {
+          skipped++;
+        } else {
+          existingKeys.add(key);
+          toInsert.push({
+            policyVersionId: policyVersion.id,
+            channel, planName, customerType,
+            nationalityType: null,
+            simCount: null,
+            bundleType, addService, regFeeType,
+            rebateAmount: String(rebateAmount),
+            isActive: true, memo,
+          });
+        }
+      }
+    }
+
+    let inserted = 0;
+    if (toInsert.length > 0) {
+      inserted = await getStorage().bulkCreatePolicyRows(toInsert);
+    }
+
+    res.json({
+      success: true,
+      format: isHorizontal ? 'horizontal' : 'vertical',
+      versionId: policyVersion.id,
+      versionName: policyVersion.policyName,
+      totalRows: dataRows.length,
+      inserted,
+      skipped,
+      errors,
+    });
+  } catch (error: any) {
+    console.error('policy upload-excel error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 9a. PATCH /api/admin/policies/:id/rows/:rowId — 단가 행 조건값 수정
+router.patch('/api/admin/policies/:id/rows/:rowId', requireAdmin, async (req, res) => {
+  try {
+    const policyVersionId = parseInt(req.params.id, 10);
+    const rowId = parseInt(req.params.rowId, 10);
+    if (isNaN(policyVersionId) || isNaN(rowId)) {
+      return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+    }
+    const allowed = ['channel','planName','customerType','nationalityType','bundleType','addService','regFeeType','simCount','rebateAmount','memo','isActive'];
+    const data: any = {};
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        data[key] = req.body[key];
+      }
+    }
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: '수정할 필드가 없습니다.' });
+    }
+    const updated = await getStorage().updatePolicyRow(rowId, data);
+    if (!updated) return res.status(404).json({ error: '단가 행을 찾을 수 없습니다.' });
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    console.error('updatePolicyRow error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 9. DELETE /api/admin/policies/:id/rows/:rowId — 단가 행 비활성화 (하드 삭제 금지)
+router.delete('/api/admin/policies/:id/rows/:rowId', requireAdmin, async (req, res) => {
+  try {
+    const policyVersionId = parseInt(req.params.id, 10);
+    const rowId = parseInt(req.params.rowId, 10);
+    if (isNaN(policyVersionId) || isNaN(rowId)) {
+      return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+    }
+
+    const updated = await getStorage().updatePolicyRow(rowId, { isActive: false });
+    if (!updated) return res.status(404).json({ error: '단가 행을 찾을 수 없습니다.' });
+
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    console.error('deactivatePolicyRow error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── adjustment_rules CRUD ──────────────────────────────────────────
+
+// AR-1. GET /api/admin/policies/:id/adjustment-rules
+router.get('/api/admin/policies/:id/adjustment-rules', requireAdmin, async (req, res) => {
+  try {
+    const policyVersionId = parseInt(req.params.id, 10);
+    if (isNaN(policyVersionId)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+    const rows = await getStorage().getAdjustmentRulesByVersionId(policyVersionId);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// AR-2. POST /api/admin/policies/:id/adjustment-rules
+router.post('/api/admin/policies/:id/adjustment-rules', requireAdmin, async (req, res) => {
+  try {
+    const policyVersionId = parseInt(req.params.id, 10);
+    if (isNaN(policyVersionId)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const { channel, planName, customerType, conditionType, conditionValue, adjustmentType, amount, isActive, memo } = req.body;
+
+    if (!conditionType) return res.status(400).json({ error: 'conditionType은 필수입니다.' });
+    if (!adjustmentType || !['ADD','DEDUCT'].includes(adjustmentType)) return res.status(400).json({ error: 'adjustmentType은 ADD 또는 DEDUCT여야 합니다.' });
+    const numAmount = Number(String(amount ?? '').replace(/,/g, ''));
+    if (isNaN(numAmount) || numAmount <= 0) return res.status(400).json({ error: '금액은 0보다 큰 숫자로 입력해주세요.' });
+
+    const needsValue = ['BUNDLE_MATCH','ADD_SERVICE_MATCH','ADD_SERVICE_NOT_MATCH','REGFEE_MATCH','SIM_COUNT_MATCH'];
+    if (needsValue.includes(conditionType) && !conditionValue) {
+      return res.status(400).json({ error: '이 조건 종류는 조건값이 필요합니다.' });
+    }
+
+    const created = await getStorage().createAdjustmentRule({
+      policyVersionId,
+      channel: channel ?? '',
+      planName: planName ?? '',
+      customerType: customerType ?? '',
+      conditionType,
+      conditionValue: conditionValue ?? null,
+      adjustmentType,
+      amount: String(numAmount),
+      isActive: isActive !== false,
+      memo: memo ?? null,
+    });
+    res.json({ success: true, data: created });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// AR-3. PATCH /api/admin/policies/:id/adjustment-rules/:ruleId
+router.patch('/api/admin/policies/:id/adjustment-rules/:ruleId', requireAdmin, async (req, res) => {
+  try {
+    const ruleId = parseInt(req.params.ruleId, 10);
+    if (isNaN(ruleId)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const allowed = ['channel','planName','customerType','conditionType','conditionValue','adjustmentType','amount','isActive','memo'];
+    const data: any = {};
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        if (key === 'amount') {
+          const numAmount = Number(String(req.body[key] ?? '').replace(/,/g, ''));
+          if (isNaN(numAmount) || numAmount <= 0) return res.status(400).json({ error: '금액은 0보다 큰 숫자로 입력해주세요.' });
+          data[key] = String(numAmount);
+        } else {
+          data[key] = req.body[key];
+        }
+      }
+    }
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: '수정할 필드가 없습니다.' });
+
+    const updated = await getStorage().updateAdjustmentRule(ruleId, data);
+    if (!updated) return res.status(404).json({ error: '규칙을 찾을 수 없습니다.' });
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// AR-4. DELETE /api/admin/policies/:id/adjustment-rules/:ruleId — 비활성 처리
+router.delete('/api/admin/policies/:id/adjustment-rules/:ruleId', requireAdmin, async (req, res) => {
+  try {
+    const ruleId = parseInt(req.params.ruleId, 10);
+    if (isNaN(ruleId)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+    const updated = await getStorage().updateAdjustmentRule(ruleId, { isActive: false });
+    if (!updated) return res.status(404).json({ error: '규칙을 찾을 수 없습니다.' });
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── hidden_policy_rows CRUD ──────────────────────────────────────────
+
+// HP-1. GET /api/admin/hidden-policy-rows
+router.get('/api/admin/hidden-policy-rows', requireAdmin, async (req, res) => {
+  try {
+    const { dealerRegistrationId, isActive } = req.query;
+    const filters: any = {};
+    if (dealerRegistrationId) filters.dealerRegistrationId = parseInt(String(dealerRegistrationId), 10);
+    if (isActive !== undefined) filters.isActive = isActive === 'true';
+    const rows = await getStorage().getHiddenPolicyRows(filters);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// HP-2. POST /api/admin/hidden-policy-rows
+router.post('/api/admin/hidden-policy-rows', requireAdmin, async (req, res) => {
+  try {
+    const adminId = req.session?.userId;
+    const { dealerRegistrationId, contactCode, channel, planName, customerType, hiddenAmount, effectiveFrom, effectiveTo, isActive, memo } = req.body;
+    if (hiddenAmount == null || hiddenAmount === '') return res.status(400).json({ error: 'hiddenAmount은 필수입니다.' });
+    const data: any = {
+      hiddenAmount: String(hiddenAmount),
+      isActive: isActive !== false,
+      createdBy: adminId,
+    };
+    if (dealerRegistrationId != null) data.dealerRegistrationId = Number(dealerRegistrationId);
+    if (contactCode != null && contactCode !== '') data.contactCode = String(contactCode).trim();
+    if (channel != null && channel !== '') data.channel = String(channel).trim();
+    if (planName != null && planName !== '') data.planName = String(planName).trim();
+    if (customerType != null && customerType !== '') data.customerType = String(customerType).trim();
+    if (memo != null && memo !== '') data.memo = String(memo).trim();
+    if (effectiveFrom) data.effectiveFrom = new Date(String(effectiveFrom).slice(0, 10) + 'T00:00:00+09:00');
+    if (effectiveTo) data.effectiveTo = new Date(String(effectiveTo).slice(0, 10) + 'T23:59:59+09:00');
+    const row = await getStorage().createHiddenPolicyRow(data);
+    res.status(201).json(row);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// HP-3. PATCH /api/admin/hidden-policy-rows/:id
+router.patch('/api/admin/hidden-policy-rows/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+    const allowed = ['dealerRegistrationId', 'contactCode', 'channel', 'planName', 'customerType', 'hiddenAmount', 'effectiveFrom', 'effectiveTo', 'isActive', 'memo'];
+    const data: any = {};
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) data[k] = req.body[k];
+    }
+    if (data.hiddenAmount != null) data.hiddenAmount = String(data.hiddenAmount);
+    if (data.dealerRegistrationId != null) data.dealerRegistrationId = Number(data.dealerRegistrationId);
+    if (data.effectiveFrom) data.effectiveFrom = new Date(String(data.effectiveFrom).slice(0, 10) + 'T00:00:00+09:00');
+    if (data.effectiveTo) data.effectiveTo = new Date(String(data.effectiveTo).slice(0, 10) + 'T23:59:59+09:00');
+    const updated = await getStorage().updateHiddenPolicyRow(id, data);
+    if (!updated) return res.status(404).json({ error: '히든정책 행을 찾을 수 없습니다.' });
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// HP-4. DELETE /api/admin/hidden-policy-rows/:id — 비활성 처리
+router.delete('/api/admin/hidden-policy-rows/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+    const updated = await getStorage().updateHiddenPolicyRow(id, { isActive: false });
+    if (!updated) return res.status(404).json({ error: '히든정책 행을 찾을 수 없습니다.' });
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 10. POST /api/admin/policies/:id/files — 정책표 파일 경로 등록
+router.post('/api/admin/policies/:id/files', requireAdmin, async (req, res) => {
+  try {
+    const adminId = req.session?.userId;
+    const policyVersionId = parseInt(req.params.id, 10);
+    if (isNaN(policyVersionId)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const version = await getStorage().getPolicyVersionById(policyVersionId);
+    if (!version) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const { fileName, filePath, fileType, fileSize, memo } = req.body;
+    if (!fileName || !filePath || !fileType) {
+      return res.status(400).json({ error: 'fileName, filePath, fileType은 필수입니다.' });
+    }
+
+    const file = await getStorage().createPolicyFile({
+      policyVersionId,
+      fileName,
+      filePath,
+      fileType,
+      fileSize: fileSize ?? null,
+      memo: memo ?? null,
+      uploadedBy: adminId,
+    });
+
+    res.status(201).json(file);
+  } catch (error: any) {
+    console.error('createPolicyFile error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// STEP 5D-2: 개통완료 엑셀 업로드 API
+// ============================================================
+
+// POST /api/admin/activations/upload
+router.post('/api/admin/activations/upload', requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    const adminId = req.session?.userId;
+
+    if (!req.file) {
+      return res.status(400).json({ error: '파일이 없습니다.' });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
+
+    if (rawRows.length === 0) {
+      return res.status(400).json({ error: '파일에 데이터가 없습니다.' });
+    }
+
+    // 헤더 key 공백 제거 (엑셀에서 컬럼명에 후행 공백이 붙는 경우 대응)
+    const rows = rawRows.map((row: any) => {
+      const cleaned: any = {};
+      for (const [k, v] of Object.entries(row)) cleaned[k.trim()] = v;
+      return cleaned;
+    });
+
+    // 컬럼 매핑: 한글 헤더 → 내부 필드명 (접두 _ = 후처리 필요)
+    // 기존 양식 헤더와 실제 운영 헤더 모두 지원
+    const COL_MAP: Record<string, string> = {
+      // 기존 양식 헤더
+      '고객명': 'customerName',
+      '연락처': 'customerPhone',
+      '고객번호': 'customerPhone',
+      '고객 연락처': 'customerPhone',
+      '고객전화번호': 'customerPhone',
+      '전화번호': 'customerPhone',
+      '휴대폰번호': 'customerPhone',
+      '이메일': 'customerEmail',
+      '통신사': 'channel',
+      '유형': 'customerType',
+      '판매점명': 'dealerName',
+      '요금제': 'planName',
+      '가입번호': 'subscriptionNumber',
+      '가입자번호': 'subscriptionNumber',
+      '청약번호': 'subscriptionNumber',
+      '개통번호': 'activationNumber',
+      '처리자': 'receptionist',
+      '개통완료시간': '_activationDatetime',
+      '문서번호': '_documentNumber',
+      '접점코드': 'contactCode',
+      '이전통신사': 'previousCarrier',
+      '접수일시': '_receptionDatetime',
+      '메모': 'memo',
+      '유심개수': '_simCount',
+      '결합': 'bundleType',
+      '부가서비스': 'addService',
+      '가입비': 'regFeeType',
+      // 실제 운영 헤더 (기존 헤더보다 뒤에 선언 → 값이 있으면 덮어쓰기)
+      '요청점': 'channel',
+      '개통일': '_activationDatetime',
+      '접수일': '_receptionDatetime',
+      '부가': 'addService',
+      '작업자': 'receptionist',
+      'M코드': '_mccCodeRaw',
+      '고객유형': 'nationalityType',
+      '국적': 'nationalityType',
+      '내외국인': 'nationalityType',
+    };
+
+    const db = await getDatabase();
+    const { activationRecords: arTable, documents: docsTable } = await import('../shared/schema');
+
+    // N+1 방지용 인메모리 캐시
+    const ccCache = new Map<string, any>();
+    const drCache = new Map<number, any>();
+    const docCache = new Map<string, number | null>();
+
+    let created = 0;
+    let skipped = 0;
+    const warnings: string[] = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2;
+      const raw = rows[i];
+
+      // 필수값 검사 (기존 헤더 / 운영 헤더 모두 허용)
+      const missing: string[] = [];
+      if (!String(raw['고객명'] ?? '').trim()) missing.push('고객명');
+      if (!String(raw['통신사'] ?? '').trim() && !String(raw['요청점'] ?? '').trim()) missing.push('통신사/요청점');
+      if (!String(raw['개통완료시간'] ?? '').trim() && !String(raw['개통일'] ?? '').trim()) missing.push('개통완료시간/개통일');
+      if (!String(raw['요금제'] ?? '').trim()) missing.push('요금제');
+      if (!String(raw['접점코드'] ?? '').trim() && !String(raw['판매점명'] ?? '').trim()) {
+        missing.push('접점코드/판매점명');
+      }
+      if (missing.length > 0) {
+        errors.push(`행 ${rowNum}: 필수값 누락 (${missing.join(', ')})`);
+        skipped++;
+        continue;
+      }
+
+      // 컬럼 매핑 실행
+      const m: Record<string, string | null> = {};
+      for (const [koKey, enKey] of Object.entries(COL_MAP)) {
+        m[enKey] = String(raw[koKey] ?? '').trim() || null;
+      }
+
+      // 고객구분(국적) 정규화: 비어있으면 '내국인', '외국인' 포함이면 '외국인'
+      const rawNat = m['nationalityType'];
+      m['nationalityType'] = rawNat && rawNat.includes('외국인') ? '외국인' : '내국인';
+
+      // 날짜 파싱 — 다양한 형식 지원
+      const parseDateStr = (s: string | null): Date | null => {
+        if (!s) return null;
+        const t = s.trim();
+        if (!t) return null;
+
+        // YYYY-MM-DD 또는 YYYY/MM/DD
+        if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/.test(t)) {
+          const d = new Date(t.replace(/\//g, '-') + 'T00:00:00');
+          return isNaN(d.getTime()) ? null : d;
+        }
+        // YYYY-MM-DD HH:mm[:ss]
+        if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}\s\d{1,2}:\d{2}/.test(t)) {
+          const norm = t.replace(/\//g, '-').replace(' ', 'T');
+          const d = new Date(norm.length <= 16 ? norm + ':00' : norm);
+          return isNaN(d.getTime()) ? null : d;
+        }
+        // MM월 DD일 (연도 없음 → 현재 연도)
+        const m1 = t.match(/^(\d{1,2})월\s*(\d{1,2})일$/);
+        if (m1) {
+          const d = new Date(new Date().getFullYear(), Number(m1[1]) - 1, Number(m1[2]));
+          return isNaN(d.getTime()) ? null : d;
+        }
+        // YYYY년 MM월 DD일
+        const m2 = t.match(/^(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/);
+        if (m2) {
+          const d = new Date(Number(m2[1]), Number(m2[2]) - 1, Number(m2[3]));
+          return isNaN(d.getTime()) ? null : d;
+        }
+        // M/D/YYYY 또는 MM/DD/YYYY (SheetJS 날짜 셀 변환 결과)
+        const m4 = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m4) {
+          const d = new Date(Number(m4[3]), Number(m4[1]) - 1, Number(m4[2]));
+          return isNaN(d.getTime()) ? null : d;
+        }
+        // MM/DD (연도 없음 → 현재 연도)
+        const m3 = t.match(/^(\d{1,2})\/(\d{1,2})$/);
+        if (m3) {
+          const d = new Date(new Date().getFullYear(), Number(m3[1]) - 1, Number(m3[2]));
+          return isNaN(d.getTime()) ? null : d;
+        }
+        return null;
+      };
+
+      const activationDatetime = parseDateStr(m['_activationDatetime']);
+      if (!activationDatetime) {
+        const rawVal = raw['개통완료시간'] || raw['개통일'] || '';
+        errors.push(`행 ${rowNum}: 개통일 형식 오류 (값: ${rawVal})`);
+        skipped++;
+        continue;
+      }
+      const receptionDatetime = parseDateStr(m['_receptionDatetime']);
+      const simCount = m['_simCount'] ? parseInt(m['_simCount'], 10) || null : null;
+
+      // 문서번호 → document_id 조회
+      let documentId: number | null = null;
+      const docNum = m['_documentNumber'];
+      if (docNum) {
+        if (docCache.has(docNum)) {
+          documentId = docCache.get(docNum) ?? null;
+        } else {
+          const found = await db.select({ id: docsTable.id })
+            .from(docsTable)
+            .where(sql`${docsTable.documentNumber} = ${docNum}`)
+            .limit(1);
+          documentId = found[0]?.id ?? null;
+          docCache.set(docNum, documentId);
+          if (!documentId) {
+            warnings.push(`행 ${rowNum}: 문서번호 매칭 실패 (${docNum}), document_id=null 저장`);
+          }
+        }
+      }
+
+      // 접점코드 → dealer_registration_id / dealer_name / mcc_code 조회
+      let dealerRegistrationId: number | null = null;
+      let resolvedDealerName: string | null = m['dealerName'];
+      let mccCode: string | null = null;
+      const contactCodeVal = m['contactCode'];
+
+      if (contactCodeVal) {
+        let ccRec: any;
+        if (ccCache.has(contactCodeVal)) {
+          ccRec = ccCache.get(contactCodeVal);
+        } else {
+          ccRec = await getStorage().getContactCodeByCode(contactCodeVal);
+          ccCache.set(contactCodeVal, ccRec ?? null);
+        }
+
+        if (ccRec?.dealerRegistrationId) {
+          dealerRegistrationId = ccRec.dealerRegistrationId;
+          if (!resolvedDealerName) resolvedDealerName = ccRec.dealerName ?? null;
+
+          let drRec: any;
+          if (drCache.has(dealerRegistrationId!)) {
+            drRec = drCache.get(dealerRegistrationId!);
+          } else {
+            drRec = await getStorage().getDealerRegistration(dealerRegistrationId!);
+            drCache.set(dealerRegistrationId!, drRec ?? null);
+          }
+          mccCode = drRec?.dealerCode ?? null;
+        } else {
+          warnings.push(`행 ${rowNum}: 접점코드 매칭 실패 (${contactCodeVal}), dealer_registration_id=null 저장`);
+        }
+      }
+
+      // M코드 → mccCode fallback (접점코드로 해소되지 않은 경우)
+      if (!mccCode && m['_mccCodeRaw']) {
+        mccCode = m['_mccCodeRaw'];
+      }
+
+      // 중복 확인
+      const subscriptionNumber = m['subscriptionNumber'];
+      let isDuplicate = false;
+
+      if (subscriptionNumber) {
+        const dup = await db.select({ id: arTable.id })
+          .from(arTable)
+          .where(eq(arTable.subscriptionNumber, subscriptionNumber))
+          .limit(1);
+        isDuplicate = dup.length > 0;
+      } else {
+        const phone = m['customerPhone'];
+        if (phone && contactCodeVal) {
+          const dup = await db.select({ id: arTable.id })
+            .from(arTable)
+            .where(and(
+              eq(arTable.customerPhone, phone),
+              eq(arTable.activationDatetime, activationDatetime),
+              eq(arTable.contactCode, contactCodeVal)
+            ))
+            .limit(1);
+          isDuplicate = dup.length > 0;
+        }
+      }
+
+      if (isDuplicate) {
+        warnings.push(`행 ${rowNum}: 중복 건너뜀 (가입번호: ${subscriptionNumber ?? '없음'})`);
+        skipped++;
+        continue;
+      }
+
+      // activation_records 저장
+      await getStorage().createActivationRecord({
+        documentId,
+        receptionDatetime,
+        activationDatetime,
+        requestChannel: null,
+        channel: m['channel'],
+        customerName: m['customerName'],
+        customerPhone: m['customerPhone'],
+        customerEmail: m['customerEmail'],
+        subscriptionNumber,
+        activationNumber: m['activationNumber'],
+        contactCode: contactCodeVal,
+        mccCode,
+        dealerRegistrationId,
+        dealerName: resolvedDealerName,
+        simCount,
+        planName: m['planName'],
+        customerType: m['customerType'],
+        nationalityType: m['nationalityType'] as string,
+        previousCarrier: m['previousCarrier'],
+        bundleType: m['bundleType'],
+        addService: m['addService'],
+        regFeeType: m['regFeeType'],
+        receptionist: m['receptionist'],
+        memo: m['memo'],
+        source: 'xlsx업로드',
+        createdBy: adminId,
+      });
+      created++;
+    }
+
+    res.json({
+      success: true,
+      totalRows: rows.length,
+      created,
+      skipped,
+      warnings,
+      errors,
+    });
+  } catch (error: any) {
+    console.error('[ACTIVATION_UPLOAD] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// STEP 5D-3: 정책 자동매칭 API
+// ============================================================
+
+// POST /api/admin/settlement/match
+router.post('/api/admin/settlement/match', requireAdmin, async (req, res) => {
+  try {
+    const { policyVersionId, from, to, channel } = req.body;
+
+    // 1. 정책 차수 조회
+    let policyVersion: any;
+    if (policyVersionId) {
+      policyVersion = await getStorage().getPolicyVersionById(Number(policyVersionId));
+      if (!policyVersion) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+    } else {
+      policyVersion = await getStorage().getActivePolicyVersion();
+      if (!policyVersion) return res.status(400).json({ error: '활성화된 정책 차수가 없습니다. policyVersionId를 직접 지정해 주세요.' });
+    }
+
+    // 2. 해당 정책의 활성 단가 행 전체 로드 (인메모리 매칭)
+    const allRows = await getStorage().getPolicyRowsByVersionId(policyVersion.id);
+    const activeRows = allRows.filter((r: any) => r.isActive !== false);
+    if (activeRows.length === 0) {
+      return res.status(400).json({ error: '해당 정책 차수에 활성 단가 행이 없습니다.' });
+    }
+
+    // 3. 미정산 activation_records 조회 (settlement_item 없는 것만)
+    const db = await getDatabase();
+    const {
+      activationRecords: arTable,
+    } = await import('../shared/schema');
+
+    const whereConditions: any[] = [
+      sql`NOT EXISTS (
+        SELECT 1 FROM settlement_items si WHERE si.activation_id = ${arTable.id}
+      )`,
+    ];
+    if (from) whereConditions.push(gte(arTable.activationDatetime, new Date(from)));
+    if (to) whereConditions.push(lte(arTable.activationDatetime, new Date(to)));
+    if (channel) whereConditions.push(eq(arTable.channel, channel));
+
+    const unmatched: any[] = await db.select()
+      .from(arTable)
+      .where(and(...whereConditions))
+      .orderBy(arTable.activationDatetime);
+
+    // 4. 단가 행 매칭 함수
+    // channel + plan_name + customer_type: 항상 일치 필요
+    // nationality_type: policy가 null이면 와일드카드(REVIEW_REQUIRED), 값이 있으면 정확일치(AUTO_MATCH 유지)
+    // sim_count / bundle_type / add_service / reg_fee_type:
+    //   - policy_row 값이 null이면 와일드카드
+    //   - policy_row 값이 있으면 activation 값과 일치해야 매칭
+    const normalize = (v: any): string => String(v ?? '').trim();
+
+    // 반환: 'exact' = 국적 정확일치, 'wildcard' = 국적 와일드카드(null policy), 'none' = 불일치
+    const matchRow = (activation: any, row: any, exclude: Set<string>): 'exact' | 'wildcard' | 'none' => {
+      if (activation.channel !== row.channel) return 'none';
+      if (activation.planName !== row.planName) return 'none';
+      if (normalize(activation.customerType) !== normalize(row.customerType)) return 'none';
+
+      // 국적 매칭 (3-tier)
+      const actNat = normalize(activation.nationalityType || '내국인');
+      const rowNat = normalize(row.nationalityType || '');
+      let natResult: 'exact' | 'wildcard';
+      if (rowNat === '') {
+        natResult = 'wildcard'; // policy 국적 null → 와일드카드
+      } else if (actNat === rowNat) {
+        natResult = 'exact'; // 정확 일치
+      } else {
+        return 'none'; // 국적 불일치
+      }
+
+      const optionals: { actKey: string; rowKey: string }[] = [
+        { actKey: 'simCount',   rowKey: 'simCount'   },
+        { actKey: 'bundleType', rowKey: 'bundleType' },
+        { actKey: 'addService', rowKey: 'addService' },
+        { actKey: 'regFeeType', rowKey: 'regFeeType' },
+      ];
+      for (const { actKey, rowKey } of optionals) {
+        if (exclude.has(rowKey)) continue;
+        const rv = row[rowKey];
+        if (rv === null || rv === undefined || rv === '') continue; // 와일드카드
+        if (normalize(activation[actKey]) !== normalize(rv)) return 'none';
+      }
+      return natResult;
+    };
+
+    // 5. 각 activation_record에 대해 순차 매칭 → settlement_item 생성
+    let created = 0;
+    let autoMatch = 0;
+    let reviewRequired = 0;
+    let policyNotFound = 0;
+    const errors: string[] = [];
+
+    // 폴백 시퀀스: [제외 필드 Set, 이 패턴은 AUTO_MATCH인지]
+    const MATCH_PASSES: Array<{ exclude: Set<string>; isAuto: boolean }> = [
+      { exclude: new Set([]),             isAuto: true  }, // 완전일치
+      { exclude: new Set(['addService']), isAuto: false }, // 부가서비스 제외
+      { exclude: new Set(['bundleType']), isAuto: false }, // 결합 제외
+      { exclude: new Set(['regFeeType']), isAuto: false }, // 가입비 제외
+    ];
+
+    for (const activation of unmatched) {
+      try {
+        let matchedRow: any = null;
+        let matchStatus = 'POLICY_NOT_FOUND';
+
+        for (const { exclude, isAuto } of MATCH_PASSES) {
+          // 국적 정확일치 우선 시도
+          const exactFound = activeRows.find((r: any) => matchRow(activation, r, exclude) === 'exact');
+          if (exactFound) {
+            matchedRow = exactFound;
+            matchStatus = isAuto ? 'AUTO_MATCH' : 'REVIEW_REQUIRED';
+            break;
+          }
+          // 국적 와일드카드(policy null) 폴백
+          const wildcardFound = activeRows.find((r: any) => matchRow(activation, r, exclude) === 'wildcard');
+          if (wildcardFound) {
+            matchedRow = wildcardFound;
+            matchStatus = 'REVIEW_REQUIRED'; // 와일드카드는 항상 검토필요
+            break;
+          }
+        }
+
+        // dealer_registration_id 없으면 AUTO_MATCH → REVIEW_REQUIRED 강등
+        if (matchStatus === 'AUTO_MATCH' && !activation.dealerRegistrationId) {
+          matchStatus = 'REVIEW_REQUIRED';
+        }
+
+        // 추가금/차감금 자동 계산 (매칭된 정책 차수의 adjustment_rules 기준)
+        let adjAddAmount: string | null = null;
+        let adjDeductAmount: string | null = null;
+        if (matchedRow && policyVersion.id) {
+          try {
+            const adj = await getStorage().calculateSettlementAdjustments(activation, policyVersion.id);
+            if (adj.addAmount > 0)    adjAddAmount    = String(adj.addAmount);
+            if (adj.deductAmount > 0) adjDeductAmount = String(adj.deductAmount);
+          } catch (_) {}
+        }
+
+        // 히든금액 자동 계산 (히든정책 판매점 여부 확인)
+        let adjHiddenAmount: string | null = null;
+        try {
+          const hidden = await getStorage().calculateHiddenAmount(activation);
+          if (hidden !== 0) adjHiddenAmount = String(hidden);
+        } catch (_) {}
+
+        await getStorage().createSettlementItem({
+          activationId: activation.id,
+          policyVersionId: matchedRow ? policyVersion.id : null,
+          policyRowId:     matchedRow ? matchedRow.id    : null,
+          dealerRegistrationId: activation.dealerRegistrationId ?? null,
+          dealerName:           activation.dealerName ?? null,
+          rebateAmount:  matchedRow ? String(matchedRow.rebateAmount) : null,
+          adjustedAmount: null,
+          addAmount:    adjAddAmount,
+          deductAmount: adjDeductAmount,
+          hiddenAmount: adjHiddenAmount,
+          matchStatus,
+          status: '미정산',
+          policySnapshotJson: matchedRow ?? null,
+        });
+
+        created++;
+        if (matchStatus === 'AUTO_MATCH')       autoMatch++;
+        else if (matchStatus === 'REVIEW_REQUIRED') reviewRequired++;
+        else                                        policyNotFound++;
+
+      } catch (err: any) {
+        errors.push(`activation_id ${activation.id}: ${String(err.message ?? '').substring(0, 80)}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      policyVersionId: policyVersion.id,
+      policyVersionName: policyVersion.policyName,
+      totalActivations: unmatched.length,
+      created,
+      skipped: 0, // 중복 방지는 NOT EXISTS로 사전 필터 처리
+      autoMatch,
+      reviewRequired,
+      policyNotFound,
+      errors,
+    });
+
+  } catch (error: any) {
+    console.error('[SETTLEMENT_MATCH] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/admin/settlement/rematch — POLICY_NOT_FOUND 항목 재매칭
+router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
+  try {
+    const { policyVersionId } = req.body;
+
+    let policyVersion: any;
+    if (policyVersionId) {
+      policyVersion = await getStorage().getPolicyVersionById(Number(policyVersionId));
+      if (!policyVersion) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+    } else {
+      policyVersion = await getStorage().getActivePolicyVersion();
+      if (!policyVersion) return res.status(400).json({ error: '활성화된 정책 차수가 없습니다.' });
+    }
+
+    const allRows = await getStorage().getPolicyRowsByVersionId(policyVersion.id);
+    const activeRows = allRows.filter((r: any) => r.isActive !== false);
+    if (activeRows.length === 0) {
+      return res.status(400).json({ error: '해당 정책 차수에 활성 단가 행이 없습니다.' });
+    }
+
+    const db = await getDatabase();
+    const { activationRecords: arTable } = await import('../shared/schema');
+
+    // POLICY_NOT_FOUND 중 정산완료/확정 제외 항목만 조회
+    const _targetsResult = await db.execute(sql`
+      SELECT
+        si.id as si_id,
+        ar.id,
+        ar.channel,
+        ar.plan_name          AS "planName",
+        ar.customer_type      AS "customerType",
+        ar.nationality_type   AS "nationalityType",
+        ar.bundle_type        AS "bundleType",
+        ar.add_service        AS "addService",
+        ar.reg_fee_type       AS "regFeeType",
+        ar.dealer_registration_id AS "dealerRegistrationId",
+        ar.sim_count          AS "simCount"
+      FROM settlement_items si
+      JOIN activation_records ar ON ar.id = si.activation_id
+      WHERE si.match_status = 'POLICY_NOT_FOUND'
+        AND si.status != '정산완료'
+        AND si.adjusted_amount IS NULL
+        AND si.locked_amount IS NULL
+    `);
+    const targets: any[] = (_targetsResult as any).rows ?? [];
+
+    const normalize = (v: any): string => String(v ?? '').trim();
+
+    const matchRow = (activation: any, row: any, exclude: Set<string>): 'exact' | 'wildcard' | 'none' => {
+      if (activation.channel !== row.channel) return 'none';
+      if (activation.planName !== row.planName) return 'none';
+      if (normalize(activation.customerType) !== normalize(row.customerType)) return 'none';
+
+      const actNat = normalize(activation.nationalityType || '내국인');
+      const rowNat = normalize(row.nationalityType || '');
+      let natResult: 'exact' | 'wildcard';
+      if (rowNat === '') {
+        natResult = 'wildcard';
+      } else if (actNat === rowNat) {
+        natResult = 'exact';
+      } else {
+        return 'none';
+      }
+
+      const optionals = [
+        { actKey: 'simCount',   rowKey: 'simCount'   },
+        { actKey: 'bundleType', rowKey: 'bundleType' },
+        { actKey: 'addService', rowKey: 'addService' },
+        { actKey: 'regFeeType', rowKey: 'regFeeType' },
+      ];
+      for (const { actKey, rowKey } of optionals) {
+        if (exclude.has(rowKey)) continue;
+        const rv = row[rowKey];
+        if (rv === null || rv === undefined || rv === '') continue;
+        if (normalize(activation[actKey]) !== normalize(rv)) return 'none';
+      }
+      return natResult;
+    };
+
+    const MATCH_PASSES = [
+      { exclude: new Set<string>([]),             isAuto: true  },
+      { exclude: new Set<string>(['addService']), isAuto: false },
+      { exclude: new Set<string>(['bundleType']), isAuto: false },
+      { exclude: new Set<string>(['regFeeType']), isAuto: false },
+    ];
+
+    let updated = 0;
+    let autoMatch = 0;
+    let reviewRequired = 0;
+    let stillNotFound = 0;
+
+    for (const row of targets) {
+      const siId = row.si_id;
+      const activation = row;
+
+      let matchedRow: any = null;
+      let matchStatus = 'POLICY_NOT_FOUND';
+
+      for (const { exclude, isAuto } of MATCH_PASSES) {
+        const exactFound = activeRows.find((r: any) => matchRow(activation, r, exclude) === 'exact');
+        if (exactFound) {
+          matchedRow = exactFound;
+          matchStatus = isAuto ? 'AUTO_MATCH' : 'REVIEW_REQUIRED';
+          break;
+        }
+        const wildcardFound = activeRows.find((r: any) => matchRow(activation, r, exclude) === 'wildcard');
+        if (wildcardFound) {
+          matchedRow = wildcardFound;
+          matchStatus = 'REVIEW_REQUIRED';
+          break;
+        }
+      }
+
+      if (matchStatus === 'AUTO_MATCH' && !activation.dealer_registration_id && !activation.dealerRegistrationId) {
+        matchStatus = 'REVIEW_REQUIRED';
+      }
+
+      if (matchedRow) {
+        await getStorage().updateSettlementItem(Number(siId), {
+          policyVersionId: policyVersion.id,
+          policyRowId:     matchedRow.id,
+          rebateAmount:    String(matchedRow.rebateAmount),
+          matchStatus,
+          policySnapshotJson: matchedRow,
+        });
+        updated++;
+        if (matchStatus === 'AUTO_MATCH')         autoMatch++;
+        else if (matchStatus === 'REVIEW_REQUIRED') reviewRequired++;
+      } else {
+        stillNotFound++;
+      }
+    }
+
+    res.json({
+      success: true,
+      policyVersionId: policyVersion.id,
+      total: targets.length,
+      updated,
+      autoMatch,
+      reviewRequired,
+      stillNotFound,
+    });
+
+  } catch (error: any) {
+    console.error('[SETTLEMENT_REMATCH] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// STEP 5D-5: 정산 결과 엑셀 다운로드
+// ============================================================
+
+// GET /api/admin/settlement/export
+router.get('/api/admin/settlement/export', requireAdmin, async (req: any, res) => {
+  try {
+    const { status, matchStatus, dealerRegistrationId, from, to } = req.query;
+
+    const rows = await getStorage().getSettlementItemsForExport({
+      status:               status      ? String(status)      : undefined,
+      matchStatus:          matchStatus ? String(matchStatus) : undefined,
+      dealerRegistrationId: dealerRegistrationId ? Number(dealerRegistrationId) : undefined,
+      from:                 from ? new Date(String(from)) : undefined,
+      to:                   to   ? new Date(String(to))   : undefined,
+    });
+
+    const sheetData = rows.map((r: any) => {
+      let finalAmount: number | null;
+      if (r.lockedAmount != null) {
+        finalAmount = Number(r.lockedAmount);
+      } else {
+        const base = r.adjustedAmount != null ? Number(r.adjustedAmount) : (r.rebateAmount != null ? Number(r.rebateAmount) : null);
+        if (base == null) {
+          finalAmount = null;
+        } else {
+          finalAmount = base + (r.addAmount != null ? Number(r.addAmount) : 0) - (r.deductAmount != null ? Number(r.deductAmount) : 0) + (r.hiddenAmount != null ? Number(r.hiddenAmount) : 0);
+        }
+      }
+      return {
+        '정산상태':  r.status        ?? '',
+        '매칭상태':  r.matchStatus   ?? '',
+        '판매점명':  r.dealerName    ?? '',
+        'MCC코드':   r.mccCode       ?? '',
+        '채널':      r.channel       ?? '',
+        '고객명':    r.customerName  ?? '',
+        '연락처':    r.customerPhone ?? '',
+        '가입번호':  r.subscriptionNumber ?? '',
+        '개통번호':  r.activationNumber   ?? '',
+        '접점코드':  r.contactCode        ?? '',
+        '요금제':    r.planName           ?? '',
+        '유형':      r.customerType       ?? '',
+        '유심개수':  r.simCount           ?? '',
+        '결합':      r.bundleType         ?? '',
+        '부가서비스': r.addService         ?? '',
+        '가입비':    r.regFeeType         ?? '',
+        '정책금액':  r.rebateAmount    != null ? Number(r.rebateAmount)    : '',
+        '추가금':    r.addAmount       != null ? Number(r.addAmount)       : '',
+        '차감금':    r.deductAmount    != null ? Number(r.deductAmount)    : '',
+        '히든금액':  r.hiddenAmount    != null ? Number(r.hiddenAmount)    : '',
+        '조정금액':  r.adjustedAmount  != null ? Number(r.adjustedAmount)  : '',
+        '최종정산금액': finalAmount    != null ? finalAmount               : '',
+        '정책차수':  r.policyName      ?? '',
+        '예외사유':  r.forceReason     ?? '',
+        '메모':      r.memo            ?? '',
+        '개통일시':  r.activationDatetime
+          ? format(new Date(r.activationDatetime), 'yyyy-MM-dd HH:mm', { locale: ko })
+          : '',
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '정산결과');
+
+    const fileName = `settlement_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`;
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('[SETTLEMENT_EXPORT] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// STEP 5D-4: 정산 결과 조회 / 수동 조정 / 확정 API
+// ============================================================
+
+// 1. GET /api/admin/settlement/items — 목록 조회
+router.get('/api/admin/settlement/items', requireAdmin, async (req: any, res) => {
+  try {
+    const { status, matchStatus, dealerRegistrationId, page, limit } = req.query;
+    const result = await getStorage().getSettlementItems({
+      status:               status      ? String(status)      : undefined,
+      matchStatus:          matchStatus ? String(matchStatus) : undefined,
+      dealerRegistrationId: dealerRegistrationId ? Number(dealerRegistrationId) : undefined,
+      page:                 page  ? Number(page)  : 1,
+      limit:                limit ? Number(limit) : 50,
+    });
+    res.json(result);
+  } catch (error: any) {
+    console.error('[SETTLEMENT_ITEMS_LIST] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. GET /api/admin/settlement/items/:id — 단건 조회 (activation_record 포함)
+router.get('/api/admin/settlement/items/:id', requireAdmin, async (req: any, res) => {
+  try {
+    const id = Number(req.params.id);
+    const item = await getStorage().getSettlementItemById(id);
+    if (!item) return res.status(404).json({ error: '정산 항목을 찾을 수 없습니다.' });
+
+    const activation = await getStorage().getActivationRecordById(item.activationId);
+    res.json({ ...item, activationRecord: activation ?? null });
+  } catch (error: any) {
+    console.error('[SETTLEMENT_ITEM_GET] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. POST /api/admin/settlement/items/:id/lock — 정산 확정
+router.post('/api/admin/settlement/items/:id/lock', requireAdmin, async (req: any, res) => {
+  try {
+    const id = Number(req.params.id);
+    const adminId = req.session.userId;
+
+    const existing = await getStorage().getSettlementItemById(id);
+    if (!existing) return res.status(404).json({ error: '정산 항목을 찾을 수 없습니다.' });
+    if (existing.status === '정산완료') {
+      return res.status(400).json({ error: '이미 확정된 정산 항목입니다.' });
+    }
+
+    const updated = await getStorage().lockSettlementItem(id, adminId);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[SETTLEMENT_ITEM_LOCK] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3-b. POST /api/admin/settlement/recalculate-hidden-amounts — 히든금액 일괄 재계산
+router.post('/api/admin/settlement/recalculate-hidden-amounts', requireAdmin, async (req: any, res) => {
+  try {
+    const { dateFrom, dateTo, onlyUnsettled = true, dryRun = false, debugContactCode } = req.body;
+    const result = await getStorage().recalculateHiddenAmounts({ dateFrom, dateTo, onlyUnsettled, dryRun, debugContactCode });
+    res.json(result);
+  } catch (error: any) {
+    console.error('[RECALC_HIDDEN] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3-c. POST /api/admin/hidden-amount/diagnose — 접점코드별 히든금액 계산 단계 진단
+router.post('/api/admin/hidden-amount/diagnose', requireAdmin, async (req: any, res) => {
+  try {
+    const { contactCode, dateFrom, dateTo } = req.body;
+    if (!contactCode) return res.status(400).json({ error: 'contactCode 필수' });
+    const result = await getStorage().diagnoseHiddenAmount(contactCode, dateFrom, dateTo);
+    res.json(result);
+  } catch (error: any) {
+    console.error('[HIDDEN_DIAGNOSE] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. PATCH /api/admin/settlement/items/:id — 수동 조정
+router.patch('/api/admin/settlement/items/:id', requireAdmin, async (req: any, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { adjustedAmount, addAmount, deductAmount, hiddenAmount, status, memo, forcePolicyVersionId, forceReason } = req.body;
+
+    const existing = await getStorage().getSettlementItemById(id);
+    if (!existing) return res.status(404).json({ error: '정산 항목을 찾을 수 없습니다.' });
+
+    if (existing.status === '정산완료') {
+      return res.status(400).json({ error: '확정된 정산 항목은 수정할 수 없습니다.' });
+    }
+
+    if (forcePolicyVersionId != null && !forceReason) {
+      return res.status(400).json({ error: 'forcePolicyVersionId 지정 시 forceReason이 필수입니다.' });
+    }
+
+    const patch: Record<string, any> = {};
+    if (adjustedAmount   !== undefined) patch.adjustedAmount     = adjustedAmount;
+    if (addAmount        !== undefined) patch.addAmount          = addAmount;
+    if (deductAmount     !== undefined) patch.deductAmount       = deductAmount;
+    if (hiddenAmount     !== undefined) patch.hiddenAmount       = hiddenAmount;
+    if (status           !== undefined) patch.status             = status;
+    if (memo             !== undefined) patch.memo               = memo;
+    if (forcePolicyVersionId !== undefined) patch.forcePolicyVersionId = forcePolicyVersionId;
+    if (forceReason      !== undefined) patch.forceReason        = forceReason;
+
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: '수정할 필드가 없습니다.' });
+    }
+
+    const updated = await getStorage().updateSettlementItem(id, patch);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[SETTLEMENT_ITEM_PATCH] error:', error);
     res.status(500).json({ error: error.message });
   }
 });

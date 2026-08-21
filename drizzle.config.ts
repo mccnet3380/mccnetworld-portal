@@ -1,13 +1,17 @@
 // drizzle.config.ts
 import { defineConfig } from "drizzle-kit";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
+const dbUrl =
+  process.env.DATABASE_URL_DEV ||
+  process.env.DATABASE_URL;
+
+if (!dbUrl) {
+  throw new Error("DATABASE_URL_DEV 또는 DATABASE_URL 환경변수가 필요합니다.");
 }
 
 export default defineConfig({
-  schema: "./shared/schema.ts", // ✅ 실제 존재하는 경로로 유지
-  out: "./drizzle", // 폴더 이름은 바꿔도 됨
+  schema: "./shared/schema.ts",
+  out: "./drizzle",
   dialect: "postgresql",
-  dbCredentials: { url: process.env.DATABASE_URL! },
+  dbCredentials: { url: dbUrl },
 });

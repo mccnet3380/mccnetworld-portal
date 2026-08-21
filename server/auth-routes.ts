@@ -62,11 +62,11 @@ authRouter.post('/login', async (req, res) => {
     
     if (userResult) {
       // Verify that this is NOT a dealer (dealers must use dealer-login)
-      if (userResult.dealerId) {
-        console.log('Worker login rejected - user is a dealer:', username, 'dealerId:', userResult.dealerId);
-        return res.status(403).json({ 
-          success: false, 
-          error: '판매점 계정입니다. 판매점 로그인 페이지를 이용해주세요.' 
+      if (userResult.dealerId || userResult.dealerRegistrationId) {
+        console.log('Worker login rejected - user is a dealer:', username, 'dealerId:', userResult.dealerId, 'dealerRegistrationId:', userResult.dealerRegistrationId);
+        return res.status(403).json({
+          success: false,
+          error: '판매점 계정입니다. 판매점 로그인 페이지를 이용해주세요.'
         });
       }
       
@@ -110,21 +110,32 @@ authRouter.post('/dealer-login', async (req, res) => {
     console.log('Dealer auth result:', userResult ? 'success' : 'failed');
     
     if (userResult) {
-      // Verify that this is actually a dealer (must have dealerId)
-      if (!userResult.dealerId) {
-        console.log('Dealer login rejected - user does not have dealerId:', username);
-        return res.status(403).json({ 
-          success: false, 
-          error: '판매점 계정이 아닙니다. 직원 로그인 페이지를 이용해주세요.' 
+      // Verify that this is actually a dealer (must have dealerId or dealerRegistrationId)
+      if (!userResult.dealerId && !userResult.dealerRegistrationId) {
+        console.log('Dealer login rejected - user is not a dealer:', username);
+        return res.status(403).json({
+          success: false,
+          error: '판매점 계정이 아닙니다. 직원 로그인 페이지를 이용해주세요.'
         });
       }
-      
+
+      // dealerRegistrationId 기준으로 원장 정보(dealerCode, isHiddenPos) 조회
+      let dealerCode: string | undefined;
+      let isHiddenPos: boolean = false;
+      if (userResult.dealerRegistrationId) {
+        const dealerReg = await getStorage().getDealerRegistration(userResult.dealerRegistrationId);
+        if (dealerReg) {
+          dealerCode = dealerReg.dealerCode ?? undefined;
+          isHiddenPos = dealerReg.isHiddenPos ?? false;
+        }
+      }
+
       const sessionId = await getStorage().createSession(
-        userResult.id, 
+        userResult.id,
         userResult.userType || 'user'
       );
-      console.log('Dealer session created:', maskSessionToken(sessionId), 'Type:', userResult.userType, 'DealerId:', userResult.dealerId);
-      
+      console.log('Dealer session created:', maskSessionToken(sessionId), 'Type:', userResult.userType, 'DealerId:', userResult.dealerId, 'DealerRegistrationId:', userResult.dealerRegistrationId);
+
       const response: AuthResponse = {
         success: true,
         user: {
@@ -133,6 +144,9 @@ authRouter.post('/dealer-login', async (req, res) => {
           username: username,
           userType: userResult.userType || 'user',
           dealerId: userResult.dealerId,
+          dealerRegistrationId: userResult.dealerRegistrationId,
+          dealerCode,
+          isHiddenPos,
           userRole: userResult.role
         },
         sessionId
@@ -277,6 +291,7 @@ authRouter.get('/me', async (req, res) => {
             username: user.username,
             userType: user.userType || 'user',
             dealerId: user.dealerId,
+            dealerRegistrationId: user.dealerRegistrationId,
             userRole: user.role
           }
         });
