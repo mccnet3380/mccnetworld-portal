@@ -67,31 +67,87 @@ export const salesManagers = pgTable("sales_managers", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// 접점 코드 테이블 (신규 추가)
-export const contactCodes = pgTable("contact_codes", {
+// 관리자 테이블
+export const admins = pgTable("admins", {
   id: serial("id").primaryKey(),
-  code: varchar("code", { length: 50 }).notNull().unique(),
-  dealerName: varchar("dealer_name", { length: 255 }).notNull(),
-  realSalesPOS: varchar("real_sales_pos", { length: 255 }), // 실제 판매점명 추가
-  carrier: varchar("carrier", { length: 100 }).notNull(),
-  salesManagerId: integer("sales_manager_id").references(() => salesManagers.id),
-  salesManagerName: varchar("sales_manager_name", { length: 100 }),
+  username: varchar("username", { length: 50 }).unique().notNull(),
+  password: varchar("password", { length: 255 }).notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// 판매점 원장 테이블 — admins 다음, contactCodes 앞에 위치해야 FK 참조 가능
+export const dealerRegistrations = pgTable("dealer_registrations", {
+  id: serial("id").primaryKey(),
+  dealerCode: varchar("dealer_code", { length: 20 }).unique(), // 판매점 식별 코드 (MCC0001 형식)
+  businessName: varchar("business_name", { length: 255 }).notNull(),
+  representativeName: varchar("representative_name", { length: 100 }).notNull(),
+  businessNumber: varchar("business_number", { length: 20 }).notNull(),
+  contactPhone: varchar("contact_phone", { length: 20 }).notNull(),
+  contactEmail: varchar("contact_email", { length: 100 }),
+  address: text("address").notNull(),
+  bankAccount: varchar("bank_account", { length: 100 }),
+  bankName: varchar("bank_name", { length: 50 }),
+  accountHolder: varchar("account_holder", { length: 100 }),
+  username: varchar("username", { length: 50 }).unique().notNull(),
+  password: varchar("password", { length: 255 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default('대기'),
+  approvedBy: integer("approved_by").references(() => admins.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
   isActive: boolean("is_active").default(true),
+  isHiddenPos: boolean("is_hidden_pos").default(false),
+  isContactPolicyPos: boolean("is_contact_policy_pos").default(false),
+  settlementOnly: boolean("settlement_only").default(false),
+  mCode: varchar("m_code", { length: 30 }),
+  kpNumber: varchar("kp_number", { length: 50 }),
+  regionName: varchar("region_name", { length: 100 }),
+  sourceDealerName: varchar("source_dealer_name", { length: 255 }),
+  subDealerName: varchar("sub_dealer_name", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// 접점 코드 테이블
+export const contactCodes = pgTable("contact_codes", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  dealerName: varchar("dealer_name", { length: 255 }).notNull(),
+  realSalesPOS: varchar("real_sales_pos", { length: 255 }),
+  carrier: varchar("carrier", { length: 100 }).notNull(),
+  salesManagerId: integer("sales_manager_id").references(() => salesManagers.id),
+  salesManagerName: varchar("sales_manager_name", { length: 100 }),
+  dealerRegistrationId: integer("dealer_registration_id").references(() => dealerRegistrations.id),
+  realSalesPosCode: varchar("real_sales_pos_code", { length: 30 }),
+  memo: text("memo"),
+  mCode: varchar("m_code", { length: 30 }),
+  channel: varchar("channel", { length: 100 }),
+  kpNumber: varchar("kp_number", { length: 50 }),
+  regionName: varchar("region_name", { length: 100 }),
+  aliasName: varchar("alias_name", { length: 255 }),
+  subDealerName: varchar("sub_dealer_name", { length: 255 }),
+  sourceDealerName: varchar("source_dealer_name", { length: 255 }),
+  codeName: varchar("code_name", { length: 255 }),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("contact_codes_m_code_idx").on(table.mCode),
+  index("contact_codes_channel_idx").on(table.channel),
+  index("contact_codes_m_code_channel_idx").on(table.mCode, table.channel),
+]);
+
 // POS별 히든 정산 단가 테이블 (신규 추가)
 export const hiddenPricesByPos = pgTable("hidden_prices_by_pos", {
   id: serial("id").primaryKey(),
-  contactCode: varchar("contact_code", { length: 50 }).notNull(), // 판매점 코드
-  servicePlanId: integer("service_plan_id").notNull(), // 서비스 플랜 ID
-  hiddenPrice: decimal("hidden_price", { precision: 10, scale: 2 }).notNull(), // 히든 정산 단가
-  isActive: boolean("is_active").default(true), // 활성화 여부
-  effectiveFrom: timestamp("effective_from").defaultNow(), // 적용 시작일
-  effectiveUntil: timestamp("effective_until"), // 적용 종료일 (null이면 무기한)
-  memo: text("memo"), // 메모
-  createdBy: integer("created_by").notNull(), // 생성자 ID
+  contactCode: varchar("contact_code", { length: 50 }).notNull(),
+  servicePlanId: integer("service_plan_id").notNull(),
+  hiddenPrice: decimal("hidden_price", { precision: 10, scale: 2 }).notNull(),
+  isActive: boolean("is_active").default(true),
+  effectiveFrom: timestamp("effective_from").defaultNow(),
+  effectiveUntil: timestamp("effective_until"),
+  memo: text("memo"),
+  createdBy: integer("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -103,32 +159,24 @@ export const hiddenPricesByPos = pgTable("hidden_prices_by_pos", {
 export const contactCodeMappings = pgTable("contact_code_mappings", {
   id: serial("id").primaryKey(),
   managerId: integer("manager_id").references(() => salesManagers.id).notNull(),
-  carrier: varchar("carrier", { length: 50 }).notNull(), // 통신사
-  contactCode: varchar("contact_code", { length: 50 }).notNull(), // 접점 코드
+  carrier: varchar("carrier", { length: 50 }).notNull(),
+  contactCode: varchar("contact_code", { length: 50 }).notNull(),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// 관리자 테이블
-export const admins = pgTable("admins", {
-  id: serial("id").primaryKey(),
-  username: varchar("username", { length: 50 }).unique().notNull(),
-  password: varchar("password", { length: 255 }).notNull(),
-  name: varchar("name", { length: 100 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// 사용자 테이블 추가
+// 사용자 테이블
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   dealerId: integer("dealer_id"),
+  dealerRegistrationId: integer("dealer_registration_id").references(() => dealerRegistrations.id),
   username: varchar("username", { length: 50 }).unique().notNull(),
   password: varchar("password", { length: 255 }).notNull(),
   name: varchar("name", { length: 100 }).notNull(),
   userType: varchar("user_type", { length: 20 }).notNull().default('user'),
   role: varchar("role", { length: 50 }),
-  allowedCarriers: jsonb("allowed_carriers").$type<string[]>(), // 허용된 통신사 목록
+  allowedCarriers: jsonb("allowed_carriers").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -302,31 +350,6 @@ export const documents = pgTable("documents", {
   settlementAmount: decimal("settlement_amount", { precision: 10, scale: 2 }),
 });
 
-// 판매점 자체 가입 테이블
-export const dealerRegistrations = pgTable("dealer_registrations", {
-  id: serial("id").primaryKey(),
-  businessName: varchar("business_name", { length: 255 }).notNull(), // 사업체명
-  representativeName: varchar("representative_name", { length: 100 }).notNull(), // 대표자명
-  businessNumber: varchar("business_number", { length: 20 }).unique().notNull(), // 사업자번호
-  contactPhone: varchar("contact_phone", { length: 20 }).notNull(),
-  contactEmail: varchar("contact_email", { length: 100 }).unique().notNull(),
-  address: text("address").notNull(), // 사업장 주소
-  bankAccount: varchar("bank_account", { length: 100 }), // 정산 계좌
-  bankName: varchar("bank_name", { length: 50 }), // 은행명
-  accountHolder: varchar("account_holder", { length: 100 }), // 예금주
-  // 로그인 정보
-  username: varchar("username", { length: 50 }).unique().notNull(),
-  password: varchar("password", { length: 255 }).notNull(),
-  // 승인 상태
-  status: varchar("status", { length: 20 }).notNull().default('대기'), // '대기', '승인', '거부'
-  approvedBy: integer("approved_by").references(() => admins.id),
-  approvedAt: timestamp("approved_at"),
-  rejectionReason: text("rejection_reason"),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
 // 채팅방 테이블
 export const chatRooms = pgTable("chat_rooms", {
   id: serial("id").primaryKey(),
@@ -351,6 +374,177 @@ export const chatMessages = pgTable("chat_messages", {
 });
 
 //===============================================
+// 정산 엔진 테이블 (STEP 5B)
+//===============================================
+
+// 정책 차수 테이블
+export const policyVersions = pgTable("policy_versions", {
+  id: serial("id").primaryKey(),
+  policyNo: varchar("policy_no", { length: 50 }).notNull().unique(),
+  policyName: varchar("policy_name", { length: 200 }).notNull(),
+  effectiveFrom: timestamp("effective_from").notNull(),
+  effectiveTo: timestamp("effective_to"),
+  isActive: boolean("is_active").default(true),
+  memo: text("memo"),
+  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// 정책 단가 행 테이블
+export const policyRows = pgTable("policy_rows", {
+  id: serial("id").primaryKey(),
+  policyVersionId: integer("policy_version_id").references(() => policyVersions.id).notNull(),
+  channel: varchar("channel", { length: 100 }).notNull(),
+  planName: varchar("plan_name", { length: 200 }).notNull(),
+  customerType: varchar("customer_type", { length: 20 }).notNull(),
+  nationalityType: varchar("nationality_type", { length: 20 }),
+  simCount: integer("sim_count"),
+  bundleType: varchar("bundle_type", { length: 100 }),
+  addService: varchar("add_service", { length: 200 }),
+  regFeeType: varchar("reg_fee_type", { length: 50 }),
+  rebateAmount: decimal("rebate_amount", { precision: 10, scale: 2 }).notNull(),
+  isActive: boolean("is_active").default(true),
+  memo: text("memo"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("policy_rows_version_channel_plan_idx").on(table.policyVersionId, table.channel, table.planName),
+  index("policy_rows_version_channel_plan_sim_idx").on(table.policyVersionId, table.channel, table.planName, table.simCount),
+]);
+
+// 정책 원본 파일 보관 테이블
+export const policyFiles = pgTable("policy_files", {
+  id: serial("id").primaryKey(),
+  policyVersionId: integer("policy_version_id").references(() => policyVersions.id).notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  filePath: varchar("file_path", { length: 500 }).notNull(),
+  fileType: varchar("file_type", { length: 20 }).notNull(),
+  fileSize: integer("file_size"),
+  memo: text("memo"),
+  uploadedBy: integer("uploaded_by").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+// 정산 원장 테이블 (개통 데이터 — 정산 기준: activation_datetime)
+export const activationRecords = pgTable("activation_records", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => documents.id),
+  receptionDatetime: timestamp("reception_datetime"),
+  activationDatetime: timestamp("activation_datetime").notNull(),
+  requestChannel: varchar("request_channel", { length: 50 }),
+  channel: varchar("channel", { length: 100 }).notNull(),
+  customerName: varchar("customer_name", { length: 100 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
+  customerEmail: varchar("customer_email", { length: 100 }),
+  receptionNumber: varchar("reception_number", { length: 50 }),
+  subscriptionNumber: varchar("subscription_number", { length: 50 }),
+  activationNumber: varchar("activation_number", { length: 50 }),
+  contactCode: varchar("contact_code", { length: 50 }),
+  mccCode: varchar("mcc_code", { length: 20 }),
+  dealerRegistrationId: integer("dealer_registration_id").references(() => dealerRegistrations.id),
+  dealerName: varchar("dealer_name", { length: 255 }),
+  simCount: integer("sim_count"),
+  planName: varchar("plan_name", { length: 200 }),
+  customerType: varchar("customer_type", { length: 20 }),
+  nationalityType: varchar("nationality_type", { length: 20 }).default('내국인'),
+  previousCarrier: varchar("previous_carrier", { length: 100 }),
+  bundleType: varchar("bundle_type", { length: 100 }),
+  addService: varchar("add_service", { length: 200 }),
+  regFeeType: varchar("reg_fee_type", { length: 50 }),
+  receptionist: varchar("receptionist", { length: 100 }),
+  policyVersionId: integer("policy_version_id").references(() => policyVersions.id),
+  source: varchar("source", { length: 20 }).notNull().default('수동입력'),
+  memo: text("memo"),
+  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("activation_records_activation_datetime_idx").on(table.activationDatetime),
+  index("activation_records_dealer_datetime_idx").on(table.dealerRegistrationId, table.activationDatetime),
+  index("activation_records_contact_code_idx").on(table.contactCode),
+  index("activation_records_document_id_idx").on(table.documentId),
+]);
+
+// 정산 결과 테이블
+export const settlementItems = pgTable("settlement_items", {
+  id: serial("id").primaryKey(),
+  activationId: integer("activation_id").references(() => activationRecords.id).notNull(),
+  policyVersionId: integer("policy_version_id").references(() => policyVersions.id),
+  policyRowId: integer("policy_row_id").references(() => policyRows.id),
+  dealerRegistrationId: integer("dealer_registration_id").references(() => dealerRegistrations.id),
+  dealerName: varchar("dealer_name", { length: 255 }),
+  rebateAmount: decimal("rebate_amount", { precision: 10, scale: 2 }),
+  adjustedAmount: decimal("adjusted_amount", { precision: 10, scale: 2 }),
+  addAmount: decimal("add_amount", { precision: 10, scale: 2 }),
+  deductAmount: decimal("deduct_amount", { precision: 10, scale: 2 }),
+  hiddenAmount: decimal("hidden_amount", { precision: 10, scale: 2 }),
+  lockedAmount: decimal("locked_amount", { precision: 10, scale: 2 }),
+  lockedAt: timestamp("locked_at"),
+  lockedBy: integer("locked_by"),
+  matchStatus: varchar("match_status", { length: 30 }).notNull().default('POLICY_NOT_FOUND'),
+  status: varchar("status", { length: 20 }).notNull().default('미정산'),
+  forcePolicyVersionId: integer("force_policy_version_id").references(() => policyVersions.id),
+  forceReason: text("force_reason"),
+  policySnapshotJson: jsonb("policy_snapshot_json"),
+  settledAt: timestamp("settled_at"),
+  settledBy: integer("settled_by"),
+  memo: text("memo"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("settlement_items_activation_id_idx").on(table.activationId),
+  index("settlement_items_dealer_status_idx").on(table.dealerRegistrationId, table.status),
+  index("settlement_items_match_status_idx").on(table.matchStatus),
+  index("settlement_items_locked_at_idx").on(table.lockedAt),
+]);
+
+// 추가금/차감금 정책 규칙 테이블 (향후 자동 적용용 — 현재 단계에서는 자동 계산 미적용)
+export const adjustmentRules = pgTable("adjustment_rules", {
+  id: serial("id").primaryKey(),
+  policyVersionId: integer("policy_version_id").references(() => policyVersions.id).notNull(),
+  channel: varchar("channel", { length: 100 }).notNull(),
+  planName: varchar("plan_name", { length: 200 }).notNull(),
+  customerType: varchar("customer_type", { length: 10 }).notNull(),
+  conditionType: varchar("condition_type", { length: 50 }).notNull(),
+  conditionValue: varchar("condition_value", { length: 200 }),
+  adjustmentType: varchar("adjustment_type", { length: 10 }).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  isActive: boolean("is_active").default(true),
+  memo: text("memo"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// 히든정책 행 테이블
+export const hiddenPolicyRows = pgTable("hidden_policy_rows", {
+  id: serial("id").primaryKey(),
+  dealerRegistrationId: integer("dealer_registration_id").references(() => dealerRegistrations.id),
+  contactCode: varchar("contact_code", { length: 50 }),
+  channel: varchar("channel", { length: 100 }),
+  planName: varchar("plan_name", { length: 200 }),
+  customerType: varchar("customer_type", { length: 10 }),
+  hiddenAmount: decimal("hidden_amount", { precision: 10, scale: 2 }).notNull(),
+  effectiveFrom: timestamp("effective_from"),
+  effectiveTo: timestamp("effective_to"),
+  isActive: boolean("is_active").default(true),
+  memo: text("memo"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// 정산 근거 파일 테이블
+export const settlementFiles = pgTable("settlement_files", {
+  id: serial("id").primaryKey(),
+  settlementItemId: integer("settlement_item_id").references(() => settlementItems.id).notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  filePath: varchar("file_path", { length: 500 }).notNull(),
+  fileType: varchar("file_type", { length: 20 }).notNull(),
+  fileSize: integer("file_size"),
+  memo: text("memo"),
+  uploadedBy: integer("uploaded_by").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+//===============================================
 // 타입 정의
 //===============================================
 
@@ -366,6 +560,7 @@ export interface Admin {
 export interface User {
   id: number;
   dealerId?: number;
+  dealerRegistrationId?: number;
   username: string;
   password: string;
   name: string;
@@ -470,10 +665,21 @@ export interface ContactCode {
   id: number;
   code: string;
   dealerName: string;
-  realSalesPOS?: string; // 실제 판매점명 추가
+  realSalesPOS?: string;
+  realSalesPosCode?: string;
   carrier: string;
   salesManagerId?: number;
   salesManagerName?: string;
+  dealerRegistrationId?: number;
+  memo?: string;
+  mCode?: string;
+  channel?: string;
+  kpNumber?: string;
+  regionName?: string;
+  aliasName?: string;
+  subDealerName?: string;
+  sourceDealerName?: string;
+  codeName?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -539,11 +745,12 @@ export interface Document {
 
 export interface Dealer {
   id: number;
+  dealerCode?: string;
   businessName: string;
   representativeName: string;
   businessNumber: string;
   contactPhone: string;
-  contactEmail: string;
+  contactEmail?: string;
   address: string;
   bankAccount?: string;
   bankName?: string;
@@ -555,6 +762,12 @@ export interface Dealer {
   approvedAt?: Date;
   rejectionReason?: string;
   isActive: boolean;
+  isHiddenPos: boolean;
+  mCode?: string;
+  kpNumber?: string;
+  regionName?: string;
+  sourceDealerName?: string;
+  subDealerName?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -787,19 +1000,41 @@ export const updateSalesManagerSchema = z.object({
 export const createContactCodeSchema = z.object({
   code: z.string().min(1, "접점 코드를 입력하세요"),
   dealerName: z.string().min(1, "대리점명을 입력하세요"),
-  realSalesPOS: z.string().optional(), // 실제 판매점명
+  realSalesPOS: z.string().optional(),
+  realSalesPosCode: z.string().optional(),
   carrier: z.string().min(1, "통신사를 입력하세요"),
   salesManagerId: z.number().optional(),
   salesManagerName: z.string().optional(),
+  dealerRegistrationId: z.number().optional().nullable(),
+  memo: z.string().optional(),
+  mCode: z.string().optional(),
+  channel: z.string().optional(),
+  kpNumber: z.string().optional(),
+  regionName: z.string().optional(),
+  aliasName: z.string().optional(),
+  subDealerName: z.string().optional(),
+  sourceDealerName: z.string().optional(),
+  codeName: z.string().optional(),
   isActive: z.boolean().default(true),
 });
 
 export const updateContactCodeSchema = z.object({
   dealerName: z.string().min(1, "대리점명을 입력하세요"),
-  realSalesPOS: z.string().optional(), // 실제 판매점명
+  realSalesPOS: z.string().optional(),
+  realSalesPosCode: z.string().optional(),
   carrier: z.string().min(1, "통신사를 입력하세요"),
   salesManagerId: z.number().optional(),
   salesManagerName: z.string().optional(),
+  dealerRegistrationId: z.number().optional().nullable(),
+  memo: z.string().optional(),
+  mCode: z.string().optional(),
+  channel: z.string().optional(),
+  kpNumber: z.string().optional(),
+  regionName: z.string().optional(),
+  aliasName: z.string().optional(),
+  subDealerName: z.string().optional(),
+  sourceDealerName: z.string().optional(),
+  codeName: z.string().optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -841,6 +1076,14 @@ export const insertContactCodeSchema = createInsertSchema(contactCodes);
 export const insertContactCodeMappingSchema = createInsertSchema(contactCodeMappings);
 export const insertOtherBusinessCarrierSchema = createInsertSchema(otherBusinessCarriers);
 export const insertCarrierServicePolicySchema = createInsertSchema(carrierServicePolicies);
+export const insertPolicyVersionSchema = createInsertSchema(policyVersions);
+export const insertPolicyRowSchema = createInsertSchema(policyRows);
+export const insertPolicyFileSchema = createInsertSchema(policyFiles);
+export const insertActivationRecordSchema = createInsertSchema(activationRecords);
+export const insertSettlementItemSchema = createInsertSchema(settlementItems);
+export const insertSettlementFileSchema = createInsertSchema(settlementFiles);
+export const insertAdjustmentRuleSchema = createInsertSchema(adjustmentRules);
+export const insertHiddenPolicyRowSchema = createInsertSchema(hiddenPolicyRows);
 
 // Form data types
 export type CreateUserForm = z.infer<typeof createUserSchema>;
@@ -877,6 +1120,14 @@ export type ContactCodeSelect = typeof contactCodes.$inferSelect;
 export type ContactCodeMappingSelect = typeof contactCodeMappings.$inferSelect;
 export type OtherBusinessCarrierSelect = typeof otherBusinessCarriers.$inferSelect;
 export type CarrierServicePolicySelect = typeof carrierServicePolicies.$inferSelect;
+export type PolicyVersionSelect = typeof policyVersions.$inferSelect;
+export type PolicyRowSelect = typeof policyRows.$inferSelect;
+export type PolicyFileSelect = typeof policyFiles.$inferSelect;
+export type ActivationRecordSelect = typeof activationRecords.$inferSelect;
+export type SettlementItemSelect = typeof settlementItems.$inferSelect;
+export type SettlementFileSelect = typeof settlementFiles.$inferSelect;
+export type AdjustmentRuleSelect = typeof adjustmentRules.$inferSelect;
+export type HiddenPolicyRowSelect = typeof hiddenPolicyRows.$inferSelect;
 
 // Login response type
 export type LoginResponse = {
@@ -893,6 +1144,9 @@ export type AuthUser = {
   userType: 'admin' | 'user' | 'sales_manager' | 'dealer';
   userRole?: string;
   dealerId?: number;
+  dealerRegistrationId?: number;
+  dealerCode?: string;
+  isHiddenPos?: boolean;
   managerId?: number;
   teamId?: number;
 };
@@ -918,6 +1172,7 @@ export type AuthSession = {
   userType: 'admin' | 'user' | 'sales_manager' | 'dealer';
   userRole?: string;
   dealerId?: number;
+  dealerRegistrationId?: number;
   managerId?: number;
   teamId?: number;
   username?: string;
