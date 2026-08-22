@@ -221,6 +221,12 @@ export interface IStorage {
   getContactCodes(carrier?: string, options?: { page?: number; limit?: number; search?: string; dealerRegistrationId?: number; includeRealSalesPOSMatch?: boolean }): Promise<any>;
   getContactCodeByCode(code: string): Promise<any>;
   getContactCodeByCarrierAndCode(carrier: string, code: string): Promise<any>;
+  // 개통 매칭 엔진용 — 다건 반환 (LIMIT 없음)
+  getContactCodesByMCodeAndCode(mCode: string, code: string): Promise<any[]>;
+  getContactCodesByMCodeAndCodeName(mCode: string, codeName: string): Promise<any[]>;
+  getContactCodesByCodeAll(code: string): Promise<any[]>;
+  getContactCodesByMCode(mCode: string): Promise<any[]>;
+  getContactCodesByNameFields(dealerName?: string | null, codeName?: string | null): Promise<any[]>;
   searchContactCodes(query: string, limit?: number): Promise<any[]>;
   getContactCodeAutoMatch(dealerName: string, carrier: string): Promise<any | null>;
   createContactCode(code: any): Promise<any>;
@@ -2349,6 +2355,55 @@ export class PostgreSQLStorage implements IStorage {
         .where(and(eq(contactCodes.carrier, carrier), eq(contactCodes.code, code)))
         .limit(1);
       return result.length > 0 ? result[0] : null;
+    });
+  }
+
+  async getContactCodesByMCodeAndCode(mCode: string, code: string): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      return db.select().from(contactCodes)
+        .where(and(eq(contactCodes.mCode, mCode), eq(contactCodes.code, code)));
+    });
+  }
+
+  async getContactCodesByMCodeAndCodeName(mCode: string, codeName: string): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      return db.select().from(contactCodes)
+        .where(and(
+          eq(contactCodes.mCode, mCode),
+          or(
+            eq(contactCodes.codeName, codeName),
+            eq(contactCodes.subDealerName, codeName),
+            eq(contactCodes.dealerName, codeName),
+          )
+        ));
+    });
+  }
+
+  async getContactCodesByCodeAll(code: string): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      return db.select().from(contactCodes).where(eq(contactCodes.code, code));
+    });
+  }
+
+  async getContactCodesByMCode(mCode: string): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      return db.select().from(contactCodes).where(eq(contactCodes.mCode, mCode));
+    });
+  }
+
+  async getContactCodesByNameFields(dealerName?: string | null, codeName?: string | null): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      const conditions: any[] = [];
+      if (dealerName) {
+        conditions.push(eq(contactCodes.dealerName, dealerName));
+        conditions.push(eq(contactCodes.realSalesPOS, dealerName));
+      }
+      if (codeName) {
+        conditions.push(eq(contactCodes.codeName, codeName));
+        conditions.push(eq(contactCodes.subDealerName, codeName));
+      }
+      if (!conditions.length) return [];
+      return db.select().from(contactCodes).where(or(...conditions));
     });
   }
 

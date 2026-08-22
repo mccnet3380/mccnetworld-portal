@@ -5207,6 +5207,7 @@ router.post('/api/admin/activations/upload', requireAdmin, upload.single('file')
       '부가': 'addService',
       '작업자': 'receptionist',
       'M코드': '_mccCodeRaw',
+      '코드명': '_codeNameRaw',
       '고객유형': 'nationalityType',
       '국적': 'nationalityType',
       '내외국인': 'nationalityType',
@@ -5216,12 +5217,14 @@ router.post('/api/admin/activations/upload', requireAdmin, upload.single('file')
     const { activationRecords: arTable, documents: docsTable } = await import('../shared/schema');
 
     // N+1 방지용 인메모리 캐시
-    const ccCache = new Map<string, any>();
-    const drCache = new Map<number, any>();
     const docCache = new Map<string, number | null>();
+    const matchCache = new Map<string, any[]>();
 
     let created = 0;
     let skipped = 0;
+    let matchedCount = 0;
+    let reviewCount = 0;
+    let unmatchedCount = 0;
     const warnings: string[] = [];
     const errors: string[] = [];
 
@@ -5327,42 +5330,104 @@ router.post('/api/admin/activations/upload', requireAdmin, upload.single('file')
         }
       }
 
-      // 접점코드 → dealer_registration_id / dealer_name / mcc_code 조회
+      // ── M코드 기반 5단계 매칭 엔진 ──────────────────────────────────────
+      const contactCodeVal = m['contactCode'];   // I열 접점코드
+      const mccCodeRaw    = m['_mccCodeRaw'];    // J열 M코드 (Excel 원본)
+      const codeNameRaw   = m['_codeNameRaw'];   // L열 코드명
+
       let dealerRegistrationId: number | null = null;
+      let contactCodeId: number | null = null;
       let resolvedDealerName: string | null = m['dealerName'];
-      let mccCode: string | null = null;
-      const contactCodeVal = m['contactCode'];
+      let mccCode: string | null = mccCodeRaw;   // 항상 Excel J열 원본 저장
+      let resolvedCodeName: string | null = codeNameRaw;
+      let realSalesPOS: string | null = null;
+      let subDealerName: string | null = null;
+      let matchingStatus = 'unmatched';
+      let matchingBasis: string | null = null;
 
-      if (contactCodeVal) {
-        let ccRec: any;
-        if (ccCache.has(contactCodeVal)) {
-          ccRec = ccCache.get(contactCodeVal);
-        } else {
-          ccRec = await getStorage().getContactCodeByCode(contactCodeVal);
-          ccCache.set(contactCodeVal, ccRec ?? null);
+      const resolveFromCC = (ccRec: any) => {
+        contactCodeId      = ccRec.id ?? null;
+        dealerRegistrationId = ccRec.dealerRegistrationId ?? null;
+        if (!resolvedDealerName) resolvedDealerName = ccRec.dealerName ?? null;
+        realSalesPOS       = ccRec.realSalesPOS ?? null;
+        subDealerName      = ccRec.subDealerName ?? null;
+        if (!resolvedCodeName) resolvedCodeName = ccRec.codeName ?? null;
+      };
+
+      const cachedList = async (key: string, fetcher: () => Promise<any[]>): Promise<any[]> => {
+        if (matchCache.has(key)) return matchCache.get(key)!;
+        const v = await fetcher();
+        matchCache.set(key, v);
+        return v;
+      };
+
+      // Step 1: M코드 + 접점코드
+      if (matchingStatus === 'unmatched' && mccCodeRaw && contactCodeVal) {
+        const hits = await cachedList(`mc+cc:${mccCodeRaw}:${contactCodeVal}`,
+          () => getStorage().getContactCodesByMCodeAndCode(mccCodeRaw!, contactCodeVal!));
+        if (hits.length === 1) {
+          resolveFromCC(hits[0]); matchingStatus = 'matched'; matchingBasis = 'M코드+접점코드';
+        } else if (hits.length > 1) {
+          resolveFromCC(hits[0]); matchingStatus = 'review_required'; matchingBasis = 'M코드+접점코드(중복)';
         }
+      }
 
-        if (ccRec?.dealerRegistrationId) {
-          dealerRegistrationId = ccRec.dealerRegistrationId;
-          if (!resolvedDealerName) resolvedDealerName = ccRec.dealerName ?? null;
+      // Step 2: M코드 + 코드명
+      if (matchingStatus === 'unmatched' && mccCodeRaw && codeNameRaw) {
+        const hits = await cachedList(`mc+cn:${mccCodeRaw}:${codeNameRaw}`,
+          () => getStorage().getContactCodesByMCodeAndCodeName(mccCodeRaw!, codeNameRaw!));
+        if (hits.length === 1) {
+          resolveFromCC(hits[0]); matchingStatus = 'matched'; matchingBasis = 'M코드+코드명';
+        } else if (hits.length > 1) {
+          resolveFromCC(hits[0]); matchingStatus = 'review_required'; matchingBasis = 'M코드+코드명(중복)';
+        }
+      }
 
-          let drRec: any;
-          if (drCache.has(dealerRegistrationId!)) {
-            drRec = drCache.get(dealerRegistrationId!);
-          } else {
-            drRec = await getStorage().getDealerRegistration(dealerRegistrationId!);
-            drCache.set(dealerRegistrationId!, drRec ?? null);
+      // Step 3: 접점코드 단독
+      if (matchingStatus === 'unmatched' && contactCodeVal) {
+        const hits = await cachedList(`cc:${contactCodeVal}`,
+          () => getStorage().getContactCodesByCodeAll(contactCodeVal!));
+        if (hits.length === 1) {
+          resolveFromCC(hits[0]); matchingStatus = 'matched'; matchingBasis = '접점코드단독';
+        } else if (hits.length > 1) {
+          resolveFromCC(hits[0]); matchingStatus = 'review_required'; matchingBasis = '접점코드단독(중복)';
+        }
+      }
+
+      // Step 4: M코드 단독
+      if (matchingStatus === 'unmatched' && mccCodeRaw) {
+        const hits = await cachedList(`mc:${mccCodeRaw}`,
+          () => getStorage().getContactCodesByMCode(mccCodeRaw!));
+        if (hits.length === 1) {
+          resolveFromCC(hits[0]); matchingStatus = 'matched'; matchingBasis = 'M코드단독';
+        } else if (hits.length > 1) {
+          resolveFromCC(hits[0]); matchingStatus = 'review_required'; matchingBasis = 'M코드단독(중복)';
+        }
+      }
+
+      // Step 5: 판매점명/코드명 보조
+      if (matchingStatus === 'unmatched') {
+        const dn = m['dealerName'];
+        const cn = codeNameRaw;
+        if (dn || cn) {
+          const hits = await cachedList(`nm:${dn ?? ''}:${cn ?? ''}`,
+            () => getStorage().getContactCodesByNameFields(dn, cn));
+          if (hits.length === 1) {
+            resolveFromCC(hits[0]); matchingStatus = 'matched'; matchingBasis = '판매점명/코드명보조';
+          } else if (hits.length > 1) {
+            resolveFromCC(hits[0]); matchingStatus = 'review_required'; matchingBasis = '판매점명/코드명보조(중복)';
           }
-          mccCode = drRec?.dealerCode ?? null;
-        } else {
-          warnings.push(`행 ${rowNum}: 접점코드 매칭 실패 (${contactCodeVal}), dealer_registration_id=null 저장`);
         }
       }
 
-      // M코드 → mccCode fallback (접점코드로 해소되지 않은 경우)
-      if (!mccCode && m['_mccCodeRaw']) {
-        mccCode = m['_mccCodeRaw'];
+      if (matchingStatus === 'matched') matchedCount++;
+      else if (matchingStatus === 'review_required') reviewCount++;
+      else unmatchedCount++;
+
+      if (matchingStatus !== 'matched') {
+        warnings.push(`행 ${rowNum}: 매칭=${matchingStatus}, 근거=${matchingBasis ?? '없음'} (M코드:${mccCodeRaw ?? '-'}, 접점코드:${contactCodeVal ?? '-'})`);
       }
+      // ── 매칭 엔진 끝 ────────────────────────────────────────────────────
 
       // 중복 확인
       const subscriptionNumber = m['subscriptionNumber'];
@@ -5411,6 +5476,13 @@ router.post('/api/admin/activations/upload', requireAdmin, upload.single('file')
         mccCode,
         dealerRegistrationId,
         dealerName: resolvedDealerName,
+        // 매칭 엔진 결과 필드
+        contactCodeId,
+        codeName: resolvedCodeName,
+        realSalesPOS,
+        subDealerName,
+        matchingStatus,
+        matchingBasis,
         simCount,
         planName: m['planName'],
         customerType: m['customerType'],
@@ -5432,6 +5504,9 @@ router.post('/api/admin/activations/upload', requireAdmin, upload.single('file')
       totalRows: rows.length,
       created,
       skipped,
+      matchedCount,
+      reviewCount,
+      unmatchedCount,
       warnings,
       errors,
     });

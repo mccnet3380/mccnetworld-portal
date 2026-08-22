@@ -148,6 +148,13 @@ export class SQLiteStorage implements IStorage {
     return contactCode;
   }
   
+  async getContactCodeByCarrierAndCode(carrier: string, code: string): Promise<any> { return null; }
+  async getContactCodesByMCodeAndCode(mCode: string, code: string): Promise<any[]> { return []; }
+  async getContactCodesByMCodeAndCodeName(mCode: string, codeName: string): Promise<any[]> { return []; }
+  async getContactCodesByCodeAll(code: string): Promise<any[]> { return []; }
+  async getContactCodesByMCode(mCode: string): Promise<any[]> { return []; }
+  async getContactCodesByNameFields(dealerName?: string | null, codeName?: string | null): Promise<any[]> { return []; }
+
   async createContactCode(data: any): Promise<ContactCode> {
     const [result] = await this.db.insert(schema.contactCodes).values(data).returning();
     return result;
