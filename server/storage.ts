@@ -402,6 +402,20 @@ export class PostgreSQLStorage implements IStorage {
     return operation(db);
   }
 
+  // 동일 mCode 행을 직렬화해 SELECT→INSERT race condition 방지
+  private readonly _mCodeLocks = new Map<string, Promise<void>>();
+  private withMCodeLock<T>(mCode: string, fn: () => Promise<T>): Promise<T> {
+    const key = mCode.toLowerCase().trim();
+    const prev = this._mCodeLocks.get(key) ?? Promise.resolve();
+    let resolve!: () => void;
+    const current = new Promise<void>(r => { resolve = r; });
+    this._mCodeLocks.set(key, current);
+    return prev.then(() => fn()).finally(() => {
+      resolve();
+      if (this._mCodeLocks.get(key) === current) this._mCodeLocks.delete(key);
+    });
+  }
+
   async authenticateAdmin(username: string, password: string) {
     return this.withDatabase(async (db) => {
       const admin = await db.select().from(admins).where(eq(admins.username, username)).limit(1);
@@ -746,6 +760,16 @@ export class PostgreSQLStorage implements IStorage {
     });
   }
 
+  // 비교용 정규화: 앞 접두어(구), 호), 원), 웅), 협력) 등) 제거 + 공백 정리 + 소문자
+  private normalizeDealerName(name: string): string {
+    if (!name) return '';
+    return name.trim()
+      .replace(/^[가-힣]{1,3}[)）]\s*/, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+  }
+
   private async generateDealerCode(db: any): Promise<string> {
     const rows = await db.select({ dealerCode: dealerRegistrations.dealerCode })
       .from(dealerRegistrations)
@@ -891,11 +915,19 @@ export class PostgreSQLStorage implements IStorage {
     kpNumber?: string;
     regionName?: string;
   }): Promise<{ action: 'created' | 'updated' | 'review'; reason?: string; record: any }> {
-    return this.withDatabase(async (db) => {
+    return this.withMCodeLock(data.mCode, () =>
+    this.withDatabase(async (db) => {
       let existing: any[] = [];
 
-      // 1순위: m_code + kp_number + sub_dealer_name
-      if (data.kpNumber && data.subDealerName) {
+      // ── 0순위: m_code + business_name 완전 일치 (동일 행 재처리 / race 방어) ─
+      existing = await db.select().from(dealerRegistrations)
+        .where(and(
+          eq(dealerRegistrations.mCode, data.mCode),
+          eq(dealerRegistrations.businessName, data.businessName),
+        ));
+
+      // ── 1순위: m_code + kp_number + sub_dealer_name 완전 일치 ──────────────
+      if (existing.length === 0 && data.kpNumber && data.subDealerName) {
         existing = await db.select().from(dealerRegistrations)
           .where(and(
             eq(dealerRegistrations.mCode, data.mCode),
@@ -904,41 +936,72 @@ export class PostgreSQLStorage implements IStorage {
           ));
       }
 
-      // 2순위: m_code + source_dealer_name + sub_dealer_name
-      if (existing.length === 0 && data.sourceDealerName && data.subDealerName) {
-        existing = await db.select().from(dealerRegistrations)
-          .where(and(
-            eq(dealerRegistrations.mCode, data.mCode),
-            eq(dealerRegistrations.sourceDealerName, data.sourceDealerName),
-            eq(dealerRegistrations.subDealerName, data.subDealerName),
-          ));
+      // ── 2순위~4순위: 같은 m_code 전체를 가져와 정규화 이름 비교 ─────────────
+      // KP번호 유무만 다른 동일 판매점이 별개 레코드로 생성되는 것을 방지
+      if (existing.length === 0) {
+        const candidates = await db.select().from(dealerRegistrations)
+          .where(eq(dealerRegistrations.mCode, data.mCode));
+
+        if (candidates.length > 0) {
+          const normSource = this.normalizeDealerName(data.sourceDealerName ?? '');
+          const normSub    = this.normalizeDealerName(data.subDealerName ?? '');
+          const normBiz    = this.normalizeDealerName(data.businessName ?? '');
+
+          // 2순위: normalized source_dealer_name + normalized sub_dealer_name
+          if (normSource) {
+            existing = candidates.filter(r => {
+              const rSource = this.normalizeDealerName(r.sourceDealerName ?? '');
+              const rSub    = this.normalizeDealerName(r.subDealerName ?? '');
+              return normSub
+                ? rSource === normSource && rSub === normSub
+                : rSource === normSource && !r.subDealerName;
+            });
+          }
+
+          // 3순위: normalized business_name (source와 다른 경우)
+          if (existing.length === 0 && normBiz && normBiz !== data.mCode.toLowerCase()) {
+            existing = candidates.filter(r =>
+              this.normalizeDealerName(r.businessName ?? '') === normBiz
+            );
+          }
+
+          // 4순위: normalized source_dealer_name만 일치 (sub_dealer_name 무시)
+          if (existing.length === 0 && normSource) {
+            existing = candidates.filter(r =>
+              this.normalizeDealerName(r.sourceDealerName ?? '') === normSource
+            );
+          }
+        }
       }
 
-      // 3순위: m_code + source_dealer_name (하부점명 없는 경우)
-      if (existing.length === 0 && data.sourceDealerName && !data.subDealerName) {
-        existing = await db.select().from(dealerRegistrations)
-          .where(and(
-            eq(dealerRegistrations.mCode, data.mCode),
-            eq(dealerRegistrations.sourceDealerName, data.sourceDealerName),
-          ));
-      }
-
-      // 다건 → 중복검토
+      // 다건 → 활성 여부로 한 번 더 좁히기
       if (existing.length > 1) {
-        return { action: 'review', reason: 'M코드+조합 다건 중복 검토 필요', record: existing[0] };
+        const activeOnes = existing.filter(r => r.isActive !== false);
+        if (activeOnes.length === 1) {
+          existing = activeOnes;           // 활성 1개 → 정상 처리
+        } else if (activeOnes.length === 0) {
+          existing = [existing[0]];        // 전부 비활성 → 첫 번째 사용
+        } else {
+          // 활성 원장 2개 이상 → 실제 중복, 검토 필요
+          const canonical = [...activeOnes].sort((a, b) => {
+            if (!!a.kpNumber !== !!b.kpNumber) return a.kpNumber ? -1 : 1;
+            return a.id - b.id;
+          })[0];
+          return { action: 'review', reason: 'M코드+이름 기준 활성 원장 2개 이상 — 정리 필요', record: canonical };
+        }
       }
-
-      const updateFields = {
-        businessName: data.businessName,
-        mCode: data.mCode,
-        kpNumber: data.kpNumber ?? null,
-        regionName: data.regionName ?? null,
-        sourceDealerName: data.sourceDealerName ?? null,
-        subDealerName: data.subDealerName ?? null,
-        updatedAt: new Date(),
-      };
 
       if (existing.length === 1) {
+        // 기존 row의 KP/지역이 비어 있으면 신규 값으로 보완, 기존 값 있으면 유지
+        const updateFields = {
+          businessName: data.businessName,
+          mCode: data.mCode,
+          kpNumber:     existing[0].kpNumber     || data.kpNumber     || null,
+          regionName:   existing[0].regionName   || data.regionName   || null,
+          sourceDealerName: data.sourceDealerName ?? null,
+          subDealerName:    data.subDealerName    ?? null,
+          updatedAt: new Date(),
+        };
         const updated = await db.update(dealerRegistrations)
           .set(updateFields)
           .where(eq(dealerRegistrations.id, existing[0].id))
@@ -947,13 +1010,12 @@ export class PostgreSQLStorage implements IStorage {
       }
 
       // 신규 생성 (정산전용 레코드 — username 자동 생성)
-      const dealerCode = await this.generateDealerCode(db);
+      // 동시 업로드 시 여러 코루틴이 동일한 MAX dealer_code를 읽어
+      // 같은 코드를 생성할 수 있으므로 dealer_code 충돌 시 재시도
       const suffix = nanoid(8);
       const username = `mcc_${data.mCode}_${suffix}`.slice(0, 50).replace(/[^a-zA-Z0-9_]/g, '_');
       const hashedPassword = await bcrypt.hash(nanoid(12), 10);
-
-      const inserted = await db.insert(dealerRegistrations).values({
-        dealerCode,
+      const recordValues = {
         businessName: data.businessName || data.mCode,
         representativeName: '-',
         businessNumber: '-',
@@ -971,10 +1033,29 @@ export class PostgreSQLStorage implements IStorage {
         regionName: data.regionName ?? null,
         sourceDealerName: data.sourceDealerName ?? null,
         subDealerName: data.subDealerName ?? null,
-      }).returning();
+      };
 
-      return { action: 'created', record: inserted[0] };
-    });
+      let lastInsertErr: any;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        try {
+          const dealerCode = await this.generateDealerCode(db);
+          const inserted = await db.insert(dealerRegistrations)
+            .values({ dealerCode, ...recordValues })
+            .returning();
+          return { action: 'created', record: inserted[0] };
+        } catch (err: any) {
+          // dealer_code unique 충돌 → 다음 번호로 재시도
+          if (err.code === '23505' && String(err.constraint ?? err.detail ?? '').includes('dealer_code')) {
+            lastInsertErr = err;
+            // 짧은 무작위 지연으로 동시 재시도 분산
+            await new Promise(r => setTimeout(r, 5 + Math.random() * 30));
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw lastInsertErr ?? new Error('dealer_code 생성 실패: 재시도 한도(20회) 초과');
+    }));
   }
 
   async backfillDealerRegistrationIds(): Promise<{ updated: number; created: number; skipped: number; errors: string[] }> {
@@ -2210,6 +2291,8 @@ export class PostgreSQLStorage implements IStorage {
         dealerName: contactCodes.dealerName,
         realSalesPOS: contactCodes.realSalesPOS,
         carrier: contactCodes.carrier,
+        channel: contactCodes.channel,
+        mCode: contactCodes.mCode,
         salesManagerId: contactCodes.salesManagerId,
         salesManagerName: contactCodes.salesManagerName,
         dealerRegistrationId: contactCodes.dealerRegistrationId,
@@ -2355,11 +2438,26 @@ export class PostgreSQLStorage implements IStorage {
           .where(eq(contactCodes.code, data.code))
           .returning();
         return { action: 'updated', record: updated[0] };
-      } else {
+      }
+
+      // INSERT 시도 — 동시 업로드에서 같은 code가 두 코루틴에 배정되면
+      // 한쪽이 먼저 INSERT 성공 후 다른 쪽이 unique 충돌할 수 있음.
+      // 충돌 시 UPDATE로 전환 (optimistic insert → fallback update 패턴)
+      try {
         const inserted = await db.insert(contactCodes)
           .values({ code: data.code, ...commonFields })
           .returning();
         return { action: 'created', record: inserted[0] };
+      } catch (err: any) {
+        if (err.code === '23505' && String(err.constraint ?? err.detail ?? '').includes('code')) {
+          // 다른 코루틴이 먼저 insert 완료 → UPDATE로 처리
+          const updated = await db.update(contactCodes)
+            .set({ ...commonFields, updatedAt: new Date() })
+            .where(eq(contactCodes.code, data.code))
+            .returning();
+          return { action: 'updated', record: updated[0] };
+        }
+        throw err;
       }
     });
   }

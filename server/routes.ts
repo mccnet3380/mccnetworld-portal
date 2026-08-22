@@ -858,77 +858,144 @@ router.post('/api/admin/dealer-registrations/backfill-users', requireAdmin, asyn
 
 // M코드 기준 원장 업로드 — dealer_registrations + contact_codes 동시 upsert
 // IMPORTANT: /:id 라우트보다 먼저 선언해야 함 (Express 라우팅 순서)
-router.post('/api/admin/dealer-registrations/mcode-master-upload', requireAdmin, upload.single('file'), async (req, res) => {
+router.post('/api/admin/dealer-registrations/mcode-master-upload',
+  requireAdmin,
+  (req, res, next) => {
+    console.log(`[mcode-master-upload] ▶ request arrived — limit param: ${req.query.limit ?? 'all'}`);
+    next();
+  },
+  upload.single('file'),
+  async (req, res) => {
+  const startTime = Date.now();
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
+
+    console.log(`[mcode-master-upload] ✔ file received: "${req.file.originalname}" (${(req.file.size / 1024).toFixed(1)} KB)`);
+    console.log(`[mcode-master-upload] parsing Excel...`);
 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
-    // header:1 로 배열 파싱 (B열=접점코드, H열=접점코드 같은 중복 헤더 안전 처리)
-    const aoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false }) as any[][];
+    // header:1 + blankrows:false 조합: defval 없이 파싱해야 xlsx가
+    // 셀이 하나도 없는 행을 파싱 단계에서 건너뜀 (defval:'' 사용 시 빈 셀도
+    // '' 로 채워져 blankrows:false 무력화 → 백만 행 파싱 문제 발생)
+    // gc()에서 row[idx] ?? '' 처리하므로 defval 불필요
+    const aoa: any[][] = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      raw: false,
+      blankrows: false,
+    }) as any[][];
     if (aoa.length < 2) return res.status(400).json({ error: '헤더 포함 최소 2행 이상 필요합니다.' });
 
-    const dataRows = aoa.slice(1);
+    // 2차 방어: A~J 중 실제 값이 있는 행만 남김 (보이지 않는 문자 포함 행 제거)
+    const allDataRows = aoa.slice(1).filter(row =>
+      Array.from({ length: 10 }, (_, c) => c).some(c => String(row[c] ?? '').trim() !== '')
+    );
+
+    // 행 제한 파라미터 (테스트용: ?limit=100 / 1000 / 5000)
+    const limitParam = req.query.limit ? parseInt(req.query.limit as string, 10) : null;
+    const dataRows = (limitParam && limitParam > 0) ? allDataRows.slice(0, limitParam) : allDataRows;
+
+    console.log(`[mcode-master-upload] non-empty rows: ${allDataRows.length}, processing: ${dataRows.length}`);
 
     // 엑셀 컬럼 위치 (0-indexed): A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 J=9
     const IDX = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5, G: 6, H: 7, I: 8, J: 9 };
-
     const EXCLUSION_KEYWORDS = ['삭제점', '제외', '개인', '테스트'];
 
     const stats = {
-      totalRows: dataRows.length,
+      totalRows: allDataRows.length,
       readRows: 0,
       drCreated: 0,
       drUpdated: 0,
       ccCreated: 0,
       ccUpdated: 0,
       needReview: 0,
+      skippedRows: 0,
       failed: 0,
     };
-    const reviewItems: { row: number; reason: string; mCode?: string; name?: string }[] = [];
+    type RowDetail = {
+      row: number; reason: string;
+      mCode?: string; name?: string;
+      subDealer?: string; channel?: string;
+      contactCodeB?: string; contactCodeH?: string;
+    };
+    const reviewItems: RowDetail[] = [];
+    const skippedItems: RowDetail[] = [];
     const failedItems: { row: number; reason: string }[] = [];
+    // 동일 mCode+businessName 조합의 활성 DR 중복은 첫 행에서만 검토필요 등록
+    const reviewedDrKeys = new Set<string>();
 
-    for (let i = 0; i < dataRows.length; i++) {
-      const row = dataRows[i];
-      const rowNum = i + 2;
+    // 행 단위 처리 함수 (Promise.all 청크에서 사용)
+    const processRow = async (row: any[], rowIdx: number) => {
+      const rowNum = rowIdx + 2;
       const gc = (idx: number) => String(row[idx] ?? '').trim();
 
-      const sourceName    = gc(IDX.A); // A: 판매점명
-      const contactCodeB  = gc(IDX.B); // B: 접점코드
-      const codeName      = gc(IDX.C); // C: 판매점명(수식)
-      const alias         = gc(IDX.D); // D: 별칭
-      const subDealer     = gc(IDX.E); // E: 하부점명
-      const channel       = gc(IDX.F); // F: 채널
-      const mCode         = gc(IDX.G); // G: M코드
-      const contactCodeH  = gc(IDX.H); // H: 접점코드
-      const kpNumber      = gc(IDX.I); // I: KP번호
-      const region        = gc(IDX.J); // J: 지역명
+      const sourceName   = gc(IDX.A);
+      const contactCodeB = gc(IDX.B);
+      const codeName     = gc(IDX.C);
+      const alias        = gc(IDX.D);
+      const subDealer    = gc(IDX.E);
+      const channel      = gc(IDX.F);
+      const mCode        = gc(IDX.G);
+      const contactCodeH = gc(IDX.H);
+      const kpNumber     = gc(IDX.I);
+      const region       = gc(IDX.J);
 
       // 완전 빈 행 skip
-      if (![sourceName, contactCodeB, codeName, subDealer, channel, mCode, contactCodeH, kpNumber, region].some(v => v)) continue;
+      if (![sourceName, contactCodeB, codeName, subDealer, channel, mCode, contactCodeH, kpNumber, region].some(v => v)) return;
       stats.readRows++;
 
       // 제외 키워드 검사
       const allText = [sourceName, codeName, subDealer, channel].join(' ');
       const excludeKw = EXCLUSION_KEYWORDS.find(kw => allText.includes(kw));
       if (excludeKw) {
-        reviewItems.push({ row: rowNum, reason: `제외 키워드 포함: "${excludeKw}"`, mCode, name: codeName || sourceName });
+        reviewItems.push({ row: rowNum, reason: `제외 키워드 포함: "${excludeKw}"`, mCode, name: codeName || sourceName, subDealer, channel, contactCodeB, contactCodeH });
         stats.needReview++;
-        continue;
+        return;
       }
 
       // M코드 없으면 검토필요
       if (!mCode) {
-        reviewItems.push({ row: rowNum, reason: 'M코드 없음', name: codeName || sourceName });
+        reviewItems.push({ row: rowNum, reason: 'M코드 없음', name: codeName || sourceName, subDealer, channel, contactCodeB, contactCodeH });
         stats.needReview++;
-        continue;
+        return;
       }
 
-      // business_name 결정: C열 > A열 > E열
       const businessName = codeName || sourceName || subDealer || mCode;
-      // 실제 접점코드: H열 > B열
-      const contactCode = contactCodeH || contactCodeB;
+      const contactCode  = contactCodeH || contactCodeB;
+
+      // ── 접점코드 판매점명 패턴 검사 ──────────────────────────────────────────
+      // 한글 1~3글자 + ) or ） 로 시작하는 접두어 패턴 (웅), 강), 구) 등)
+      const BZ_PATTERN = /^[가-힣]{1,3}[)）]/;
+      if (contactCode && BZ_PATTERN.test(contactCode)) {
+        // DR은 공통으로 갱신
+        try {
+          const drResult = await getStorage().upsertDealerRegistrationByMCode({
+            mCode, businessName, sourceDealerName: sourceName, subDealerName: subDealer, kpNumber, regionName: region,
+          });
+          if (drResult.action === 'created') stats.drCreated++;
+          else if (drResult.action === 'updated') stats.drUpdated++;
+        } catch { /* DR 실패 무시 */ }
+
+        if (!contactCodeH) {
+          // H열 없음 + B열 = 판매점명 패턴 → 대표/메인 행 스킵 (CC 미저장, 검토필요 아님)
+          skippedItems.push({
+            row: rowNum,
+            reason: 'H열 접점코드 없음 — 대표/메인 행으로 스킵 (CC 미저장)',
+            mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH,
+          });
+          stats.skippedRows++;
+        } else {
+          // H열 자체가 판매점명 패턴 → 접점코드 오입력, 진짜 검토필요
+          reviewItems.push({
+            row: rowNum,
+            reason: `접점코드(H열)가 판매점명으로 의심됨 — 원장 확인 필요: "${contactCode}"`,
+            mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH,
+          });
+          stats.needReview++;
+        }
+        return;
+      }
 
       try {
         // ─── dealer_registrations upsert ───
@@ -939,9 +1006,14 @@ router.post('/api/admin/dealer-registrations/mcode-master-upload', requireAdmin,
         if (drResult.action === 'created') stats.drCreated++;
         else if (drResult.action === 'updated') stats.drUpdated++;
         else {
-          reviewItems.push({ row: rowNum, reason: drResult.reason || 'M코드 중복 검토', mCode, name: businessName });
-          stats.needReview++;
-          // 중복검토여도 접점코드는 처리 시도
+          const drKey = `${mCode}|${businessName}`;
+          if (!reviewedDrKeys.has(drKey)) {
+            reviewedDrKeys.add(drKey);
+            reviewItems.push({ row: rowNum, reason: drResult.reason || 'M코드 중복 검토', mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH });
+            stats.needReview++;
+          } else {
+            stats.drUpdated++;
+          }
         }
 
         // ─── contact_codes upsert ───
@@ -959,18 +1031,37 @@ router.post('/api/admin/dealer-registrations/mcode-master-upload', requireAdmin,
           if (ccResult.action === 'created') stats.ccCreated++;
           else stats.ccUpdated++;
         }
-
       } catch (err: any) {
         failedItems.push({ row: rowNum, reason: (err.message ?? '').substring(0, 120) });
         stats.failed++;
       }
+    };
+
+    // 30개씩 동시 처리 (순차 대비 ~30x 속도 향상)
+    const CONCURRENCY = 30;
+    for (let i = 0; i < dataRows.length; i += CONCURRENCY) {
+      const chunk = dataRows.slice(i, i + CONCURRENCY);
+      await Promise.all(chunk.map((row, j) => processRow(row, i + j)));
+
+      // 1000행 단위 진행 로그
+      const processed = Math.min(i + CONCURRENCY, dataRows.length);
+      if (processed % 1000 < CONCURRENCY || processed === dataRows.length) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[mcode-master-upload] progress: ${processed}/${dataRows.length} rows (${elapsed}s) — dr+${stats.drCreated}/~${stats.drUpdated} cc+${stats.ccCreated}/~${stats.ccUpdated} review:${stats.needReview} fail:${stats.failed}`);
+      }
     }
+
+    const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[mcode-master-upload] ✔ DONE in ${totalElapsed}s — dr:+${stats.drCreated}/~${stats.drUpdated} cc:+${stats.ccCreated}/~${stats.ccUpdated} review:${stats.needReview} fail:${stats.failed}`);
 
     return res.json({
       success: true,
       ...stats,
-      reviewSamples: reviewItems.slice(0, 20),
-      failedSamples: failedItems.slice(0, 20),
+      processedRows: dataRows.length,
+      elapsedSec: parseFloat(totalElapsed),
+      reviewSamples: reviewItems,
+      skippedSamples: skippedItems,
+      failedSamples: failedItems.slice(0, 50),
     });
 
   } catch (error: any) {

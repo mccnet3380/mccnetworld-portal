@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE contact_codes
+  ADD COLUMN IF NOT EXISTS memo TEXT;
+
+COMMIT;

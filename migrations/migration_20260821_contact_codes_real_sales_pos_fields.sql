@@ -1,0 +1,7 @@
+BEGIN;
+
+ALTER TABLE contact_codes
+  ADD COLUMN IF NOT EXISTS real_sales_pos_code VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS real_sales_pos VARCHAR(255);
+
+COMMIT;

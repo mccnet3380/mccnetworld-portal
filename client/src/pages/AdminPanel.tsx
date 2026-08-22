@@ -6395,7 +6395,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                 <thead className="bg-white dark:bg-gray-900 border-b border-gray-100">
                                   <tr>
                                     <th className="px-4 py-1.5 text-left font-medium text-gray-500">접점코드</th>
-                                    <th className="px-4 py-1.5 text-left font-medium text-gray-500">실제판매점명</th>
+                                    <th className="px-4 py-1.5 text-left font-medium text-gray-500" title="정산지급처(그룹)와 다른 경우 실제 개통이 발생한 하부 판매점명">개통점(실제판매점)</th>
                                     <th className="px-4 py-1.5 text-left font-medium text-gray-500">채널</th>
                                     <th className="px-4 py-1.5 text-left font-medium text-gray-500">담당영업과장</th>
                                     <th className="px-4 py-1.5 text-left font-medium text-gray-500">상태</th>
@@ -6406,17 +6406,31 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                   {group.codes.map((cc: any) => {
                                     const isSub = group.drName && cc.realSalesPOS && !isSameStoreName(group.drName, cc.realSalesPOS);
                                     const posNotInRegistry = cc.realSalesPOS && !dealerBusinessNameSet.has(cc.realSalesPOS);
+                                    const isMCodeData = !!(cc as any).mCode;
+                                    // 접점코드가 판매점명 패턴인 경우 (예: 웅)가람모바일)
+                                    const codeIsBizName = /^[가-힣]{1,3}[)）]/.test(cc.code || '');
                                     return (
-                                      <tr key={cc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                                        <td className="px-4 py-1.5 font-mono font-medium text-gray-900 dark:text-gray-100">{cc.code}</td>
+                                      <tr key={cc.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${codeIsBizName ? 'bg-orange-50 dark:bg-orange-950' : ''}`}>
+                                        <td className="px-4 py-1.5 font-mono font-medium text-gray-900 dark:text-gray-100">
+                                          <span className="flex items-center gap-1 flex-wrap">
+                                            <span className={codeIsBizName ? 'text-orange-700' : ''}>{cc.code}</span>
+                                            {codeIsBizName && (
+                                              <span title="접점코드가 판매점명 패턴입니다. 원장 확인 필요 (H컬럼 오입력 의심)" className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-1 rounded">검토필요</span>
+                                            )}
+                                            {!codeIsBizName && (isMCodeData
+                                              ? <span title={`M코드 원장 업로드 데이터 (M코드: ${(cc as any).mCode})`} className="text-xs bg-indigo-100 text-indigo-700 px-1 rounded">M</span>
+                                              : <span title="기존 접점코드 원장 데이터" className="text-xs bg-gray-100 text-gray-500 px-1 rounded">기존</span>
+                                            )}
+                                          </span>
+                                        </td>
                                         <td className="px-4 py-1.5 text-gray-600 dark:text-gray-400">
                                           <span className="flex items-center gap-1 flex-wrap">
-                                            {cc.realSalesPOS || '-'}
+                                            {cc.realSalesPOS || <span className="text-gray-400">정산지급처와 동일</span>}
                                             {isSub && <span className="text-xs bg-blue-100 text-blue-700 px-1 rounded">하부점</span>}
                                             {posNotInRegistry && <span title="판매점 원장에 없음" className="text-xs bg-amber-100 text-amber-700 px-1 rounded">원장미등록</span>}
                                           </span>
                                         </td>
-                                        <td className="px-4 py-1.5 text-gray-600 dark:text-gray-400">{cc.carrier || '-'}</td>
+                                        <td className="px-4 py-1.5 text-gray-600 dark:text-gray-400">{cc.channel || '미지정'}</td>
                                         <td className="px-4 py-1.5 text-gray-600 dark:text-gray-400">{cc.salesManagerName || '-'}</td>
                                         <td className="px-4 py-1.5">
                                           <span className={`px-1.5 py-0.5 rounded text-xs ${cc.isActive !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -6482,7 +6496,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                             <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">접점코드</th>
                             <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">정산지급처코드</th>
                             <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">정산지급처명</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">실제판매점명</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300" title="정산지급처와 다른 경우 실제 개통이 발생한 하부 판매점명">개통점(실제판매점)</th>
                             <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">채널</th>
                             <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">담당영업과장</th>
                             <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">상태</th>
@@ -6500,7 +6514,23 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                             />
                           </td>
-                          <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{code.code}</td>
+                          <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
+                            {(() => {
+                              const codeIsBizName = /^[가-힣]{1,3}[)）]/.test(code.code || '');
+                              return (
+                                <span className="flex items-center gap-1 flex-wrap">
+                                  <span className={codeIsBizName ? 'text-orange-700' : ''}>{code.code}</span>
+                                  {codeIsBizName && (
+                                    <span title="접점코드가 판매점명 패턴입니다. 원장 확인 필요 (H컬럼 오입력 의심)" className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-1 rounded">검토필요</span>
+                                  )}
+                                  {!codeIsBizName && ((code as any).mCode
+                                    ? <span title={`M코드 원장 업로드 데이터 (M코드: ${(code as any).mCode})`} className="text-xs bg-indigo-100 text-indigo-700 px-1 rounded">M</span>
+                                    : <span title="기존 접점코드 원장 데이터" className="text-xs bg-gray-100 text-gray-500 px-1 rounded">기존</span>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                          </td>
                           <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{(code as any).drDealerCode || '-'}</td>
                           <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
                             <span className="flex items-center gap-1">
@@ -6518,7 +6548,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                               )}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{code.carrier || '-'}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{(code as any).channel || '미지정'}</td>
                           <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{(code as any).salesManagerName || '-'}</td>
                           <td className="px-3 py-2">
                             <span className={`text-xs px-2 py-1 rounded-full ${
