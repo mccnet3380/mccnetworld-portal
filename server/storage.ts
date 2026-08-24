@@ -234,6 +234,11 @@ export interface IStorage {
   upsertContactCode(data: { code: string; dealerName: string; realSalesPOS?: string | null; realSalesPosCode?: string | null; carrier: string; salesManagerName?: string | null; dealerRegistrationId?: number | null; memo?: string | null; isActive?: boolean; mCode?: string | null; channel?: string | null; kpNumber?: string | null; regionName?: string | null; aliasName?: string | null; subDealerName?: string | null; sourceDealerName?: string | null; codeName?: string | null }): Promise<{ action: 'created' | 'updated'; record: any }>;
   bulkCreateContactCodes(codes: any[]): Promise<number>;
   deleteContactCode(id: number): Promise<void>;
+  getDealerRegistrationsForBulkUpload(): Promise<any[]>;
+  getContactCodesForBulkUpload(): Promise<any[]>;
+  batchCreateDealerRegistrations(rows: Array<{ mCode: string; businessName: string; kpNumber?: string | null; regionName?: string | null; sourceDealerName?: string | null; subDealerName?: string | null }>): Promise<any[]>;
+  batchUpdateDealerRegistrations(updates: Array<{ id: number; businessName: string; mCode: string; kpNumber: string | null; regionName: string | null; sourceDealerName: string | null; subDealerName: string | null }>): Promise<void>;
+  batchUpsertContactCodes(rows: Array<{ code: string; dealerName: string; carrier: string; dealerRegistrationId?: number | null; mCode?: string | null; channel?: string | null; kpNumber?: string | null; regionName?: string | null; aliasName?: string | null; subDealerName?: string | null; sourceDealerName?: string | null; codeName?: string | null }>): Promise<void>;
 
   // Carrier methods
   getCarriers(): Promise<any[]>;
@@ -2513,6 +2518,140 @@ export class PostgreSQLStorage implements IStorage {
           return { action: 'updated', record: updated[0] };
         }
         throw err;
+      }
+    });
+  }
+
+  async getDealerRegistrationsForBulkUpload(): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      return await db.select().from(dealerRegistrations);
+    });
+  }
+
+  async getContactCodesForBulkUpload(): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      return await db.select({
+        id: contactCodes.id,
+        code: contactCodes.code,
+        dealerName: contactCodes.dealerName,
+        mCode: contactCodes.mCode,
+        dealerRegistrationId: contactCodes.dealerRegistrationId,
+      }).from(contactCodes);
+    });
+  }
+
+  async batchCreateDealerRegistrations(rows: Array<{ mCode: string; businessName: string; kpNumber?: string | null; regionName?: string | null; sourceDealerName?: string | null; subDealerName?: string | null }>): Promise<any[]> {
+    if (rows.length === 0) return [];
+    return this.withDatabase(async (db) => {
+      const maxRow = await db.select({ dealerCode: dealerRegistrations.dealerCode })
+        .from(dealerRegistrations)
+        .where(sql`${dealerRegistrations.dealerCode} IS NOT NULL`)
+        .orderBy(desc(dealerRegistrations.dealerCode))
+        .limit(1);
+
+      const lastNum = maxRow.length > 0
+        ? parseInt((maxRow[0].dealerCode as string).replace('MCC', ''), 10)
+        : 0;
+      const startNum = isNaN(lastNum) ? 1 : lastNum + 1;
+
+      const passwords = await Promise.all(rows.map(() => bcrypt.hash(nanoid(12), 10)));
+
+      const values = rows.map((r, i) => ({
+        dealerCode: `MCC${String(startNum + i).padStart(4, '0')}`,
+        businessName: r.businessName || r.mCode,
+        representativeName: '-',
+        businessNumber: '-',
+        contactPhone: '-',
+        address: '-',
+        username: `mcc_${r.mCode}_${nanoid(8)}`.slice(0, 50).replace(/[^a-zA-Z0-9_]/g, '_'),
+        password: passwords[i],
+        status: '승인',
+        isActive: true,
+        isHiddenPos: false,
+        isContactPolicyPos: false,
+        settlementOnly: true,
+        mCode: r.mCode,
+        kpNumber: r.kpNumber ?? null,
+        regionName: r.regionName ?? null,
+        sourceDealerName: r.sourceDealerName ?? null,
+        subDealerName: r.subDealerName ?? null,
+      }));
+
+      return await db.insert(dealerRegistrations).values(values).returning();
+    });
+  }
+
+  async batchUpdateDealerRegistrations(updates: Array<{ id: number; businessName: string; mCode: string; kpNumber: string | null; regionName: string | null; sourceDealerName: string | null; subDealerName: string | null }>): Promise<void> {
+    if (updates.length === 0) return;
+    return this.withDatabase(async (db) => {
+      const CHUNK = 100;
+      for (let i = 0; i < updates.length; i += CHUNK) {
+        const chunk = updates.slice(i, i + CHUNK);
+        await Promise.all(chunk.map(u =>
+          db.update(dealerRegistrations)
+            .set({
+              businessName: u.businessName,
+              mCode: u.mCode,
+              kpNumber: u.kpNumber,
+              regionName: u.regionName,
+              sourceDealerName: u.sourceDealerName,
+              subDealerName: u.subDealerName,
+              updatedAt: new Date(),
+            })
+            .where(eq(dealerRegistrations.id, u.id))
+        ));
+      }
+    });
+  }
+
+  async batchUpsertContactCodes(rows: Array<{ code: string; dealerName: string; carrier: string; dealerRegistrationId?: number | null; mCode?: string | null; channel?: string | null; kpNumber?: string | null; regionName?: string | null; aliasName?: string | null; subDealerName?: string | null; sourceDealerName?: string | null; codeName?: string | null }>): Promise<void> {
+    if (rows.length === 0) return;
+    return this.withDatabase(async (db) => {
+      const CHUNK = 500;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK);
+        await db.insert(contactCodes)
+          .values(chunk.map(r => ({
+            code: r.code,
+            dealerName: r.dealerName,
+            carrier: r.carrier,
+            dealerRegistrationId: r.dealerRegistrationId ?? null,
+            mCode: r.mCode ?? null,
+            channel: r.channel ?? null,
+            kpNumber: r.kpNumber ?? null,
+            regionName: r.regionName ?? null,
+            aliasName: r.aliasName ?? null,
+            subDealerName: r.subDealerName ?? null,
+            sourceDealerName: r.sourceDealerName ?? null,
+            codeName: r.codeName ?? null,
+            isActive: true,
+            memo: null,
+            realSalesPOS: null,
+            realSalesPosCode: null,
+            salesManagerName: null,
+          })))
+          .onConflictDoUpdate({
+            target: contactCodes.code,
+            set: {
+              dealerName: sql`EXCLUDED.dealer_name`,
+              carrier: sql`EXCLUDED.carrier`,
+              dealerRegistrationId: sql`EXCLUDED.dealer_registration_id`,
+              mCode: sql`EXCLUDED.m_code`,
+              channel: sql`EXCLUDED.channel`,
+              kpNumber: sql`EXCLUDED.kp_number`,
+              regionName: sql`EXCLUDED.region_name`,
+              aliasName: sql`EXCLUDED.alias_name`,
+              subDealerName: sql`EXCLUDED.sub_dealer_name`,
+              sourceDealerName: sql`EXCLUDED.source_dealer_name`,
+              codeName: sql`EXCLUDED.code_name`,
+              realSalesPOS: sql`EXCLUDED.real_sales_pos`,
+              realSalesPosCode: sql`EXCLUDED.real_sales_pos_code`,
+              salesManagerName: sql`EXCLUDED.sales_manager_name`,
+              memo: sql`EXCLUDED.memo`,
+              isActive: sql`EXCLUDED.is_active`,
+              updatedAt: sql`NOW()`,
+            },
+          });
       }
     });
   }

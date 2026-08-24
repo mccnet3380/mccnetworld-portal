@@ -898,9 +898,106 @@ router.post('/api/admin/dealer-registrations/mcode-master-upload',
 
     console.log(`[mcode-master-upload] non-empty rows: ${allDataRows.length}, processing: ${dataRows.length}`);
 
-    // 엑셀 컬럼 위치 (0-indexed): A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 J=9
+    // ── [1] PRE-LOAD: 전체 DR/CC 를 Map으로 캐싱 (행당 SELECT 제거) ─────────────
+    console.log(`[mcode-master-upload] pre-loading DR/CC cache...`);
+    const [allDRs, allCCs] = await Promise.all([
+      getStorage().getDealerRegistrationsForBulkUpload(),
+      getStorage().getContactCodesForBulkUpload(),
+    ]);
+
+    // mCode → DR[] (같은 mCode에 여러 DR 가능)
+    const drByMCode = new Map<string, any[]>();
+    for (const dr of allDRs) {
+      if (!dr.mCode) continue;
+      const arr = drByMCode.get(dr.mCode) ?? [];
+      arr.push(dr);
+      drByMCode.set(dr.mCode, arr);
+    }
+    // code → CC
+    const ccByCode = new Map<string, any>(allCCs.map(cc => [cc.code, cc]));
+
+    const cacheElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[mcode-master-upload] cache loaded — ${allDRs.length} DRs, ${allCCs.length} CCs (${cacheElapsed}s)`);
+
+    // ── [2] 인메모리 분류 (DB 호출 없음) ────────────────────────────────────────
     const IDX = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5, G: 6, H: 7, I: 8, J: 9 };
     const EXCLUSION_KEYWORDS = ['삭제점', '제외', '개인', '테스트'];
+    const BZ_PATTERN = /^[가-힣]{1,3}[)）]/;
+
+    // storage.ts 의 private normalizeDealerName 과 동일 로직
+    const normalizeDealerName = (name: string): string => {
+      if (!name) return '';
+      return name.trim()
+        .replace(/^[가-힣]{1,3}[)）]\s*/, '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+    };
+
+    // 인메모리 DR 매칭 (0~4순위 동일 로직)
+    const findDR = (
+      mCode: string, businessName: string,
+      kpNumber: string, subDealerName: string, sourceDealerName: string,
+    ): { found: any | null; isReview: boolean; reviewReason?: string } => {
+      const candidates = drByMCode.get(mCode) ?? [];
+      let existing: any[] = [];
+
+      // 0순위: mCode + businessName 완전 일치
+      existing = candidates.filter(r => r.businessName === businessName);
+
+      // 1순위: mCode + kpNumber + subDealerName
+      if (existing.length === 0 && kpNumber && subDealerName) {
+        existing = candidates.filter(r => r.kpNumber === kpNumber && r.subDealerName === subDealerName);
+      }
+
+      // 2~4순위: 정규화 이름 비교
+      if (existing.length === 0 && candidates.length > 0) {
+        const normSource = normalizeDealerName(sourceDealerName);
+        const normSub    = normalizeDealerName(subDealerName);
+        const normBiz    = normalizeDealerName(businessName);
+
+        // 2순위: normalized source + sub
+        if (normSource) {
+          existing = candidates.filter(r => {
+            const rSource = normalizeDealerName(r.sourceDealerName ?? '');
+            const rSub    = normalizeDealerName(r.subDealerName ?? '');
+            return normSub
+              ? rSource === normSource && rSub === normSub
+              : rSource === normSource && !r.subDealerName;
+          });
+        }
+        // 3순위: normalized businessName
+        if (existing.length === 0 && normBiz && normBiz !== mCode.toLowerCase()) {
+          existing = candidates.filter(r =>
+            normalizeDealerName(r.businessName ?? '') === normBiz
+          );
+        }
+        // 4순위: normalized sourceDealerName 단독
+        if (existing.length === 0 && normSource) {
+          existing = candidates.filter(r =>
+            normalizeDealerName(r.sourceDealerName ?? '') === normSource
+          );
+        }
+      }
+
+      // 다건 → 활성 여부로 좁히기
+      if (existing.length > 1) {
+        const activeOnes = existing.filter(r => r.isActive !== false);
+        if (activeOnes.length === 1) {
+          existing = activeOnes;
+        } else if (activeOnes.length === 0) {
+          existing = [existing[0]];
+        } else {
+          const canonical = [...activeOnes].sort((a, b) => {
+            if (!!a.kpNumber !== !!b.kpNumber) return a.kpNumber ? -1 : 1;
+            return a.id - b.id;
+          })[0];
+          return { found: canonical, isReview: true, reviewReason: 'M코드+이름 기준 활성 원장 2개 이상 — 정리 필요' };
+        }
+      }
+
+      return { found: existing[0] ?? null, isReview: false };
+    };
 
     const stats = {
       totalRows: allDataRows.length,
@@ -922,11 +1019,20 @@ router.post('/api/admin/dealer-registrations/mcode-master-upload',
     const reviewItems: RowDetail[] = [];
     const skippedItems: RowDetail[] = [];
     const failedItems: { row: number; reason: string }[] = [];
-    // 동일 mCode+businessName 조합의 활성 DR 중복은 첫 행에서만 검토필요 등록
     const reviewedDrKeys = new Set<string>();
 
-    // 행 단위 처리 함수 (Promise.all 청크에서 사용)
-    const processRow = async (row: any[], rowIdx: number) => {
+    // 배치 쓰기 대기열 (Map으로 자동 중복 제거)
+    type DRUpdatePayload = { id: number; businessName: string; mCode: string; kpNumber: string | null; regionName: string | null; sourceDealerName: string | null; subDealerName: string | null };
+    type DRCreatePayload = { tempKey: string; mCode: string; businessName: string; kpNumber: string | null; regionName: string | null; sourceDealerName: string | null; subDealerName: string | null };
+    type CCPayload = { code: string; dealerName: string; carrier: string; dealerRegistrationId: number | null; mCode: string | null; channel: string | null; kpNumber: string | null; regionName: string | null; aliasName: string | null; subDealerName: string | null; sourceDealerName: string | null; codeName: string | null; drTempKey: string | null };
+
+    const drUpdateMap = new Map<number, DRUpdatePayload>();   // id → payload
+    const drCreateMap = new Map<string, DRCreatePayload>();   // tempKey → payload
+    const ccUpsertMap = new Map<string, CCPayload>();         // code → payload (마지막 값 우선)
+    const localCCNewSet = new Set<string>();                  // 이번 업로드 중 신규 생성된 CC 코드
+
+    for (let rowIdx = 0; rowIdx < dataRows.length; rowIdx++) {
+      const row = dataRows[rowIdx];
       const rowNum = rowIdx + 2;
       const gc = (idx: number) => String(row[idx] ?? '').trim();
 
@@ -941,8 +1047,7 @@ router.post('/api/admin/dealer-registrations/mcode-master-upload',
       const kpNumber     = gc(IDX.I);
       const region       = gc(IDX.J);
 
-      // 완전 빈 행 skip
-      if (![sourceName, contactCodeB, codeName, subDealer, channel, mCode, contactCodeH, kpNumber, region].some(v => v)) return;
+      if (![sourceName, contactCodeB, codeName, subDealer, channel, mCode, contactCodeH, kpNumber, region].some(v => v)) continue;
       stats.readRows++;
 
       // 제외 키워드 검사
@@ -951,104 +1056,164 @@ router.post('/api/admin/dealer-registrations/mcode-master-upload',
       if (excludeKw) {
         reviewItems.push({ row: rowNum, reason: `제외 키워드 포함: "${excludeKw}"`, mCode, name: codeName || sourceName, subDealer, channel, contactCodeB, contactCodeH });
         stats.needReview++;
-        return;
+        continue;
       }
 
-      // M코드 없으면 검토필요
       if (!mCode) {
         reviewItems.push({ row: rowNum, reason: 'M코드 없음', name: codeName || sourceName, subDealer, channel, contactCodeB, contactCodeH });
         stats.needReview++;
-        return;
+        continue;
       }
 
       const businessName = codeName || sourceName || subDealer || mCode;
       const contactCode  = contactCodeH || contactCodeB;
 
-      // ── 접점코드 판매점명 패턴 검사 ──────────────────────────────────────────
-      // 한글 1~3글자 + ) or ） 로 시작하는 접두어 패턴 (웅), 강), 구) 등)
-      const BZ_PATTERN = /^[가-힣]{1,3}[)）]/;
+      // ── BZ_PATTERN: 접점코드가 판매점명 패턴인 경우 ──────────────────────────
       if (contactCode && BZ_PATTERN.test(contactCode)) {
-        // DR은 공통으로 갱신
-        try {
-          const drResult = await getStorage().upsertDealerRegistrationByMCode({
-            mCode, businessName, sourceDealerName: sourceName, subDealerName: subDealer, kpNumber, regionName: region,
-          });
-          if (drResult.action === 'created') stats.drCreated++;
-          else if (drResult.action === 'updated') stats.drUpdated++;
-        } catch { /* DR 실패 무시 */ }
-
-        if (!contactCodeH) {
-          // H열 없음 + B열 = 판매점명 패턴 → 대표/메인 행 스킵 (CC 미저장, 검토필요 아님)
-          skippedItems.push({
-            row: rowNum,
-            reason: 'H열 접점코드 없음 — 대표/메인 행으로 스킵 (CC 미저장)',
-            mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH,
-          });
-          stats.skippedRows++;
-        } else {
-          // H열 자체가 판매점명 패턴 → 접점코드 오입력, 진짜 검토필요
-          reviewItems.push({
-            row: rowNum,
-            reason: `접점코드(H열)가 판매점명으로 의심됨 — 원장 확인 필요: "${contactCode}"`,
-            mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH,
-          });
-          stats.needReview++;
-        }
-        return;
-      }
-
-      try {
-        // ─── dealer_registrations upsert ───
-        const drResult = await getStorage().upsertDealerRegistrationByMCode({
-          mCode, businessName, sourceDealerName: sourceName, subDealerName: subDealer, kpNumber, regionName: region,
-        });
-
-        if (drResult.action === 'created') stats.drCreated++;
-        else if (drResult.action === 'updated') stats.drUpdated++;
-        else {
-          const drKey = `${mCode}|${businessName}`;
-          if (!reviewedDrKeys.has(drKey)) {
-            reviewedDrKeys.add(drKey);
-            reviewItems.push({ row: rowNum, reason: drResult.reason || 'M코드 중복 검토', mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH });
-            stats.needReview++;
-          } else {
+        // DR 은 갱신/생성 (review 여부 무시, 원본 동작과 동일)
+        const { found: bzDR, isReview: bzReview } = findDR(mCode, businessName, kpNumber, subDealer, sourceName);
+        if (!bzReview) {
+          if (bzDR) {
             stats.drUpdated++;
+            if (!drUpdateMap.has(bzDR.id)) {
+              drUpdateMap.set(bzDR.id, {
+                id: bzDR.id, businessName, mCode,
+                kpNumber: bzDR.kpNumber || kpNumber || null,
+                regionName: bzDR.regionName || region || null,
+                sourceDealerName: sourceName || null,
+                subDealerName: subDealer || null,
+              });
+            }
+          } else {
+            const tempKey = `${mCode}|${businessName}`;
+            if (drCreateMap.has(tempKey)) {
+              stats.drUpdated++;
+            } else {
+              stats.drCreated++;
+              drCreateMap.set(tempKey, { tempKey, mCode, businessName, kpNumber: kpNumber || null, regionName: region || null, sourceDealerName: sourceName || null, subDealerName: subDealer || null });
+            }
           }
         }
-
-        // ─── contact_codes upsert ───
-        if (contactCode) {
-          const ccResult = await getStorage().upsertContactCode({
-            code: contactCode,
-            dealerName: businessName,
-            carrier: '미지정',
-            dealerRegistrationId: drResult.record?.id ?? null,
-            mCode, channel, kpNumber, regionName: region,
-            aliasName: alias, subDealerName: subDealer,
-            sourceDealerName: sourceName,
-            codeName: codeName || contactCodeB || contactCode,
-          });
-          if (ccResult.action === 'created') stats.ccCreated++;
-          else stats.ccUpdated++;
+        // CC 는 저장하지 않음
+        if (!contactCodeH) {
+          skippedItems.push({ row: rowNum, reason: 'H열 접점코드 없음 — 대표/메인 행으로 스킵 (CC 미저장)', mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH });
+          stats.skippedRows++;
+        } else {
+          reviewItems.push({ row: rowNum, reason: `접점코드(H열)가 판매점명으로 의심됨 — 원장 확인 필요: "${contactCode}"`, mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH });
+          stats.needReview++;
         }
-      } catch (err: any) {
-        failedItems.push({ row: rowNum, reason: (err.message ?? '').substring(0, 120) });
-        stats.failed++;
+        continue;
       }
-    };
 
-    // 30개씩 동시 처리 (순차 대비 ~30x 속도 향상)
-    const CONCURRENCY = 30;
-    for (let i = 0; i < dataRows.length; i += CONCURRENCY) {
-      const chunk = dataRows.slice(i, i + CONCURRENCY);
-      await Promise.all(chunk.map((row, j) => processRow(row, i + j)));
+      // ── 일반 행 처리 ─────────────────────────────────────────────────────────
+      const { found: drRecord, isReview, reviewReason } = findDR(mCode, businessName, kpNumber, subDealer, sourceName);
 
-      // 1000행 단위 진행 로그
-      const processed = Math.min(i + CONCURRENCY, dataRows.length);
-      if (processed % 1000 < CONCURRENCY || processed === dataRows.length) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[mcode-master-upload] progress: ${processed}/${dataRows.length} rows (${elapsed}s) — dr+${stats.drCreated}/~${stats.drUpdated} cc+${stats.ccCreated}/~${stats.ccUpdated} review:${stats.needReview} fail:${stats.failed}`);
+      let resolvedDRId: number | null = null;
+      let drTempKey: string | null = null;
+
+      if (isReview) {
+        const drKey = `${mCode}|${businessName}`;
+        if (!reviewedDrKeys.has(drKey)) {
+          reviewedDrKeys.add(drKey);
+          reviewItems.push({ row: rowNum, reason: reviewReason || 'M코드 중복 검토', mCode, name: businessName, subDealer, channel, contactCodeB, contactCodeH });
+          stats.needReview++;
+        } else {
+          stats.drUpdated++;
+        }
+        resolvedDRId = drRecord?.id ?? null;
+      } else if (drRecord) {
+        stats.drUpdated++;
+        resolvedDRId = drRecord.id;
+        if (!drUpdateMap.has(drRecord.id)) {
+          drUpdateMap.set(drRecord.id, {
+            id: drRecord.id, businessName, mCode,
+            kpNumber: drRecord.kpNumber || kpNumber || null,
+            regionName: drRecord.regionName || region || null,
+            sourceDealerName: sourceName || null,
+            subDealerName: subDealer || null,
+          });
+        }
+      } else {
+        // 신규 DR
+        const tempKey = `${mCode}|${businessName}`;
+        if (drCreateMap.has(tempKey)) {
+          stats.drUpdated++; // 동일 파일에서 두 번째 등장 → 첫 행이 이미 생성 예약
+        } else {
+          stats.drCreated++;
+          drCreateMap.set(tempKey, { tempKey, mCode, businessName, kpNumber: kpNumber || null, regionName: region || null, sourceDealerName: sourceName || null, subDealerName: subDealer || null });
+        }
+        drTempKey = tempKey;
       }
+
+      // ── CC 처리 ──────────────────────────────────────────────────────────────
+      if (contactCode) {
+        const isNewCC = !ccByCode.has(contactCode) && !localCCNewSet.has(contactCode);
+        if (isNewCC) {
+          stats.ccCreated++;
+          localCCNewSet.add(contactCode);
+        } else {
+          stats.ccUpdated++;
+        }
+        ccUpsertMap.set(contactCode, {
+          code: contactCode,
+          dealerName: businessName,
+          carrier: '미지정',
+          dealerRegistrationId: resolvedDRId,
+          mCode: mCode || null,
+          channel: channel || null,
+          kpNumber: kpNumber || null,
+          regionName: region || null,
+          aliasName: alias || null,
+          subDealerName: subDealer || null,
+          sourceDealerName: sourceName || null,
+          codeName: codeName || contactCodeB || contactCode || null,
+          drTempKey,
+        });
+      }
+    }
+
+    const classifyElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[mcode-master-upload] classify done (${classifyElapsed}s) — drCreate:${drCreateMap.size} drUpdate:${drUpdateMap.size} cc:${ccUpsertMap.size}`);
+
+    // ── [3] 배치 쓰기 ────────────────────────────────────────────────────────
+    // 3a. 신규 DR 일괄 INSERT
+    let newDRs: any[] = [];
+    if (drCreateMap.size > 0) {
+      newDRs = await getStorage().batchCreateDealerRegistrations(Array.from(drCreateMap.values()));
+      console.log(`[mcode-master-upload] DR create done — ${newDRs.length} records (${((Date.now()-startTime)/1000).toFixed(1)}s)`);
+      // 캐시 갱신 (CC dealerRegistrationId 해결용)
+      for (const dr of newDRs) {
+        const arr = drByMCode.get(dr.mCode) ?? [];
+        arr.push(dr);
+        drByMCode.set(dr.mCode, arr);
+      }
+    }
+
+    // tempKey → 신규 DR 매핑
+    const tempKeyToDR = new Map<string, any>();
+    for (const dr of newDRs) {
+      const match = Array.from(drCreateMap.values()).find(c => c.mCode === dr.mCode && c.businessName === dr.businessName);
+      if (match) tempKeyToDR.set(match.tempKey, dr);
+    }
+
+    // CC 의 dealerRegistrationId 해결 (신규 DR)
+    for (const cc of ccUpsertMap.values()) {
+      if (cc.drTempKey && cc.dealerRegistrationId === null) {
+        const newDR = tempKeyToDR.get(cc.drTempKey);
+        if (newDR) cc.dealerRegistrationId = newDR.id;
+      }
+    }
+
+    // 3b. 기존 DR 일괄 UPDATE
+    if (drUpdateMap.size > 0) {
+      await getStorage().batchUpdateDealerRegistrations(Array.from(drUpdateMap.values()));
+      console.log(`[mcode-master-upload] DR update done — ${drUpdateMap.size} records (${((Date.now()-startTime)/1000).toFixed(1)}s)`);
+    }
+
+    // 3c. CC 일괄 UPSERT (INSERT ON CONFLICT DO UPDATE)
+    if (ccUpsertMap.size > 0) {
+      await getStorage().batchUpsertContactCodes(Array.from(ccUpsertMap.values()));
+      console.log(`[mcode-master-upload] CC upsert done — ${ccUpsertMap.size} records (${((Date.now()-startTime)/1000).toFixed(1)}s)`);
     }
 
     const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);

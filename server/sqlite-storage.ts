@@ -179,7 +179,13 @@ export class SQLiteStorage implements IStorage {
     const results = await this.db.insert(schema.contactCodes).values(codes).returning();
     return results;
   }
-  
+
+  async getDealerRegistrationsForBulkUpload(): Promise<any[]> { return []; }
+  async getContactCodesForBulkUpload(): Promise<any[]> { return []; }
+  async batchCreateDealerRegistrations(_rows: any[]): Promise<any[]> { return []; }
+  async batchUpdateDealerRegistrations(_updates: any[]): Promise<void> { }
+  async batchUpsertContactCodes(_rows: any[]): Promise<void> { }
+
   // 통신사 관련 메서드 (타입 변환 적용)
   async getCarriers(): Promise<Carrier[]> {
     const carriers = await this.db.select().from(schema.carriers).orderBy(schema.carriers.displayOrder);
