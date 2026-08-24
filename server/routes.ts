@@ -5310,6 +5310,13 @@ router.post('/api/admin/policies/:id/files', requireAdmin, async (req, res) => {
 // STEP 5D-2: 개통완료 엑셀 업로드 API
 // ============================================================
 
+const normalizeCustomerType = (v: string | null | undefined): string => {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (['1', '신규', '신', 'new'].includes(s)) return '1';
+  if (['2', '번이', '번호이동', 'mnp', '이동'].includes(s)) return '2';
+  return String(v ?? '').trim();
+};
+
 // POST /api/admin/activations/upload
 router.post('/api/admin/activations/upload', requireAdmin, upload.single('file'), async (req, res) => {
   try {
@@ -5650,7 +5657,7 @@ router.post('/api/admin/activations/upload', requireAdmin, upload.single('file')
         matchingBasis,
         simCount,
         planName: m['planName'],
-        customerType: m['customerType'],
+        customerType: normalizeCustomerType(m['customerType']),
         nationalityType: m['nationalityType'] as string,
         previousCarrier: m['previousCarrier'],
         bundleType: m['bundleType'],
@@ -5739,7 +5746,7 @@ router.post('/api/admin/settlement/match', requireAdmin, async (req, res) => {
     const matchRow = (activation: any, row: any, exclude: Set<string>): 'exact' | 'wildcard' | 'none' => {
       if (activation.channel !== row.channel) return 'none';
       if (activation.planName !== row.planName) return 'none';
-      if (normalize(activation.customerType) !== normalize(row.customerType)) return 'none';
+      if (normalizeCustomerType(activation.customerType) !== normalizeCustomerType(row.customerType)) return 'none';
 
       // 국적 매칭 (3-tier)
       const actNat = normalize(activation.nationalityType || '내국인');
@@ -5924,7 +5931,7 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
     const matchRow = (activation: any, row: any, exclude: Set<string>): 'exact' | 'wildcard' | 'none' => {
       if (activation.channel !== row.channel) return 'none';
       if (activation.planName !== row.planName) return 'none';
-      if (normalize(activation.customerType) !== normalize(row.customerType)) return 'none';
+      if (normalizeCustomerType(activation.customerType) !== normalizeCustomerType(row.customerType)) return 'none';
 
       const actNat = normalize(activation.nationalityType || '내국인');
       const rowNat = normalize(row.nationalityType || '');
