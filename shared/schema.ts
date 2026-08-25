@@ -405,10 +405,17 @@ export const policyRows = pgTable("policy_rows", {
   rebateAmount: decimal("rebate_amount", { precision: 10, scale: 2 }).notNull(),
   isActive: boolean("is_active").default(true),
   memo: text("memo"),
+  policyTerm: varchar("policy_term", { length: 50 }),
+  effectiveBasis: varchar("effective_basis", { length: 100 }),
+  sourceSheetName: varchar("source_sheet_name", { length: 100 }),
+  sourceFileName: varchar("source_file_name", { length: 255 }),
+  isRevision: boolean("is_revision").default(false),
+  uploadedBatchId: varchar("uploaded_batch_id", { length: 50 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("policy_rows_version_channel_plan_idx").on(table.policyVersionId, table.channel, table.planName),
   index("policy_rows_version_channel_plan_sim_idx").on(table.policyVersionId, table.channel, table.planName, table.simCount),
+  index("policy_rows_version_channel_term_idx").on(table.policyVersionId, table.channel, table.policyTerm),
 ]);
 
 // 정책 원본 파일 보관 테이블

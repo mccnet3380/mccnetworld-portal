@@ -321,6 +321,7 @@ export interface IStorage {
   updatePolicyRow(id: number, data: any): Promise<any>;
   deletePolicyRow(id: number): Promise<void>;
   deletePolicyRowsByVersionId(policyVersionId: number): Promise<number>;
+  deactivatePolicyRowsByChannelTerm(policyVersionId: number, channel: string, policyTerm: string): Promise<number>;
 
   // Policy files
   getPolicyFilesByVersionId(policyVersionId: number): Promise<any[]>;
@@ -3014,6 +3015,21 @@ export class PostgreSQLStorage implements IStorage {
     return this.withDatabase(async (db) => {
       const result = await db.delete(policyRows)
         .where(eq(policyRows.policyVersionId, policyVersionId))
+        .returning();
+      return result.length;
+    });
+  }
+
+  async deactivatePolicyRowsByChannelTerm(policyVersionId: number, channel: string, policyTerm: string): Promise<number> {
+    return this.withDatabase(async (db) => {
+      const result = await db.update(policyRows)
+        .set({ isActive: false })
+        .where(and(
+          eq(policyRows.policyVersionId, policyVersionId),
+          eq(policyRows.channel, channel),
+          eq(policyRows.policyTerm, policyTerm),
+          eq(policyRows.isActive, true),
+        ))
         .returning();
       return result.length;
     });

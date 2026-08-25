@@ -5059,6 +5059,213 @@ router.post('/api/admin/policies/upload-excel', requireAdmin, upload.single('fil
   }
 });
 
+// 8-3. POST /api/admin/policies/upload-channel-excel — 채널별 수정파일 다중시트 업로드 (B안: 소프트삭제+재삽입)
+// 기존 upload-excel API와 별도 — 기존 API는 절대 변경하지 않음
+router.post('/api/admin/policies/upload-channel-excel', requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
+
+    const policyVersionIdParam = req.body.policyVersionId ? parseInt(req.body.policyVersionId, 10) : null;
+    if (!policyVersionIdParam || isNaN(policyVersionIdParam)) {
+      return res.status(400).json({ error: 'policyVersionId는 필수입니다. 채널별 업로드는 반드시 기존 정책 차수를 선택해야 합니다.' });
+    }
+
+    const policyVersion = await getStorage().getPolicyVersionById(policyVersionIdParam);
+    if (!policyVersion) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    // Chrome sends UTF-8 bytes in Content-Disposition; busboy decodes as latin1.
+    // Recover original UTF-8 by reinterpreting the latin1 code-points as raw bytes.
+    const sourceFileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    const uploadedBatchId = `BATCH-${Date.now()}`;
+
+    const EXCLUDE_SHEETS = new Set(['검토필요']);
+
+    // 시트명 파싱: 8월2차_14일접수_수정 → { policyTerm, effectiveBasis, isRevision }
+    function parseChannelSheetName(name: string) {
+      const m = name.match(/^(\d+)월(\d+)차(?:_(\d+)일(?:(\d+)시)?접수)?(_수정)?$/);
+      if (!m) return null;
+      const [, month, order, day, hour, rev] = m;
+      const policyTerm = `${month}월${order}차`;
+      const effectiveBasis = day
+        ? `${day}일${hour ? hour + '시' : ''}접수`
+        : null;
+      return { policyTerm, effectiveBasis, isRevision: !!rev };
+    }
+
+    const results: Array<{
+      sheetName: string;
+      policyTerm: string;
+      deactivated: number;
+      inserted: number;
+      skipped?: number;
+    }> = [];
+    const warnings: string[] = [];
+    const errors: string[] = [];
+
+    for (let si = 0; si < wb.SheetNames.length; si++) {
+      const sheetName = wb.SheetNames[si];
+
+      // 검토필요 시트 제외
+      if (EXCLUDE_SHEETS.has(sheetName)) {
+        warnings.push(`[${sheetName}] 검토필요 시트 — 제외`);
+        continue;
+      }
+
+      // 숨김 시트 제외
+      const sheetState = (wb.Workbook?.Sheets?.[si] as any)?.state;
+      if (sheetState === 'hidden' || sheetState === 'veryHidden') {
+        warnings.push(`[${sheetName}] 숨김 시트 — 제외`);
+        continue;
+      }
+
+      // 시트명 파싱
+      const parsed = parseChannelSheetName(sheetName);
+      if (!parsed) {
+        warnings.push(`[${sheetName}] 시트명 파싱 실패 (예: 8월2차_14일접수) — 건너뜀`);
+        continue;
+      }
+      const { policyTerm, effectiveBasis, isRevision } = parsed;
+
+      const ws = wb.Sheets[sheetName];
+      if (!ws) { warnings.push(`[${sheetName}] 시트 데이터 없음 — 건너뜀`); continue; }
+
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
+      if (aoa.length < 2) { warnings.push(`[${sheetName}] 데이터 행 없음 — 건너뜀`); continue; }
+
+      const headers = (aoa[0] as any[]).map((h: any) => String(h ?? '').trim());
+
+      const idxChannel  = headers.indexOf('채널');
+      const idxPlanName = headers.indexOf('요금제');
+
+      if (idxChannel < 0 || idxPlanName < 0) {
+        warnings.push(`[${sheetName}] "채널"/"요금제" 헤더 없음 — 건너뜀`);
+        continue;
+      }
+
+      const idxNatNew      = headers.indexOf('내국인_신규');
+      const idxNatPort     = headers.indexOf('내국인_번이');
+      const idxForeignNew  = headers.indexOf('외국인_신규');
+      const idxForeignPort = headers.indexOf('외국인_번이');
+      const idxBundle      = headers.indexOf('결합조건');
+      const idxAddSvc      = headers.indexOf('부가서비스조건');
+      const idxRegFee      = headers.indexOf('가입비조건');
+      const idxMemo        = headers.indexOf('메모');
+
+      const isNationalityFmt = idxNatNew >= 0 || idxNatPort >= 0 || idxForeignNew >= 0 || idxForeignPort >= 0;
+
+      if (!isNationalityFmt) {
+        warnings.push(`[${sheetName}] 10컬럼 국적형 헤더 없음 (내국인_신규 등) — 건너뜀`);
+        continue;
+      }
+
+      // 유효 데이터 행만 추출 (채널+요금제 모두 있는 행, ※ 가이드 행 자동 제외)
+      const dataRows = (aoa.slice(1) as any[][]).filter(r =>
+        String(r[idxChannel] ?? '').trim() && String(r[idxPlanName] ?? '').trim()
+      );
+
+      if (dataRows.length === 0) {
+        warnings.push(`[${sheetName}] 유효 데이터 행 없음 — 건너뜀`);
+        continue;
+      }
+
+      // 이 시트의 첫 번째 채널값 (시트 전체가 동일 채널이어야 함)
+      const sheetChannel = String(dataRows[0][idxChannel]).trim();
+
+      // B안: 동일 policyVersionId + channel + policyTerm 기존 행 소프트삭제
+      let deactivated = 0;
+      try {
+        deactivated = await getStorage().deactivatePolicyRowsByChannelTerm(
+          policyVersionIdParam, sheetChannel, policyTerm
+        );
+      } catch (e: any) {
+        errors.push(`[${sheetName}] 기존 행 비활성화 오류: ${e.message}`);
+        continue;
+      }
+
+      // 새 행 구성
+      const toInsert: any[] = [];
+      let sheetSkipped = 0;
+
+      for (let ri = 0; ri < dataRows.length; ri++) {
+        const row      = dataRows[ri];
+        const rowNum   = ri + 2;
+        const channel  = String(row[idxChannel]  ?? '').trim();
+        const planName = String(row[idxPlanName] ?? '').trim();
+        if (!channel || !planName) continue;
+
+        const bundleType = idxBundle >= 0 ? (String(row[idxBundle] ?? '').trim() || null) : null;
+        const addService = idxAddSvc >= 0 ? (String(row[idxAddSvc] ?? '').trim() || null) : null;
+        const regFeeType = idxRegFee >= 0 ? (String(row[idxRegFee] ?? '').trim() || null) : null;
+        const memo       = idxMemo   >= 0 ? (String(row[idxMemo]   ?? '').trim() || null) : null;
+
+        const candidates: Array<{ ct: string; nat: string; rawVal: any }> = [];
+        if (idxNatNew     >= 0 && row[idxNatNew]      !== '' && row[idxNatNew]      != null) candidates.push({ ct: '1', nat: '내국인', rawVal: row[idxNatNew] });
+        if (idxNatPort    >= 0 && row[idxNatPort]     !== '' && row[idxNatPort]     != null) candidates.push({ ct: '2', nat: '내국인', rawVal: row[idxNatPort] });
+        if (idxForeignNew >= 0 && row[idxForeignNew]  !== '' && row[idxForeignNew]  != null) candidates.push({ ct: '1', nat: '외국인', rawVal: row[idxForeignNew] });
+        if (idxForeignPort>= 0 && row[idxForeignPort] !== '' && row[idxForeignPort] != null) candidates.push({ ct: '2', nat: '외국인', rawVal: row[idxForeignPort] });
+
+        if (candidates.length === 0) { sheetSkipped++; continue; }
+
+        for (const { ct, nat, rawVal } of candidates) {
+          const parsed2 = parseFloat(String(rawVal).replace(/,/g, ''));
+          if (isNaN(parsed2) || parsed2 <= 0) {
+            errors.push(`[${sheetName}] 행${rowNum}: 유효하지 않은 금액 "${rawVal}" — 건너뜀`);
+            sheetSkipped++;
+            continue;
+          }
+          const rebateAmount = Math.round(parsed2 * 10000);
+          toInsert.push({
+            policyVersionId: policyVersionIdParam,
+            channel, planName,
+            customerType: ct,
+            nationalityType: nat,
+            simCount: null,
+            bundleType, addService, regFeeType,
+            rebateAmount: String(rebateAmount),
+            isActive: true,
+            memo,
+            policyTerm,
+            effectiveBasis,
+            sourceSheetName: sheetName,
+            sourceFileName,
+            isRevision,
+            uploadedBatchId,
+          });
+        }
+      }
+
+      let inserted = 0;
+      if (toInsert.length > 0) {
+        try {
+          inserted = await getStorage().bulkCreatePolicyRows(toInsert);
+        } catch (e: any) {
+          errors.push(`[${sheetName}] 행 삽입 오류: ${e.message}`);
+          continue;
+        }
+      }
+
+      results.push({ sheetName, policyTerm, deactivated, inserted, skipped: sheetSkipped });
+    }
+
+    res.json({
+      success: true,
+      versionId: policyVersion.id,
+      versionName: policyVersion.policyName,
+      uploadedBatchId,
+      totalSheets: wb.SheetNames.length,
+      processedSheets: results.length,
+      skippedSheets: wb.SheetNames.length - results.length,
+      sheets: results,
+      warnings,
+      errors,
+    });
+  } catch (error: any) {
+    console.error('upload-channel-excel error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 9a. PATCH /api/admin/policies/:id/rows/:rowId — 단가 행 조건값 수정
 router.patch('/api/admin/policies/:id/rows/:rowId', requireAdmin, async (req, res) => {
   try {

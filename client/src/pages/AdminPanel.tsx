@@ -3414,6 +3414,14 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const [peResult, setPeResult] = useState<any>(null);
   const peFileRef = useRef<HTMLInputElement>(null);
 
+  // 채널별 수정파일 업로드 상태
+  const [chOpen, setChOpen] = useState(false);
+  const [chFile, setChFile] = useState<File | null>(null);
+  const [chPvId, setChPvId] = useState<string>('');
+  const [chUploading, setChUploading] = useState(false);
+  const [chResult, setChResult] = useState<any>(null);
+  const chFileRef = useRef<HTMLInputElement>(null);
+
   // Queries
   const { data: dealers, isLoading: dealersLoading } = useQuery({
     queryKey: ['/api/admin/dealers'],
@@ -3889,6 +3897,36 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       toast({ title: '업로드 실패', description: err.message, variant: 'destructive' });
     } finally {
       setPeUploading(false);
+    }
+  };
+
+  const handleChUpload = async () => {
+    if (!chFile) { toast({ title: '오류', description: '파일을 선택하세요.', variant: 'destructive' }); return; }
+    if (!chPvId) { toast({ title: '오류', description: '정책 차수를 선택하세요.', variant: 'destructive' }); return; }
+    setChUploading(true);
+    setChResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', chFile);
+      formData.append('policyVersionId', chPvId);
+      const sessionId = useAuth.getState().sessionId;
+      const resp = await fetch('/api/admin/policies/upload-channel-excel', {
+        method: 'POST',
+        headers: sessionId ? { Authorization: `Bearer ${sessionId}` } : {},
+        body: formData,
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || '업로드 실패');
+      setChResult(result);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies'] });
+      if (result.versionId) {
+        setPvSelectedId(result.versionId);
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/policies', result.versionId, 'rows'] });
+      }
+    } catch (err: any) {
+      toast({ title: '업로드 실패', description: err.message, variant: 'destructive' });
+    } finally {
+      setChUploading(false);
     }
   };
 
@@ -10648,6 +10686,9 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                       <Button size="sm" variant="outline" onClick={() => { setPeFile(null); setPePvId(pvSelectedId ? String(pvSelectedId) : '__auto__'); setPeResult(null); setPeOpen(true); if (peFileRef.current) peFileRef.current.value = ''; }}>
                         엑셀 업로드
                       </Button>
+                      <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => { setChFile(null); setChPvId(pvSelectedId ? String(pvSelectedId) : ''); setChResult(null); setChOpen(true); if (chFileRef.current) chFileRef.current.value = ''; }}>
+                        채널별 수정파일 업로드
+                      </Button>
                       {pvSelectedId && (
                         <Button size="sm" onClick={() => { setPrForm({ channel: '', planName: '', customerType: '1', simCount: '', bundleType: '', addService: '', regFeeType: '', rebateAmount: '', memo: '' }); setPrCreateOpen(true); }}>
                           <Plus className="h-3 w-3 mr-1" />행 추가
@@ -11700,6 +11741,93 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
           </TabsContent>
 
         </Tabs>
+
+        {/* 채널별 수정파일 업로드 다이얼로그 */}
+        <Dialog open={chOpen} onOpenChange={o => { setChOpen(o); if (!o) setChResult(null); }}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>채널별 수정파일 업로드</DialogTitle>
+              <DialogDescription>
+                사용자가 수정한 채널별 *_upload.xlsx 파일을 업로드합니다. 모든 차수 시트가 자동 처리됩니다.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded bg-blue-50 border border-blue-200 p-3 text-xs space-y-1">
+                <div className="font-semibold text-blue-800">업로드 규칙</div>
+                <div className="text-blue-700">· 정책 차수 선택 필수 (자동 생성 불가)</div>
+                <div className="text-blue-700">· 파일 내 모든 차수 시트를 순회하여 처리</div>
+                <div className="text-blue-700">· 검토필요 시트·숨김 시트 자동 제외</div>
+                <div className="text-blue-700">· 같은 채널+차수의 기존 행은 비활성화 후 새 행 삽입 (소프트 삭제)</div>
+                <div className="text-blue-700">· 시트명 형식: 8월2차 / 8월2차_14일접수 / 8월3차_14일접수_수정</div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-sm">정책 차수 선택 <span className="text-red-500">*</span></Label>
+                <Select value={chPvId} onValueChange={setChPvId}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="정책 차수를 선택하세요 (필수)" /></SelectTrigger>
+                  <SelectContent>
+                    {(policyVersions ?? []).map((pv: any) => (
+                      <SelectItem key={pv.id} value={String(pv.id)}>{pv.policyName} ({pv.policyNo})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!chPvId && <p className="text-xs text-red-500">채널별 업로드는 정책 차수 선택이 필수입니다.</p>}
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-sm">파일 선택 <span className="text-red-500">*</span></Label>
+                <input
+                  ref={chFileRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  onChange={e => setChFile(e.target.files?.[0] ?? null)}
+                />
+                <p className="text-xs text-gray-400">예: 엠모바일_upload.xlsx, 텔링크_upload.xlsx 등</p>
+              </div>
+
+              {chResult && (
+                <div className="rounded bg-green-50 border border-green-200 p-3 text-sm space-y-2">
+                  <div className="font-medium text-green-800">
+                    업로드 완료 — {chResult.versionName} (ID: {chResult.versionId})
+                  </div>
+                  <div className="text-green-700 text-xs space-y-0.5">
+                    <div>총 시트: {chResult.totalSheets}개 / 처리: <strong>{chResult.processedSheets}</strong>개 / skip: {chResult.skippedSheets}개</div>
+                    <div>배치ID: {chResult.uploadedBatchId}</div>
+                  </div>
+                  {chResult.sheets?.length > 0 && (
+                    <div className="text-xs space-y-0.5 mt-1">
+                      <div className="font-medium text-gray-700">시트별 결과:</div>
+                      {chResult.sheets.map((s: any, i: number) => (
+                        <div key={i} className="text-gray-600 pl-2">
+                          [{s.sheetName}] 비활성화: {s.deactivated}건 / 등록: <strong>{s.inserted}</strong>건{s.skipped ? ` / skip: ${s.skipped}건` : ''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {chResult.warnings?.length > 0 && (
+                    <div className="text-yellow-700 text-xs mt-1">
+                      경고 {chResult.warnings.length}건: {chResult.warnings.slice(0, 5).join(' | ')}
+                    </div>
+                  )}
+                  {chResult.errors?.length > 0 && (
+                    <div className="text-red-600 text-xs mt-1">
+                      오류 {chResult.errors.length}건: {chResult.errors.slice(0, 3).join('; ')}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setChOpen(false)}>닫기</Button>
+                <Button disabled={chUploading || !chFile || !chPvId} onClick={handleChUpload} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  {chUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                  {chUploading ? '업로드 중...' : '채널파일 업로드'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Edit User Dialog */}
         <Dialog open={editUserDialogOpen} onOpenChange={setEditUserDialogOpen}>
