@@ -10696,7 +10696,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                             <div className="flex gap-1 shrink-0">
                               <Button
                                 size="sm" variant="ghost" className="h-6 w-6 p-0"
-                                onClick={e => { e.stopPropagation(); setPvEditTarget(pv); setPvForm({ policyNo: pv.policyNo, policyName: pv.policyName, effectiveFrom: pv.effectiveFrom?.slice(0,10) ?? '', effectiveTo: pv.effectiveTo?.slice(0,10) ?? '', memo: pv.memo ?? '' }); setPvEditOpen(true); }}
+                                onClick={e => { e.stopPropagation(); setPvEditTarget(pv); setPvForm({ policyNo: pv.policyNo, policyName: pv.policyName, effectiveFrom: pv.effectiveFrom?.slice(0,16) ?? '', effectiveTo: pv.effectiveTo?.slice(0,16) ?? '', memo: pv.memo ?? '' }); setPvEditOpen(true); }}
                               ><Edit className="h-3 w-3" /></Button>
                               {pv.isActive && (
                                 <Button
@@ -11359,8 +11359,8 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   {[
                     { label: '정책번호 *', key: 'policyNo', ph: 'POL-2025-001' },
                     { label: '정책명 *', key: 'policyName', ph: '2025년 1차 정책' },
-                    { label: '적용 시작일 *', key: 'effectiveFrom', type: 'date' },
-                    { label: '적용 종료일', key: 'effectiveTo', type: 'date' },
+                    { label: '적용 시작일시 *', key: 'effectiveFrom', type: 'datetime-local' },
+                    { label: '적용 종료일시', key: 'effectiveTo', type: 'datetime-local' },
                   ].map(f => (
                     <div key={f.key} className="space-y-1">
                       <Label className="text-sm">{f.label}</Label>
@@ -11404,8 +11404,8 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   {[
                     { label: '정책번호', key: 'policyNo' },
                     { label: '정책명', key: 'policyName' },
-                    { label: '적용 시작일', key: 'effectiveFrom', type: 'date' },
-                    { label: '적용 종료일', key: 'effectiveTo', type: 'date' },
+                    { label: '적용 시작일시', key: 'effectiveFrom', type: 'datetime-local' },
+                    { label: '적용 종료일시', key: 'effectiveTo', type: 'datetime-local' },
                   ].map(f => (
                     <div key={f.key} className="space-y-1">
                       <Label className="text-sm">{f.label}</Label>

@@ -835,6 +835,7 @@ export class SQLiteStorage implements IStorage {
   async getPolicyVersions(): Promise<any[]> { return []; }
   async getPolicyVersionById(_id: number): Promise<any | null> { return null; }
   async getActivePolicyVersion(): Promise<any | null> { return null; }
+  async getActivePolicyVersionAt(_at: Date): Promise<any | null> { return null; }
   async createPolicyVersion(data: any): Promise<any> { return data; }
   async updatePolicyVersion(_id: number, data: any): Promise<any> { return data; }
   async deletePolicyVersion(_id: number): Promise<void> { }

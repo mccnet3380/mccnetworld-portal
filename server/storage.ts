@@ -1,4 +1,4 @@
-import { eq, count, sql, and, gte, lt, lte, inArray, isNull, desc, or, getTableColumns } from "drizzle-orm";
+import { eq, count, sql, and, gte, gt, lt, lte, inArray, isNull, desc, or, getTableColumns } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
@@ -310,6 +310,7 @@ export interface IStorage {
   getPolicyVersions(): Promise<any[]>;
   getPolicyVersionById(id: number): Promise<any | null>;
   getActivePolicyVersion(): Promise<any | null>;
+  getActivePolicyVersionAt(at: Date): Promise<any | null>;
   createPolicyVersion(data: any): Promise<any>;
   updatePolicyVersion(id: number, data: any): Promise<any>;
   deletePolicyVersion(id: number): Promise<void>;
@@ -2942,6 +2943,25 @@ export class PostgreSQLStorage implements IStorage {
     return this.withDatabase(async (db) => {
       const result = await db.select().from(policyVersions)
         .where(eq(policyVersions.isActive, true))
+        .orderBy(desc(policyVersions.effectiveFrom))
+        .limit(1);
+      return result[0] || null;
+    });
+  }
+
+  async getActivePolicyVersionAt(at: Date): Promise<any | null> {
+    return this.withDatabase(async (db) => {
+      const result = await db.select().from(policyVersions)
+        .where(
+          and(
+            eq(policyVersions.isActive, true),
+            lte(policyVersions.effectiveFrom, at),
+            or(
+              isNull(policyVersions.effectiveTo),
+              gt(policyVersions.effectiveTo, at)
+            )
+          )
+        )
         .orderBy(desc(policyVersions.effectiveFrom))
         .limit(1);
       return result[0] || null;

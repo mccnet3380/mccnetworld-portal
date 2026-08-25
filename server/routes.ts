@@ -5944,22 +5944,42 @@ router.post('/api/admin/settlement/match', requireAdmin, async (req, res) => {
   try {
     const { policyVersionId, from, to, channel } = req.body;
 
-    // 1. 정책 차수 조회
-    let policyVersion: any;
-    if (policyVersionId) {
-      policyVersion = await getStorage().getPolicyVersionById(Number(policyVersionId));
-      if (!policyVersion) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
-    } else {
-      policyVersion = await getStorage().getActivePolicyVersion();
-      if (!policyVersion) return res.status(400).json({ error: '활성화된 정책 차수가 없습니다. policyVersionId를 직접 지정해 주세요.' });
+    // 1. 정책 차수 조회 (A안: policyVersionId 명시 시 고정, 없으면 접수일시 기준 자동 선택)
+    const fixedPv: any = policyVersionId
+      ? await getStorage().getPolicyVersionById(Number(policyVersionId))
+      : null;
+    if (policyVersionId && !fixedPv) {
+      return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
     }
 
-    // 2. 해당 정책의 활성 단가 행 전체 로드 (인메모리 매칭)
-    const allRows = await getStorage().getPolicyRowsByVersionId(policyVersion.id);
-    const activeRows = allRows.filter((r: any) => r.isActive !== false);
-    if (activeRows.length === 0) {
-      return res.status(400).json({ error: '해당 정책 차수에 활성 단가 행이 없습니다.' });
+    // 2. 정책 차수별 단가 행 lazy 캐시 (성능: 같은 차수 반복 조회 방지)
+    const pvRowCache = new Map<number, any[]>();
+    const getPvRows = async (pvId: number): Promise<any[]> => {
+      if (!pvRowCache.has(pvId)) {
+        const rows = await getStorage().getPolicyRowsByVersionId(pvId);
+        pvRowCache.set(pvId, rows.filter((r: any) => r.isActive !== false));
+      }
+      return pvRowCache.get(pvId)!;
+    };
+    if (fixedPv) {
+      const rows = await getPvRows(fixedPv.id);
+      if (rows.length === 0) {
+        return res.status(400).json({ error: '해당 정책 차수에 활성 단가 행이 없습니다.' });
+      }
     }
+
+    // 자동 선택용: 활성 정책 차수 전체를 effectiveFrom DESC로 인메모리 로드
+    const allActivePvs: any[] = policyVersionId
+      ? []
+      : (await getStorage().getPolicyVersions()).filter((p: any) => p.isActive);
+    const findPvAt = (at: Date): any | null => {
+      for (const p of allActivePvs) {
+        const from = new Date(p.effectiveFrom);
+        const to = p.effectiveTo ? new Date(p.effectiveTo) : null;
+        if (from <= at && (!to || to > at)) return p;
+      }
+      return null;
+    };
 
     // 3. 미정산 activation_records 조회 (settlement_item 없는 것만)
     const db = await getDatabase();
@@ -6039,6 +6059,16 @@ router.post('/api/admin/settlement/match', requireAdmin, async (req, res) => {
 
     for (const activation of unmatched) {
       try {
+        // 이 activation에 적용할 정책 차수 결정
+        let pv: any;
+        if (fixedPv) {
+          pv = fixedPv;
+        } else {
+          const refDatetime = activation.receptionDatetime ?? activation.activationDatetime;
+          pv = refDatetime ? findPvAt(new Date(refDatetime)) : null;
+        }
+        const activeRows = pv ? await getPvRows(pv.id) : [];
+
         let matchedRow: any = null;
         let matchStatus = 'POLICY_NOT_FOUND';
 
@@ -6067,9 +6097,9 @@ router.post('/api/admin/settlement/match', requireAdmin, async (req, res) => {
         // 추가금/차감금 자동 계산 (매칭된 정책 차수의 adjustment_rules 기준)
         let adjAddAmount: string | null = null;
         let adjDeductAmount: string | null = null;
-        if (matchedRow && policyVersion.id) {
+        if (matchedRow && pv?.id) {
           try {
-            const adj = await getStorage().calculateSettlementAdjustments(activation, policyVersion.id);
+            const adj = await getStorage().calculateSettlementAdjustments(activation, pv.id);
             if (adj.addAmount > 0)    adjAddAmount    = String(adj.addAmount);
             if (adj.deductAmount > 0) adjDeductAmount = String(adj.deductAmount);
           } catch (_) {}
@@ -6084,7 +6114,7 @@ router.post('/api/admin/settlement/match', requireAdmin, async (req, res) => {
 
         await getStorage().createSettlementItem({
           activationId: activation.id,
-          policyVersionId: matchedRow ? policyVersion.id : null,
+          policyVersionId: matchedRow ? (pv?.id ?? null) : null,
           policyRowId:     matchedRow ? matchedRow.id    : null,
           dealerRegistrationId: activation.dealerRegistrationId ?? null,
           dealerName:           activation.dealerName ?? null,
@@ -6110,8 +6140,8 @@ router.post('/api/admin/settlement/match', requireAdmin, async (req, res) => {
 
     res.json({
       success: true,
-      policyVersionId: policyVersion.id,
-      policyVersionName: policyVersion.policyName,
+      policyVersionId: fixedPv?.id ?? null,
+      policyVersionName: fixedPv?.policyName ?? '접수일시 자동 선택',
       totalActivations: unmatched.length,
       created,
       skipped: 0, // 중복 방지는 NOT EXISTS로 사전 필터 처리
@@ -6132,20 +6162,39 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
   try {
     const { policyVersionId } = req.body;
 
-    let policyVersion: any;
-    if (policyVersionId) {
-      policyVersion = await getStorage().getPolicyVersionById(Number(policyVersionId));
-      if (!policyVersion) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
-    } else {
-      policyVersion = await getStorage().getActivePolicyVersion();
-      if (!policyVersion) return res.status(400).json({ error: '활성화된 정책 차수가 없습니다.' });
+    const fixedPv: any = policyVersionId
+      ? await getStorage().getPolicyVersionById(Number(policyVersionId))
+      : null;
+    if (policyVersionId && !fixedPv) {
+      return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
     }
 
-    const allRows = await getStorage().getPolicyRowsByVersionId(policyVersion.id);
-    const activeRows = allRows.filter((r: any) => r.isActive !== false);
-    if (activeRows.length === 0) {
-      return res.status(400).json({ error: '해당 정책 차수에 활성 단가 행이 없습니다.' });
+    const pvRowCache2 = new Map<number, any[]>();
+    const getPvRows2 = async (pvId: number): Promise<any[]> => {
+      if (!pvRowCache2.has(pvId)) {
+        const rows = await getStorage().getPolicyRowsByVersionId(pvId);
+        pvRowCache2.set(pvId, rows.filter((r: any) => r.isActive !== false));
+      }
+      return pvRowCache2.get(pvId)!;
+    };
+    if (fixedPv) {
+      const rows = await getPvRows2(fixedPv.id);
+      if (rows.length === 0) {
+        return res.status(400).json({ error: '해당 정책 차수에 활성 단가 행이 없습니다.' });
+      }
     }
+
+    const allActivePvs2: any[] = policyVersionId
+      ? []
+      : (await getStorage().getPolicyVersions()).filter((p: any) => p.isActive);
+    const findPvAt2 = (at: Date): any | null => {
+      for (const p of allActivePvs2) {
+        const from = new Date(p.effectiveFrom);
+        const to = p.effectiveTo ? new Date(p.effectiveTo) : null;
+        if (from <= at && (!to || to > at)) return p;
+      }
+      return null;
+    };
 
     const db = await getDatabase();
     const { activationRecords: arTable } = await import('../shared/schema');
@@ -6163,7 +6212,9 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
         ar.add_service        AS "addService",
         ar.reg_fee_type       AS "regFeeType",
         ar.dealer_registration_id AS "dealerRegistrationId",
-        ar.sim_count          AS "simCount"
+        ar.sim_count          AS "simCount",
+        ar.reception_datetime  AS "receptionDatetime",
+        ar.activation_datetime AS "activationDatetime"
       FROM settlement_items si
       JOIN activation_records ar ON ar.id = si.activation_id
       WHERE si.match_status = 'POLICY_NOT_FOUND'
@@ -6222,6 +6273,16 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
       const siId = row.si_id;
       const activation = row;
 
+      // 이 activation에 적용할 정책 차수 결정
+      let pv: any;
+      if (fixedPv) {
+        pv = fixedPv;
+      } else {
+        const refDatetime = activation.receptionDatetime ?? activation.activationDatetime;
+        pv = refDatetime ? findPvAt2(new Date(refDatetime)) : null;
+      }
+      const activeRows = pv ? await getPvRows2(pv.id) : [];
+
       let matchedRow: any = null;
       let matchStatus = 'POLICY_NOT_FOUND';
 
@@ -6246,7 +6307,7 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
 
       if (matchedRow) {
         await getStorage().updateSettlementItem(Number(siId), {
-          policyVersionId: policyVersion.id,
+          policyVersionId: pv.id,
           policyRowId:     matchedRow.id,
           rebateAmount:    String(matchedRow.rebateAmount),
           matchStatus,
@@ -6262,7 +6323,7 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
 
     res.json({
       success: true,
-      policyVersionId: policyVersion.id,
+      policyVersionId: fixedPv?.id ?? null,
       total: targets.length,
       updated,
       autoMatch,
