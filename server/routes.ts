@@ -4689,6 +4689,15 @@ router.get('/api/admin/policies/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// datetime-local 입력("2026-08-24T15:00")을 naive UTC로 파싱
+// reception_datetime과 동일한 naive KST 관행으로 저장되도록 Z suffix를 붙여 UTC 강제 해석
+function parsePolicyDatetime(s: string): Date {
+  if (s.includes('T')) {
+    return new Date(s.slice(0, 16) + ':00.000Z');
+  }
+  return new Date(s); // date-only: JS가 UTC midnight으로 파싱
+}
+
 // 3. POST /api/admin/policies — 정책 차수 생성
 router.post('/api/admin/policies', requireAdmin, async (req, res) => {
   try {
@@ -4702,8 +4711,8 @@ router.post('/api/admin/policies', requireAdmin, async (req, res) => {
     const version = await getStorage().createPolicyVersion({
       policyNo,
       policyName,
-      effectiveFrom: new Date(effectiveFrom),
-      effectiveTo: effectiveTo ? new Date(effectiveTo) : null,
+      effectiveFrom: parsePolicyDatetime(effectiveFrom),
+      effectiveTo: effectiveTo ? parsePolicyDatetime(effectiveTo) : null,
       isActive: true,
       memo: memo || null,
       createdBy: adminId,
@@ -4732,8 +4741,8 @@ router.put('/api/admin/policies/:id', requireAdmin, async (req, res) => {
 
     const updated = await getStorage().updatePolicyVersion(id, {
       ...(policyName !== undefined && { policyName }),
-      ...(effectiveFrom !== undefined && { effectiveFrom: new Date(effectiveFrom) }),
-      ...(effectiveTo !== undefined && { effectiveTo: effectiveTo ? new Date(effectiveTo) : null }),
+      ...(effectiveFrom !== undefined && { effectiveFrom: parsePolicyDatetime(effectiveFrom) }),
+      ...(effectiveTo !== undefined && { effectiveTo: effectiveTo ? parsePolicyDatetime(effectiveTo) : null }),
       ...(isActive !== undefined && { isActive }),
       ...(memo !== undefined && { memo }),
     });
