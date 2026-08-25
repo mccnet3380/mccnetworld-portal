@@ -3422,6 +3422,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const [chResult, setChResult] = useState<any>(null);
   const chFileRef = useRef<HTMLInputElement>(null);
 
+  // 원본 정책표 자동 인식 상태
+  const [orgOpen, setOrgOpen] = useState(false);
+  const [orgFile, setOrgFile] = useState<File | null>(null);
+  const [orgUploading, setOrgUploading] = useState(false);
+  const [orgResult, setOrgResult] = useState<any>(null);
+  const orgFileRef = useRef<HTMLInputElement>(null);
+
   // Queries
   const { data: dealers, isLoading: dealersLoading } = useQuery({
     queryKey: ['/api/admin/dealers'],
@@ -3928,6 +3935,42 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     } finally {
       setChUploading(false);
     }
+  };
+
+  const handleOrgUpload = async () => {
+    if (!orgFile) { toast({ title: '오류', description: '파일을 선택하세요.', variant: 'destructive' }); return; }
+    setOrgUploading(true);
+    setOrgResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', orgFile);
+      const sessionId = useAuth.getState().sessionId;
+      const resp = await fetch('/api/admin/policies/parse-original-policy-excel', {
+        method: 'POST',
+        headers: sessionId ? { Authorization: `Bearer ${sessionId}` } : {},
+        body: formData,
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || '자동 인식 실패');
+      setOrgResult(result);
+    } catch (err: any) {
+      toast({ title: '자동 인식 실패', description: err.message, variant: 'destructive' });
+    } finally {
+      setOrgUploading(false);
+    }
+  };
+
+  const handleOrgDownload = (fileData: { name: string; data: string }) => {
+    const byteChars = atob(fileData.data);
+    const byteArr = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteArr], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileData.name;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Forms
@@ -10686,6 +10729,9 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                       <Button size="sm" variant="outline" onClick={() => { setPeFile(null); setPePvId(pvSelectedId ? String(pvSelectedId) : '__auto__'); setPeResult(null); setPeOpen(true); if (peFileRef.current) peFileRef.current.value = ''; }}>
                         엑셀 업로드
                       </Button>
+                      <Button size="sm" variant="outline" className="border-green-400 text-green-700 hover:bg-green-50" onClick={() => { setOrgFile(null); setOrgResult(null); setOrgOpen(true); if (orgFileRef.current) orgFileRef.current.value = ''; }}>
+                        원본 정책표 자동 인식
+                      </Button>
                       <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => { setChFile(null); setChPvId(pvSelectedId ? String(pvSelectedId) : ''); setChResult(null); setChOpen(true); if (chFileRef.current) chFileRef.current.value = ''; }}>
                         채널별 수정파일 업로드
                       </Button>
@@ -11824,6 +11870,99 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   {chUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
                   {chUploading ? '업로드 중...' : '채널파일 업로드'}
                 </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 원본 정책표 자동 인식 다이얼로그 */}
+        <Dialog open={orgOpen} onOpenChange={o => { setOrgOpen(o); if (!o) setOrgResult(null); }}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>원본 정책표 자동 인식</DialogTitle>
+              <DialogDescription>
+                MCC 정책 통합본 xlsx를 업로드하면 채널별 수정파일 업로드용 파일을 자동 생성합니다.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded bg-green-50 border border-green-200 p-3 text-xs space-y-1">
+                <div className="font-semibold text-green-800">처리 흐름</div>
+                <div className="text-green-700">① 원본 통합본 파일 업로드 → ② 채널별 자동 분리 → ③ *_upload.xlsx 파일 다운로드 → ④ 수정 완료 후 "채널별 수정파일 업로드"로 DB 반영</div>
+                <div className="text-green-700 mt-1 font-medium">※ 이 단계에서는 DB에 저장하지 않습니다.</div>
+              </div>
+
+              {!orgResult && (
+                <div className="space-y-1">
+                  <Label className="text-sm">원본 MCC 정책 통합본 파일 선택 <span className="text-red-500">*</span></Label>
+                  <input
+                    ref={orgFileRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="block w-full text-sm text-gray-600 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                    onChange={e => setOrgFile(e.target.files?.[0] ?? null)}
+                  />
+                  <p className="text-xs text-gray-400">예: ■MCC정책_통합본_8월 8차(24일~)_유선_8월_20차(21일12시~) 송부용.xlsx</p>
+                </div>
+              )}
+
+              {orgResult && (
+                <div className="space-y-3">
+                  <div className="rounded bg-green-50 border border-green-200 p-3 text-sm space-y-1">
+                    <div className="font-medium text-green-800">자동 인식 완료</div>
+                    <div className="text-green-700 text-xs">
+                      <span>원본: {orgResult.originalFileName}</span>
+                      <span className="ml-3">처리 시트: {orgResult.sheetsAnalyzed?.length ?? 0}개</span>
+                      <span className="ml-3">채널: {orgResult.totalChannels}개</span>
+                    </div>
+                    <div className="text-green-700 text-xs">
+                      <span>자동인식 행: <strong>{orgResult.totalOkRows}</strong></span>
+                      <span className="ml-3">검토필요 행: {orgResult.totalReviewRows}</span>
+                    </div>
+                  </div>
+
+                  {orgResult.warnings?.length > 0 && (
+                    <div className="rounded bg-yellow-50 border border-yellow-200 p-2 text-xs text-yellow-700">
+                      <div className="font-medium mb-1">경고 {orgResult.warnings.length}건</div>
+                      {orgResult.warnings.slice(0, 5).map((w: string, i: number) => (
+                        <div key={i}>· {w}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-gray-700">생성된 채널별 파일 ({orgResult.files?.length ?? 0}개) — 클릭하여 다운로드</div>
+                    {(orgResult.files ?? []).map((f: any, i: number) => (
+                      <div key={i} className="rounded border border-gray-200 p-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-medium text-gray-800">{f.name}</span>
+                            <span className="ml-2 text-gray-500">{f.totalRows}행</span>
+                          </div>
+                          <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-green-400 text-green-700 hover:bg-green-50" onClick={() => handleOrgDownload(f)}>
+                            다운로드
+                          </Button>
+                        </div>
+                        <div className="mt-1 text-gray-500 pl-1">
+                          {f.sheets?.map((s: any) => `${s.name}(${s.rows}행)`).join(' · ')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button size="sm" variant="outline" className="w-full" onClick={() => { setOrgResult(null); setOrgFile(null); if (orgFileRef.current) orgFileRef.current.value = ''; }}>
+                    다시 업로드
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setOrgOpen(false)}>닫기</Button>
+                {!orgResult && (
+                  <Button disabled={orgUploading || !orgFile} onClick={handleOrgUpload} className="bg-green-600 hover:bg-green-700 text-white">
+                    {orgUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    {orgUploading ? '처리 중...' : '자동 인식 시작'}
+                  </Button>
+                )}
               </div>
             </div>
           </DialogContent>

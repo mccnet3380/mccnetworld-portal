@@ -12,6 +12,8 @@ import { randomUUID } from "crypto";
 import { getStorage } from "./storage";
 import { ChatWebSocketServer } from './websocket';
 import { getDatabase, checkPostgreSQLHealth } from "./db";
+import { splitPolicyExcelFromBuffer } from './lib/mcc-policy-split';
+import { exportPolicyUploadReadyFromSplit } from './lib/mcc-policy-export-ready';
 import { sql, eq, and, gte, lte } from "drizzle-orm";
 
 // 중복 제출 방지를 위한 최근 제출 요청 추적
@@ -5262,6 +5264,44 @@ router.post('/api/admin/policies/upload-channel-excel', requireAdmin, upload.sin
     });
   } catch (error: any) {
     console.error('upload-channel-excel error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 8-5. POST /api/admin/policies/parse-original-policy-excel — 원본 MCC 정책 통합본 자동 인식
+// 역할: 원본 파일 수신 → 채널별 분리 → 업로드용 파일 생성 → base64 반환 (DB 반영 없음)
+router.post('/api/admin/policies/parse-original-policy-excel', requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
+    if (!req.file.originalname.match(/\.(xlsx|xls)$/i)) {
+      return res.status(400).json({ error: 'xlsx 또는 xls 파일만 업로드 가능합니다.' });
+    }
+
+    // Chrome sends UTF-8 bytes in Content-Disposition; busboy decodes as latin1
+    const originalFileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+
+    const splitResult = splitPolicyExcelFromBuffer(req.file.buffer, originalFileName);
+    const exportResult = exportPolicyUploadReadyFromSplit(splitResult);
+
+    const files = exportResult.files.map(f => ({
+      name: f.name,
+      data: f.buffer.toString('base64'),
+      sheets: f.sheets,
+      totalRows: f.totalRows,
+    }));
+
+    res.json({
+      originalFileName,
+      sheetsAnalyzed: splitResult.sheetsAnalyzed,
+      sheetsSkipped: splitResult.sheetsSkipped,
+      totalChannels: files.length,
+      totalOkRows: exportResult.totalOk,
+      totalReviewRows: exportResult.totalReview,
+      files,
+      warnings: splitResult.warnings,
+    });
+  } catch (error: any) {
+    console.error('parse-original-policy-excel error:', error);
     res.status(500).json({ error: error.message });
   }
 });
