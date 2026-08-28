@@ -11566,10 +11566,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">국적구분 <span className="text-gray-400 font-normal">(비우면 공통정책)</span></Label>
-                    <Select value={prEditForm.nationalityType} onValueChange={v => setPrEditForm(p => ({ ...p, nationalityType: v }))}>
+                    <Select
+                      value={prEditForm.nationalityType || '__nat_all__'}
+                      onValueChange={v => setPrEditForm(p => ({ ...p, nationalityType: v === '__nat_all__' ? '' : v }))}
+                    >
                       <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="공통(전체)" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">공통(내외국인 모두)</SelectItem>
+                        <SelectItem value="__nat_all__">공통(내외국인 모두)</SelectItem>
                         <SelectItem value="내국인">내국인</SelectItem>
                         <SelectItem value="외국인">외국인</SelectItem>
                       </SelectContent>
@@ -11597,6 +11600,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   <Button variant="outline" onClick={() => setPrEditOpen(false)}>취소</Button>
                   <Button disabled={prUpdateMutation.isPending}
                     onClick={() => {
+                      if (!prEditTarget) { toast({ title: '오류', description: '수정 대상 행이 없습니다.', variant: 'destructive' }); return; }
                       if (!prEditForm.channel || !prEditForm.planName) {
                         toast({ title: '오류', description: '채널·요금제는 필수입니다.', variant: 'destructive' }); return;
                       }

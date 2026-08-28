@@ -5573,6 +5573,14 @@ const normalizeCustomerType = (v: string | null | undefined): string => {
   return String(v ?? '').trim();
 };
 
+// 요금제명 비교 정규화: 맨 앞 접두어(텔), 엠), 스카이) 등) 제거 후 공백 정리
+const normalizePlanNameForMatching = (v: unknown): string =>
+  String(v ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^[가-힣A-Za-z0-9]+\)\s*/, '')
+    .trim();
+
 // POST /api/admin/activations/upload
 router.post('/api/admin/activations/upload', requireAdmin, upload.single('file'), async (req, res) => {
   try {
@@ -6021,7 +6029,7 @@ router.post('/api/admin/settlement/match', requireAdmin, async (req, res) => {
     // 반환: 'exact' = 국적 정확일치, 'wildcard' = 국적 와일드카드(null policy), 'none' = 불일치
     const matchRow = (activation: any, row: any, exclude: Set<string>): 'exact' | 'wildcard' | 'none' => {
       if (activation.channel !== row.channel) return 'none';
-      if (activation.planName !== row.planName) return 'none';
+      if (normalizePlanNameForMatching(activation.planName) !== normalizePlanNameForMatching(row.planName)) return 'none';
       if (normalizeCustomerType(activation.customerType) !== normalizeCustomerType(row.customerType)) return 'none';
 
       // 국적 매칭 (3-tier)
@@ -6237,7 +6245,7 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
 
     const matchRow = (activation: any, row: any, exclude: Set<string>): 'exact' | 'wildcard' | 'none' => {
       if (activation.channel !== row.channel) return 'none';
-      if (activation.planName !== row.planName) return 'none';
+      if (normalizePlanNameForMatching(activation.planName) !== normalizePlanNameForMatching(row.planName)) return 'none';
       if (normalizeCustomerType(activation.customerType) !== normalizeCustomerType(row.customerType)) return 'none';
 
       const actNat = normalize(activation.nationalityType || '내국인');
