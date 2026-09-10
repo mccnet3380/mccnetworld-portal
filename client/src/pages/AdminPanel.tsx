@@ -3361,6 +3361,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const [pvEditOpen, setPvEditOpen] = useState(false);
   const [pvEditTarget, setPvEditTarget] = useState<any>(null);
   const [pvForm, setPvForm] = useState({ policyNo: '', policyName: '', effectiveFrom: '', effectiveTo: '', memo: '' });
+  // 정책 차수 완전(하드) 삭제 확인 모달
+  const [pvHardDeleteOpen, setPvHardDeleteOpen] = useState(false);
+  const [pvHardDeleteTarget, setPvHardDeleteTarget] = useState<any>(null);
+  const [pvHardDeleteConfirmText, setPvHardDeleteConfirmText] = useState('');
+  const [pvHardDeletePreview, setPvHardDeletePreview] = useState<any>(null);
+  const [pvHardDeletePreviewLoading, setPvHardDeletePreviewLoading] = useState(false);
+  const PV_HARD_DELETE_CONFIRM_TEXT = '복구불가삭제';
   const [prCreateOpen, setPrCreateOpen] = useState(false);
   const [prForm, setPrForm] = useState({ channel: '', planName: '', customerType: '1', simCount: '', bundleType: '', addService: '', regFeeType: '', rebateAmount: '', memo: '' });
   const [prEditOpen, setPrEditOpen] = useState(false);
@@ -3758,6 +3765,41 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       toast({ title: '정책 차수 비활성화 완료' });
     },
     onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  // 정책 차수 완전(하드) 삭제 모달 오픈 — 삭제 영향 범위 미리보기 조회
+  const openPvHardDeleteModal = async (pv: any) => {
+    setPvHardDeleteTarget(pv);
+    setPvHardDeleteConfirmText('');
+    setPvHardDeletePreview(null);
+    setPvHardDeleteOpen(true);
+    setPvHardDeletePreviewLoading(true);
+    try {
+      const preview: any = await apiRequest(`/api/admin/policies/${pv.id}/delete-preview`);
+      setPvHardDeletePreview(preview);
+    } catch (e: any) {
+      toast({ title: '오류', description: e.message ?? '삭제 영향 범위 조회에 실패했습니다.', variant: 'destructive' });
+    } finally {
+      setPvHardDeletePreviewLoading(false);
+    }
+  };
+
+  const pvHardDeleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest(`/api/admin/policies/${id}/hard-delete`, {
+        method: 'POST',
+        body: JSON.stringify({ confirmationText: pvHardDeleteConfirmText }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/policies'] });
+      if (pvHardDeleteTarget && pvSelectedId === pvHardDeleteTarget.id) setPvSelectedId(null);
+      setPvHardDeleteOpen(false);
+      setPvHardDeleteTarget(null);
+      setPvHardDeleteConfirmText('');
+      setPvHardDeletePreview(null);
+      toast({ title: '정책 차수 완전 삭제 완료' });
+    },
+    onError: (e: Error) => toast({ title: '삭제 실패', description: e.message, variant: 'destructive' }),
   });
 
   const prCreateMutation = useMutation({
@@ -10698,12 +10740,10 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                 size="sm" variant="ghost" className="h-6 w-6 p-0"
                                 onClick={e => { e.stopPropagation(); setPvEditTarget(pv); setPvForm({ policyNo: pv.policyNo, policyName: pv.policyName, effectiveFrom: pv.effectiveFrom?.slice(0,16) ?? '', effectiveTo: pv.effectiveTo?.slice(0,16) ?? '', memo: pv.memo ?? '' }); setPvEditOpen(true); }}
                               ><Edit className="h-3 w-3" /></Button>
-                              {pv.isActive && (
-                                <Button
-                                  size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                  onClick={e => { e.stopPropagation(); if (confirm(`"${pv.policyName}" 을 비활성화합니까?`)) pvDeactivateMutation.mutate(pv.id); }}
-                                ><Trash2 className="h-3 w-3" /></Button>
-                              )}
+                              <Button
+                                size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                onClick={e => { e.stopPropagation(); openPvHardDeleteModal(pv); }}
+                              ><Trash2 className="h-3 w-3" /></Button>
                             </div>
                           </li>
                         ))}
@@ -11427,6 +11467,53 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                       onClick={() => pvUpdateMutation.mutate({ id: pvEditTarget.id, data: { ...pvForm, effectiveTo: pvForm.effectiveTo || null } })}
                     >
                       {pvUpdateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}수정
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* 정책 차수 완전(하드) 삭제 확인 다이얼로그 */}
+            <Dialog open={pvHardDeleteOpen} onOpenChange={(open) => { if (!pvHardDeleteMutation.isPending) { setPvHardDeleteOpen(open); if (!open) { setPvHardDeleteTarget(null); setPvHardDeleteConfirmText(''); setPvHardDeletePreview(null); } } }}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-red-600">정책 차수 복구 불가 삭제</DialogTitle>
+                  <DialogDescription className="text-sm text-gray-700 whitespace-pre-line pt-1">
+                    이 작업은 복구할 수 없습니다.
+                    선택한 정책 차수와 연결된 정책 단가 행이 완전히 삭제됩니다.
+                    이미 정산 결과에서 이 정책을 참조 중인 경우, 해당 정산 결과의 정책 참조와 단가 금액은 초기화됩니다.
+                    개통 데이터, 접점코드, 판매점 원장은 삭제되지 않습니다.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  {pvHardDeletePreviewLoading ? (
+                    <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
+                  ) : (
+                    <div className="rounded-md border bg-gray-50 p-3 text-sm space-y-1">
+                      <div><span className="text-gray-500">정책번호</span> · {pvHardDeleteTarget?.policyNo ?? '-'}</div>
+                      <div><span className="text-gray-500">정책명</span> · {pvHardDeleteTarget?.policyName ?? '-'}</div>
+                      <div><span className="text-gray-500">적용 시작일</span> · {pvHardDeleteTarget?.effectiveFrom ? pvHardDeleteTarget.effectiveFrom.slice(0, 10) : '-'}</div>
+                      <div><span className="text-gray-500">적용 종료일</span> · {pvHardDeleteTarget?.effectiveTo ? pvHardDeleteTarget.effectiveTo.slice(0, 10) : '-'}</div>
+                      <div><span className="text-gray-500">연결 단가 행</span> · {pvHardDeletePreview?.policyRowsCount ?? 0}건</div>
+                      <div><span className="text-gray-500">영향 정산 결과</span> · {pvHardDeletePreview?.settlementItemsCount ?? 0}건</div>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <Label className="text-sm">확인을 위해 아래 문구를 정확히 입력하세요: <span className="font-semibold">{PV_HARD_DELETE_CONFIRM_TEXT}</span></Label>
+                    <Input
+                      value={pvHardDeleteConfirmText}
+                      onChange={e => setPvHardDeleteConfirmText(e.target.value)}
+                      placeholder={PV_HARD_DELETE_CONFIRM_TEXT}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" disabled={pvHardDeleteMutation.isPending} onClick={() => setPvHardDeleteOpen(false)}>취소</Button>
+                    <Button
+                      variant="destructive"
+                      disabled={pvHardDeleteConfirmText !== PV_HARD_DELETE_CONFIRM_TEXT || pvHardDeleteMutation.isPending || !pvHardDeleteTarget}
+                      onClick={() => pvHardDeleteMutation.mutate(pvHardDeleteTarget.id)}
+                    >
+                      {pvHardDeleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}완전 삭제
                     </Button>
                   </div>
                 </div>

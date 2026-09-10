@@ -314,6 +314,8 @@ export interface IStorage {
   createPolicyVersion(data: any): Promise<any>;
   updatePolicyVersion(id: number, data: any): Promise<any>;
   deletePolicyVersion(id: number): Promise<void>;
+  getPolicyVersionDeletePreview(id: number): Promise<{ policyRowsCount: number; settlementItemsCount: number } | null>;
+  hardDeletePolicyVersion(id: number): Promise<{ policyRowsDeleted: number; settlementItemsUpdated: number }>;
 
   // Policy rows
   getPolicyRowsByVersionId(policyVersionId: number): Promise<any[]>;
@@ -2988,6 +2990,89 @@ export class PostgreSQLStorage implements IStorage {
   async deletePolicyVersion(id: number): Promise<void> {
     return this.withDatabase(async (db) => {
       await db.delete(policyVersions).where(eq(policyVersions.id, id));
+    });
+  }
+
+  // 정책 차수 하드 삭제 전 영향 범위 미리보기 (연결 policy_rows / settlement_items 건수)
+  async getPolicyVersionDeletePreview(id: number): Promise<{ policyRowsCount: number; settlementItemsCount: number } | null> {
+    return this.withDatabase(async (db) => {
+      const version = await db.select().from(policyVersions).where(eq(policyVersions.id, id)).limit(1);
+      if (!version[0]) return null;
+
+      const [rowsCountResult] = await db.select({ value: count() }).from(policyRows)
+        .where(eq(policyRows.policyVersionId, id));
+
+      const affectedRowIds = await db.select({ id: policyRows.id }).from(policyRows)
+        .where(eq(policyRows.policyVersionId, id));
+      const rowIds = affectedRowIds.map((r: any) => r.id);
+
+      const settlementCondition = rowIds.length > 0
+        ? or(eq(settlementItems.policyVersionId, id), inArray(settlementItems.policyRowId, rowIds))
+        : eq(settlementItems.policyVersionId, id);
+
+      const [settlementCountResult] = await db.select({ value: count() }).from(settlementItems)
+        .where(settlementCondition);
+
+      return {
+        policyRowsCount: Number(rowsCountResult?.value ?? 0),
+        settlementItemsCount: Number(settlementCountResult?.value ?? 0),
+      };
+    });
+  }
+
+  // 정책 차수 완전(하드) 삭제 — policy_rows/policy_files/adjustment_rules 삭제,
+  // settlement_items/activation_records의 정책 참조는 NULL 초기화 (해당 테이블 행 자체는 보존)
+  async hardDeletePolicyVersion(id: number): Promise<{ policyRowsDeleted: number; settlementItemsUpdated: number }> {
+    const db = await getDatabase();
+    return db.transaction(async (tx: any) => {
+      const version = await tx.select().from(policyVersions).where(eq(policyVersions.id, id)).limit(1);
+      if (!version[0]) {
+        throw new Error('정책 차수를 찾을 수 없습니다.');
+      }
+
+      const affectedRows = await tx.select({ id: policyRows.id }).from(policyRows)
+        .where(eq(policyRows.policyVersionId, id));
+      const rowIds = affectedRows.map((r: any) => r.id);
+
+      const settlementCondition = rowIds.length > 0
+        ? or(eq(settlementItems.policyVersionId, id), inArray(settlementItems.policyRowId, rowIds))
+        : eq(settlementItems.policyVersionId, id);
+
+      const updatedSettlements = await tx.update(settlementItems)
+        .set({
+          policyVersionId: null,
+          policyRowId: null,
+          rebateAmount: '0',
+          policySnapshotJson: null,
+          matchStatus: 'POLICY_NOT_FOUND',
+        })
+        .where(settlementCondition)
+        .returning({ id: settlementItems.id });
+
+      // force_policy_version_id는 이 정책 차수를 별도로 강제 지정한 경우에도 FK를 참조하므로 함께 초기화
+      await tx.update(settlementItems)
+        .set({ forcePolicyVersionId: null })
+        .where(eq(settlementItems.forcePolicyVersionId, id));
+
+      // activation_records는 행 자체는 보존하되 정책 참조(FK)만 해제
+      await tx.update(activationRecords)
+        .set({ policyVersionId: null })
+        .where(eq(activationRecords.policyVersionId, id));
+
+      // policy_rows에 종속된 자식 데이터 정리 (FK 제약 충족 목적)
+      await tx.delete(adjustmentRules).where(eq(adjustmentRules.policyVersionId, id));
+      await tx.delete(policyFiles).where(eq(policyFiles.policyVersionId, id));
+
+      const deletedRows = await tx.delete(policyRows)
+        .where(eq(policyRows.policyVersionId, id))
+        .returning({ id: policyRows.id });
+
+      await tx.delete(policyVersions).where(eq(policyVersions.id, id));
+
+      return {
+        policyRowsDeleted: deletedRows.length,
+        settlementItemsUpdated: updatedSettlements.length,
+      };
     });
   }
 

@@ -4771,6 +4771,52 @@ router.delete('/api/admin/policies/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// 5a. GET /api/admin/policies/:id/delete-preview — 하드 삭제 영향 범위 미리보기
+router.get('/api/admin/policies/:id/delete-preview', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const version = await getStorage().getPolicyVersionById(id);
+    if (!version) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const preview = await getStorage().getPolicyVersionDeletePreview(id);
+    res.json({
+      policyNo: version.policyNo,
+      policyName: version.policyName,
+      effectiveFrom: version.effectiveFrom,
+      effectiveTo: version.effectiveTo,
+      policyRowsCount: preview?.policyRowsCount ?? 0,
+      settlementItemsCount: preview?.settlementItemsCount ?? 0,
+    });
+  } catch (error: any) {
+    console.error('getPolicyVersionDeletePreview error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5b. POST /api/admin/policies/:id/hard-delete — 정책 차수 완전(복구 불가) 삭제
+router.post('/api/admin/policies/:id/hard-delete', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+
+    const { confirmationText } = req.body;
+    if (confirmationText !== '복구불가삭제') {
+      return res.status(400).json({ error: '확인 문구가 일치하지 않습니다.' });
+    }
+
+    const existing = await getStorage().getPolicyVersionById(id);
+    if (!existing) return res.status(404).json({ error: '정책 차수를 찾을 수 없습니다.' });
+
+    const result = await getStorage().hardDeletePolicyVersion(id);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    console.error('hardDeletePolicyVersion error:', error);
+    res.status(500).json({ error: error.message || '정책 차수 완전 삭제 중 오류가 발생했습니다.' });
+  }
+});
+
 // 6. GET /api/admin/policies/:id/rows — 정책 단가 행 목록 조회
 router.get('/api/admin/policies/:id/rows', requireAdmin, async (req, res) => {
   try {
