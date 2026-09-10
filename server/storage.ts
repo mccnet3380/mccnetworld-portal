@@ -411,10 +411,27 @@ export interface IStorage {
   diagnoseHiddenAmount(contactCode: string, dateFrom?: string, dateTo?: string): Promise<any>;
 }
 
+// 정책 차수 하드 삭제가 접근하는 테이블 중, 운영 DB에 아직 반영되지 않았을 수 있는 optional table 목록
+// (하드코딩된 내부 상수로만 관리 — 외부 입력이 SQL에 그대로 들어가지 않도록 함)
+const HARD_DELETE_OPTIONAL_TABLES = ['adjustment_rules', 'policy_files', 'hidden_policy_rows'] as const;
+type HardDeleteOptionalTable = typeof HARD_DELETE_OPTIONAL_TABLES[number];
+
 export class PostgreSQLStorage implements IStorage {
   private async withDatabase<T>(operation: (db: any) => Promise<T>): Promise<T> {
     const db = await getDatabase();
     return operation(db);
+  }
+
+  // information_schema로 optional table의 실제 존재 여부 확인 (tableName은 항상 HARD_DELETE_OPTIONAL_TABLES에서만 전달됨)
+  private async tableExists(tx: any, tableName: HardDeleteOptionalTable): Promise<boolean> {
+    const result = await tx.execute(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = ${tableName}
+      ) AS exists
+    `);
+    const row = (result as any).rows?.[0];
+    return Boolean(row?.exists);
   }
 
   // 동일 mCode 행을 직렬화해 SELECT→INSERT race condition 방지
@@ -3060,8 +3077,17 @@ export class PostgreSQLStorage implements IStorage {
         .where(eq(activationRecords.policyVersionId, id));
 
       // policy_rows에 종속된 자식 데이터 정리 (FK 제약 충족 목적)
-      await tx.delete(adjustmentRules).where(eq(adjustmentRules.policyVersionId, id));
-      await tx.delete(policyFiles).where(eq(policyFiles.policyVersionId, id));
+      // 운영 DB에 아직 반영되지 않았을 수 있는 optional table이므로, 존재할 때만 처리하고 없으면 skip
+      if (await this.tableExists(tx, 'adjustment_rules')) {
+        await tx.delete(adjustmentRules).where(eq(adjustmentRules.policyVersionId, id));
+      } else {
+        console.log('[policy hard delete] skip adjustment_rules: table does not exist');
+      }
+      if (await this.tableExists(tx, 'policy_files')) {
+        await tx.delete(policyFiles).where(eq(policyFiles.policyVersionId, id));
+      } else {
+        console.log('[policy hard delete] skip policy_files: table does not exist');
+      }
 
       const deletedRows = await tx.delete(policyRows)
         .where(eq(policyRows.policyVersionId, id))
