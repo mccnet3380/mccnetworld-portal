@@ -113,9 +113,11 @@ function AppRoutes() {
       <Route path="/discarded" component={DiscardedDocuments} />
       <Route path="/other-completions" component={OtherCompletions} />
       <Route path="/downloads" component={Downloads} />
+      {/* MCC_SETTLEMENT_RESULT_COMPACT_UI_AND_SELECT_DELETE_1: 정산 관리 화면 미사용으로 라우트 숨김 (복원 시 아래 블록 주석 해제)
       {user?.userType === 'admin' && (
         <Route path="/settlements" component={Settlements} />
       )}
+      */}
 
       {user?.userType === 'admin' && (
         <>

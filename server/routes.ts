@@ -6598,4 +6598,36 @@ router.patch('/api/admin/settlement/items/:id', requireAdmin, async (req: any, r
   }
 });
 
+// 5. DELETE /api/admin/settlement-results/items — 정산 결과 선택/일괄 삭제 (단건/선택/판매점 전체 공통 API)
+// settlement_items 행만 삭제 — activation_records/contact_codes/dealer_registrations/
+// policy_versions/policy_rows는 절대 삭제하지 않음
+router.delete('/api/admin/settlement-results/items', requireAdmin, async (req: any, res) => {
+  try {
+    const { ids, deleteMode, dealerName, confirmationText } = req.body;
+    const adminId = req.session?.userId;
+
+    if (confirmationText !== '삭제합니다') {
+      return res.status(400).json({ error: '확인 문구가 일치하지 않습니다.' });
+    }
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: '삭제할 정산 결과가 없습니다.' });
+    }
+
+    const numericIds = ids.map((id: any) => Number(id)).filter((id: number) => Number.isInteger(id));
+    if (numericIds.length === 0) {
+      return res.status(400).json({ error: '유효한 삭제 대상 ID가 없습니다.' });
+    }
+
+    const deletedCount = await getStorage().deleteSettlementItemsByIds(numericIds);
+    console.log(
+      `[SETTLEMENT_ITEMS_DELETE] admin=${adminId} mode=${deleteMode ?? 'selected'} dealerName=${dealerName ?? '-'} ` +
+      `requested=${numericIds.length} deleted=${deletedCount} ids=${numericIds.join(',')}`
+    );
+    res.json({ success: true, deletedCount });
+  } catch (error: any) {
+    console.error('[SETTLEMENT_ITEMS_DELETE] error:', error);
+    res.status(500).json({ error: error.message || '정산 결과 삭제 중 오류가 발생했습니다.' });
+  }
+});
+
 export default router;

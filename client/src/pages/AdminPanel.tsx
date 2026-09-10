@@ -3354,6 +3354,14 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const [siActivationUploading, setSiActivationUploading] = useState(false);
   const [siExportLoading, setSiExportLoading] = useState(false);
   const [siExpandedDealers, setSiExpandedDealers] = useState<Set<string>>(new Set());
+  // 정산 결과 선택/일괄 삭제
+  const SI_DELETE_CONFIRM_TEXT = '삭제합니다';
+  const [siSelectedIds, setSiSelectedIds] = useState<Set<number>>(new Set());
+  const [siDeleteModalOpen, setSiDeleteModalOpen] = useState(false);
+  const [siDeleteMode, setSiDeleteMode] = useState<'single' | 'selected' | 'dealer_all' | null>(null);
+  const [siDeleteTargetIds, setSiDeleteTargetIds] = useState<number[]>([]);
+  const [siDeleteTargetMeta, setSiDeleteTargetMeta] = useState<{ dealerName?: string; customerName?: string; activationNumber?: string }>({});
+  const [siDeleteConfirmText, setSiDeleteConfirmText] = useState('');
 
   // ── STEP 5D-7: 정책 차수 관리 상태 ──────────────────────────
   const [pvSelectedId, setPvSelectedId] = useState<number | null>(null);
@@ -3650,6 +3658,55 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     },
     onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
   });
+
+  // 정산 결과 삭제 (단건/선택/판매점 전체 — 하나의 API로 통합)
+  const siDeleteMutation = useMutation({
+    mutationFn: (payload: { ids: number[]; deleteMode: string; dealerName?: string; confirmationText: string }) =>
+      apiRequest('/api/admin/settlement-results/items', { method: 'DELETE', body: JSON.stringify(payload) }),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
+      setSiSelectedIds(prev => {
+        const next = new Set(prev);
+        siDeleteTargetIds.forEach(id => next.delete(id));
+        return next;
+      });
+      setSiDeleteModalOpen(false);
+      setSiDeleteMode(null);
+      setSiDeleteTargetIds([]);
+      setSiDeleteTargetMeta({});
+      setSiDeleteConfirmText('');
+      toast({ title: '삭제 완료', description: `정산 결과 ${res?.deletedCount ?? ''}건이 삭제되었습니다.` });
+    },
+    onError: (e: Error) => toast({ title: '삭제 실패', description: e.message, variant: 'destructive' }),
+  });
+
+  const openSiDeleteModal = (
+    mode: 'single' | 'selected' | 'dealer_all',
+    ids: number[],
+    meta: { dealerName?: string; customerName?: string; activationNumber?: string } = {}
+  ) => {
+    setSiDeleteMode(mode);
+    setSiDeleteTargetIds(ids);
+    setSiDeleteTargetMeta(meta);
+    setSiDeleteConfirmText('');
+    setSiDeleteModalOpen(true);
+  };
+
+  const toggleSiSelected = (id: number) => {
+    setSiSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSiGroupSelected = (items: any[], selectAll: boolean) => {
+    setSiSelectedIds(prev => {
+      const next = new Set(prev);
+      items.forEach((i: any) => { if (selectAll) next.add(i.id); else next.delete(i.id); });
+      return next;
+    });
+  };
 
   const handleActivationUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -10118,6 +10175,15 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                     {siRematchMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
                     미매칭 재매칭
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={siSelectedIds.size === 0}
+                    onClick={() => openSiDeleteModal('selected', Array.from(siSelectedIds))}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    선택 삭제{siSelectedIds.size > 0 ? ` (${siSelectedIds.size})` : ''}
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -10216,6 +10282,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                       <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '860px' }}>
                         <colgroup>
                           <col style={{ width: '32px' }} />
+                          <col style={{ width: '32px' }} />
                           <col style={{ width: '170px' }} />
                           <col style={{ width: '60px' }} />
                           <col style={{ width: '60px' }} />
@@ -10230,6 +10297,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                         <thead>
                           <tr>
                             <th style={thG}></th>
+                            <th style={{ ...thG, textAlign: 'center' }}></th>
                             <th style={{ ...thG, textAlign: 'left' }}>판매점명</th>
                             <th style={{ ...thG, textAlign: 'center' }}>총건수</th>
                             <th style={{ ...thG, textAlign: 'center', background: '#14532d', color: '#bbf7d0', borderColor: '#166534' }}>자동</th>
@@ -10246,6 +10314,10 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                           {groups.map(g => {
                             const isOpen = siExpandedDealers.has(g.dealerName);
                             const groupBg = isOpen ? '#dbeafe' : '#eff6ff';
+                            const groupIds: number[] = g.items.map((i: any) => i.id);
+                            const selectedInGroup = groupIds.filter(id => siSelectedIds.has(id)).length;
+                            const groupAllSelected = groupIds.length > 0 && selectedInGroup === groupIds.length;
+                            const groupSomeSelected = selectedInGroup > 0 && !groupAllSelected;
                             return (
                               <React.Fragment key={`g-${g.dealerName}`}>
                                 {/* 집계 행 */}
@@ -10263,8 +10335,20 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                   <td style={{ ...tdG, textAlign: 'center' }}>
                                     {isOpen ? <ChevronDown className="h-3 w-3 text-blue-600 inline" /> : <ChevronRight className="h-3 w-3 text-blue-600 inline" />}
                                   </td>
+                                  <td style={{ ...tdG, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={groupAllSelected}
+                                      ref={el => { if (el) el.indeterminate = groupSomeSelected; }}
+                                      onChange={e => toggleSiGroupSelected(g.items, e.target.checked)}
+                                      title="판매점 전체 선택"
+                                    />
+                                  </td>
                                   <td style={{ ...tdG, textAlign: 'left', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.dealerName}>
                                     {g.dealerName}
+                                    {selectedInGroup > 0 && (
+                                      <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#1d4ed8' }}>({selectedInGroup}건 선택)</span>
+                                    )}
                                   </td>
                                   <td style={{ ...tdG, textAlign: 'center' }}>{g.total}</td>
                                   <td style={{ ...tdG, textAlign: 'center', background: '#f0fdf4', color: '#15803d', fontWeight: 700 }}>{g.autoMatch || '-'}</td>
@@ -10308,6 +10392,15 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                           )}
                                         </>
                                       )}
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-6 px-2 text-xs border-red-400 text-red-600 hover:bg-red-50"
+                                        onClick={() => openSiDeleteModal('dealer_all', groupIds, { dealerName: g.dealerName })}
+                                      >
+                                        <Trash2 className="h-3 w-3 mr-0.5" />
+                                        판매점 전체 삭제
+                                      </Button>
                                     </div>
                                   </td>
                                 </tr>
@@ -10315,35 +10408,28 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                 {/* 상세 펼침 — nested 엑셀형 테이블 */}
                                 {isOpen && (
                                   <tr>
-                                    <td colSpan={11} style={{ padding: 0, border: '1px solid #93c5fd', background: '#f8fafc' }}>
+                                    <td colSpan={12} style={{ padding: 0, border: '1px solid #93c5fd', background: '#f8fafc' }}>
                                       <div style={{ overflowX: 'auto' }}>
-                                        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '2100px' }}>
+                                        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '1300px' }}>
                                           <thead>
                                             <tr>
                                               {([
-                                                { label: '개통일',     w: '96px',  a: 'center' },
-                                                { label: '채널',       w: '120px', a: 'center' },
-                                                { label: '판매점명',   w: '140px', a: 'left'   },
-                                                { label: '고객명',     w: '80px',  a: 'center' },
-                                                { label: '개통번호',   w: '100px', a: 'center' },
-                                                { label: '접점코드',   w: '90px',  a: 'center' },
-                                                { label: '실판매점명', w: '120px', a: 'left'   },
-                                                { label: '구분',       w: '56px',  a: 'center' },
-                                                { label: '요금제',     w: '200px', a: 'left'   },
-                                                { label: '가입유형',   w: '60px',  a: 'center' },
-                                                { label: '고객구분',   w: '64px',  a: 'center' },
-                                                { label: '결합조건',   w: '80px',  a: 'center' },
-                                                { label: '부가서비스', w: '80px',  a: 'center' },
-                                                { label: '가입비',     w: '72px',  a: 'center' },
-                                                { label: '매칭상태',   w: '64px',  a: 'center' },
-                                                { label: '정책금액',   w: '88px',  a: 'right'  },
-                                                { label: '추가금',     w: '76px',  a: 'right'  },
-                                                { label: '차감금',     w: '76px',  a: 'right'  },
-                                                { label: '히든금액',   w: '76px',  a: 'right'  },
-                                                { label: '조정금액',   w: '88px',  a: 'right'  },
-                                                { label: '확정금액',   w: '88px',  a: 'right'  },
-                                                { label: '메모',       w: '100px', a: 'left'   },
-                                                { label: '수정/확정',  w: '68px',  a: 'center' },
+                                                { label: '',         w: '24px',  a: 'center' },
+                                                { label: '개통일',   w: '84px',  a: 'center' },
+                                                { label: '채널',     w: '100px', a: 'center' },
+                                                { label: '고객명',   w: '80px',  a: 'center' },
+                                                { label: '개통번호', w: '84px',  a: 'center' },
+                                                { label: '접점코드', w: '90px',  a: 'center' },
+                                                { label: '요금제',   w: '150px', a: 'left'   },
+                                                { label: '가입유형', w: '56px',  a: 'center' },
+                                                { label: '고객구분', w: '60px',  a: 'center' },
+                                                { label: '매칭상태', w: '60px',  a: 'center' },
+                                                { label: '정책금액', w: '88px',  a: 'right'  },
+                                                { label: '추가금',   w: '76px',  a: 'right'  },
+                                                { label: '차감금',   w: '76px',  a: 'right'  },
+                                                { label: '확정금액', w: '88px',  a: 'right'  },
+                                                { label: '조정금액', w: '88px',  a: 'right'  },
+                                                { label: '관리',     w: '84px',  a: 'center' },
                                               ] as const).map(({ label, w, a }) => (
                                                 <th key={label} style={{ ...thD, width: w, textAlign: a as any }}>{label}</th>
                                               ))}
@@ -10366,42 +10452,43 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                                 return base + (item.addAmount != null ? Number(item.addAmount) : 0) - (item.deductAmount != null ? Number(item.deductAmount) : 0) + (item.hiddenAmount != null ? Number(item.hiddenAmount) : 0);
                                               })();
 
+                                              const hiddenDetailTitle = [
+                                                `판매점명: ${item.dealerName ?? '-'}`,
+                                                `실판매점명: ${ar?.realSalesPOS ?? '-'}`,
+                                                `구분: ${ar?.realSalesPOS ? (isSubPos ? '하부점' : '본점') : '-'}`,
+                                                `결합조건: ${ar?.bundleType ?? '-'}`,
+                                                `부가서비스: ${ar?.addService ?? '-'}`,
+                                                `가입비: ${ar?.regFeeType ?? '-'}`,
+                                                `히든금액: ${item.hiddenAmount != null ? Number(item.hiddenAmount).toLocaleString('ko-KR') : '-'}`,
+                                                `메모: ${item.memo || '-'}`,
+                                              ].join('\n');
+                                              const isChecked = siSelectedIds.has(item.id);
+
                                               return (
                                                 <tr key={`d-${item.id}`}
-                                                  style={{ background: rowBg }}
-                                                  onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = '#fefce8'; }}
-                                                  onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = rowBg; }}
+                                                  style={{ background: isChecked ? '#dbeafe' : rowBg }}
+                                                  onMouseEnter={e => { if (!isChecked) (e.currentTarget as HTMLTableRowElement).style.background = '#fefce8'; }}
+                                                  onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isChecked ? '#dbeafe' : rowBg; }}
                                                 >
+                                                  {/* 체크박스 */}
+                                                  <td style={{ ...tdD, textAlign: 'center' }}>
+                                                    <input type="checkbox" checked={isChecked} onChange={() => toggleSiSelected(item.id)} />
+                                                  </td>
                                                   {/* 개통일 */}
-                                                  <td style={{ ...tdD, textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}>
-                                                    {ar?.activationDatetime ? format(new Date(ar.activationDatetime), 'yyyy-MM-dd HH:mm', { locale: ko }) : '-'}
+                                                  <td style={{ ...tdD, textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}
+                                                    title={ar?.activationDatetime ? format(new Date(ar.activationDatetime), 'yyyy-MM-dd HH:mm:ss', { locale: ko }) : ''}>
+                                                    {ar?.activationDatetime ? format(new Date(ar.activationDatetime), 'yyyy-MM-dd', { locale: ko }) : '-'}
                                                   </td>
                                                   {/* 채널 */}
                                                   <td style={{ ...tdD, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.channel ?? ''}>{ar?.channel ?? '-'}</td>
-                                                  {/* 판매점명 */}
-                                                  <td style={{ ...tdD, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.dealerName ?? ''}>
-                                                    {item.dealerName ?? '-'}
-                                                  </td>
                                                   {/* 고객명 */}
-                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>{ar?.customerName ?? '-'}</td>
+                                                  <td style={{ ...tdD, textAlign: 'center', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.customerName ?? ''}>{ar?.customerName ?? '-'}</td>
                                                   {/* 개통번호 */}
-                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>{ar?.activationNumber ?? ar?.activation_number ?? '-'}</td>
+                                                  <td style={{ ...tdD, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.activationNumber ?? ar?.activation_number ?? ''}>{ar?.activationNumber ?? ar?.activation_number ?? '-'}</td>
                                                   {/* 접점코드 */}
                                                   <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>{ar?.contactCode ?? '-'}</td>
-                                                  {/* 실판매점명 */}
-                                                  <td style={{ ...tdD, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.realSalesPOS ?? ''}>
-                                                    {ar?.realSalesPOS ?? '-'}
-                                                  </td>
-                                                  {/* 구분 (본점/하부점) */}
-                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                                    {ar?.realSalesPOS ? (
-                                                      isSubPos
-                                                        ? <span style={{ fontSize: 10, color: '#c2410c', background: '#ffedd5', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>하부점</span>
-                                                        : <span style={{ fontSize: 10, color: '#15803d', background: '#f0fdf4', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>본점</span>
-                                                    ) : '-'}
-                                                  </td>
                                                   {/* 요금제 */}
-                                                  <td style={{ ...tdD, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.planName ?? ''}>{ar?.planName ?? '-'}</td>
+                                                  <td style={{ ...tdD, textAlign: 'left', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.planName ?? ''}>{ar?.planName ?? '-'}</td>
                                                   {/* 가입유형 */}
                                                   <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                     {ar?.customerType === '1' ? '신규' : ar?.customerType === '2' ? '번이' : ar?.customerType ?? '-'}
@@ -10416,12 +10503,6 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                                       {ar?.nationalityType ?? '내국인'}
                                                     </span>
                                                   </td>
-                                                  {/* 결합조건 */}
-                                                  <td style={{ ...tdD, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.bundleType ?? ''}>{ar?.bundleType ?? '-'}</td>
-                                                  {/* 부가서비스 */}
-                                                  <td style={{ ...tdD, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ar?.addService ?? ''}>{ar?.addService ?? '-'}</td>
-                                                  {/* 가입비 */}
-                                                  <td style={{ ...tdD, textAlign: 'center', whiteSpace: 'nowrap' }}>{ar?.regFeeType ?? '-'}</td>
                                                   {/* 매칭상태 */}
                                                   <td style={{ ...tdD, textAlign: 'center', background: matchBg }}>
                                                     <span style={{ fontWeight: 700, color: matchColor }}>{matchLabel}</span>
@@ -10438,25 +10519,20 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                                   <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap', color: '#dc2626' }}>
                                                     {item.deductAmount != null ? Number(item.deductAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
                                                   </td>
-                                                  {/* 히든금액 */}
-                                                  <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap', color: '#7c3aed' }}>
-                                                    {item.hiddenAmount != null ? Number(item.hiddenAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
+                                                  {/* 확정금액 */}
+                                                  <td style={{ ...tdD, textAlign: 'right', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', whiteSpace: 'nowrap' }}>
+                                                    {finalAmount != null ? finalAmount.toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
                                                   </td>
                                                   {/* 조정금액 */}
                                                   <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap' }}>
                                                     {item.adjustedAmount ? Number(item.adjustedAmount).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
                                                   </td>
-                                                  {/* 확정금액 */}
-                                                  <td style={{ ...tdD, textAlign: 'right', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', whiteSpace: 'nowrap' }}>
-                                                    {finalAmount != null ? finalAmount.toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : '-'}
-                                                  </td>
-                                                  {/* 메모 */}
-                                                  <td style={{ ...tdD, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#9ca3af' }} title={item.memo ?? ''}>
-                                                    {item.memo || '-'}
-                                                  </td>
-                                                  {/* 수정/확정 */}
+                                                  {/* 관리 */}
                                                   <td style={{ ...tdD, textAlign: 'center' }}>
                                                     <div className="flex items-center justify-center gap-0.5">
+                                                      <span title={hiddenDetailTitle} style={{ cursor: 'help', color: '#94a3b8', display: 'inline-flex' }}>
+                                                        <Info className="h-3 w-3" />
+                                                      </span>
                                                       <Button size="sm" variant="ghost" className="h-5 px-1 text-xs" disabled={item.status === '정산완료'}
                                                         onClick={e => {
                                                           e.stopPropagation();
@@ -10487,6 +10563,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                                           <CheckCircle className="h-3 w-3" />
                                                         </Button>
                                                       )}
+                                                      <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-red-500 hover:bg-red-50"
+                                                        onClick={e => {
+                                                          e.stopPropagation();
+                                                          openSiDeleteModal('single', [item.id], { customerName: ar?.customerName, activationNumber: ar?.activationNumber ?? ar?.activation_number });
+                                                        }}>
+                                                        <Trash2 className="h-3 w-3" />
+                                                      </Button>
                                                     </div>
                                                   </td>
                                                 </tr>
@@ -10695,6 +10778,64 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                     </div>
                   </div>
                 )}
+              </DialogContent>
+            </Dialog>
+
+            {/* 정산 결과 삭제 확인 다이얼로그 (단건/선택/판매점 전체 공통) */}
+            <Dialog
+              open={siDeleteModalOpen}
+              onOpenChange={(open) => { if (!siDeleteMutation.isPending) { setSiDeleteModalOpen(open); if (!open) { setSiDeleteMode(null); setSiDeleteTargetIds([]); setSiDeleteTargetMeta({}); setSiDeleteConfirmText(''); } } }}
+            >
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-red-600">정산 결과 삭제</DialogTitle>
+                  <DialogDescription className="text-sm text-gray-700 whitespace-pre-line pt-1">
+                    선택한 정산 결과를 삭제합니다.
+                    이 작업은 복구할 수 없습니다.
+                    개통 데이터, 접점코드, 판매점 원장, 정책 데이터는 삭제하지 않고 정산 결과만 삭제합니다.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="rounded-md border bg-gray-50 p-3 text-sm space-y-1">
+                    <div>
+                      <span className="text-gray-500">삭제 유형</span> ·{' '}
+                      {siDeleteMode === 'single' ? '단건 삭제' : siDeleteMode === 'dealer_all' ? '판매점 전체 삭제' : '선택 삭제'}
+                    </div>
+                    {siDeleteMode === 'dealer_all' && (
+                      <div><span className="text-gray-500">판매점명</span> · {siDeleteTargetMeta.dealerName ?? '-'}</div>
+                    )}
+                    {siDeleteMode === 'single' && (
+                      <>
+                        <div><span className="text-gray-500">고객명</span> · {siDeleteTargetMeta.customerName ?? '-'}</div>
+                        <div><span className="text-gray-500">개통번호</span> · {siDeleteTargetMeta.activationNumber ?? '-'}</div>
+                      </>
+                    )}
+                    <div><span className="text-gray-500">삭제 건수</span> · {siDeleteTargetIds.length}건</div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm">확인을 위해 아래 문구를 정확히 입력하세요: <span className="font-semibold">{SI_DELETE_CONFIRM_TEXT}</span></Label>
+                    <Input
+                      value={siDeleteConfirmText}
+                      onChange={e => setSiDeleteConfirmText(e.target.value)}
+                      placeholder={SI_DELETE_CONFIRM_TEXT}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" disabled={siDeleteMutation.isPending} onClick={() => setSiDeleteModalOpen(false)}>취소</Button>
+                    <Button
+                      variant="destructive"
+                      disabled={siDeleteConfirmText !== SI_DELETE_CONFIRM_TEXT || siDeleteMutation.isPending || siDeleteTargetIds.length === 0}
+                      onClick={() => siDeleteMutation.mutate({
+                        ids: siDeleteTargetIds,
+                        deleteMode: siDeleteMode ?? 'selected',
+                        dealerName: siDeleteTargetMeta.dealerName,
+                        confirmationText: siDeleteConfirmText,
+                      })}
+                    >
+                      {siDeleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}삭제
+                    </Button>
+                  </div>
+                </div>
               </DialogContent>
             </Dialog>
           </TabsContent>

@@ -365,6 +365,7 @@ export interface IStorage {
   createSettlementItem(data: any): Promise<any>;
   updateSettlementItem(id: number, data: any): Promise<any>;
   lockSettlementItem(id: number, adminId: number): Promise<any>;
+  deleteSettlementItemsByIds(ids: number[]): Promise<number>;
   getSettlementItemsForExport(filters?: {
     status?: string;
     matchStatus?: string;
@@ -3462,6 +3463,18 @@ export class PostgreSQLStorage implements IStorage {
         .where(eq(settlementItems.id, id))
         .returning();
       return result[0];
+    });
+  }
+
+  // 정산 결과 선택/일괄 삭제 — settlement_items 행만 삭제 (activation_records/contact_codes/
+  // dealer_registrations/policy_versions/policy_rows는 절대 건드리지 않음)
+  async deleteSettlementItemsByIds(ids: number[]): Promise<number> {
+    return this.withDatabase(async (db) => {
+      if (!ids || ids.length === 0) return 0;
+      const deleted = await db.delete(settlementItems)
+        .where(inArray(settlementItems.id, ids))
+        .returning({ id: settlementItems.id });
+      return deleted.length;
     });
   }
 

@@ -30,7 +30,8 @@ const navigation = [
   { name: '개통 취소', href: '/cancelled', icon: X },
   { name: '폐기', href: '/discarded', icon: Trash2 },
   { name: '서식지', href: '/downloads', icon: Download },
-  { name: '정산 관리', href: '/settlements', icon: Calculator },
+  // MCC_SETTLEMENT_RESULT_COMPACT_UI_AND_SELECT_DELETE_1: 정산 관리 화면 미사용으로 메뉴 숨김 (복원 시 아래 줄 주석 해제)
+  // { name: '정산 관리', href: '/settlements', icon: Calculator },
 ];
 
 const adminNavigation = [
