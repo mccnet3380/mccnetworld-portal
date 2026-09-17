@@ -76,7 +76,13 @@ export async function computePerformanceDataset(date: Date): Promise<Performance
 
   const workers = computeWorkerPerformance(snap.mobileCompleted.workerMatrix, snap.mobileCompleted.totals);
   const groups = buildClosingGroups(snap.mobileCompleted.totals, mobileCumulative, dataUsimDaily);
-  const totalDaily = snap.mobileCompleted.totals.합계;
+  // [DATA_USIM_NOTICE_GRAND_TOTAL_SYNC_1] 공지텍스트 맨 위 "합계 : X"는 전사공지
+  // 상세표(dealerMatrix)의 전체총합계와 같은 당일 전체 실적을 가리켜야 한다. dealerMatrix의
+  // grandTotal은 이미 모바일 당일 + 데이터유심 당일을 더한 값이므로(mergeDataUsimIntoDealerMatrix),
+  // 공지텍스트의 합계도 동일하게 "모바일 당일 + 데이터유심 당일"로 맞춘다. 데이터유심
+  // 자체의 "14/6" 표시 줄(buildClosingGroups의 ▶본사 항목)은 이 값과 무관하게 그대로
+  // 유지된다 — 여기서 더하는 건 누적 14가 아니라 당일 6뿐이다.
+  const totalDaily = snap.mobileCompleted.totals.합계 + dataUsimDaily;
   const noticeText = buildClosingNoticeText({ totalDaily, groups });
   // [DATA_USIM_DAILY_PERFORMANCE_RECONCILIATION_1] 전사공지 상세표 최우측에 "데이터유심"
   // 컬럼을 순수 병합한다 — computeDealerPerformanceMatrix() 자체(■당일완료 기준)는 무변경.
