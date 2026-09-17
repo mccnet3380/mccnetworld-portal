@@ -37,13 +37,16 @@ const navigation = [
   // MCC_PERFORMANCE_SITE_INTEGRATION_1: 실적 메뉴(비관리자도 조회 가능한 2개)
   { name: '실적관리', href: '/performance', icon: BarChart3 },
   { name: '전사 공지용 당일실적', href: '/performance/daily', icon: Megaphone },
+  // [PERFORMANCE_CLOSING_WORKER_ACCESS_FIX_1] 마감보고 · 공지텍스트는 관리자 전용 기능이
+  // 아니라 내부 WORKER가 실제 업무에서 쓰는 화면이다 — admin-only 목록에서 제거하고
+  // 여기(관리자/워커 공통, dealer는 dealerAllowedMenus로 별도 필터링되어 노출 안 됨)로 옮겼다.
+  // 화면 기능/계산/JPG는 전혀 건드리지 않았다 — 메뉴 노출 위치만 이동.
+  { name: '마감보고 · 공지텍스트', href: '/performance/closing', icon: ClipboardCheck },
 ];
 
 const adminNavigation = [
   { name: '관리자', href: '/admin-panel', icon: Settings },
   { name: '영업 조직', href: '/sales-team-management', icon: Users },
-  // MCC_PERFORMANCE_SITE_INTEGRATION_1: 마감 확정 기능 포함 — ADMIN 전용
-  { name: '마감보고 · 공지텍스트', href: '/performance/closing', icon: ClipboardCheck },
 ];
 
 interface SidebarProps {

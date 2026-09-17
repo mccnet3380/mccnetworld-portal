@@ -127,6 +127,15 @@ function AppRoutes() {
       <Route path="/performance" component={PerformanceManagement} />
       <Route path="/performance/daily" component={DailyPerformanceBoard} />
 
+      {/* [PERFORMANCE_CLOSING_WORKER_ACCESS_FIX_1] 마감보고 · 공지텍스트는 관리자 전용이
+          아니라 내부 WORKER가 실제 업무에서 쓰는 화면이다 — admin뿐 아니라 내부 user(worker)도
+          접근 가능해야 한다. 이 블록에는 dealer(위에서 이미 별도 라우트로 분리됨)와
+          sales_manager(위에서 이미 별도 라우트로 분리됨)는 도달하지 않으므로, userType이
+          'admin' 또는 'user'(worker)인 경우에만 허용한다. 화면/기능/계산/JPG는 무변경. */}
+      {(user?.userType === 'admin' || user?.userType === 'user') && (
+        <Route path="/performance/closing" component={PerformanceClosing} />
+      )}
+
       {user?.userType === 'admin' && (
         <>
           <Route path="/admin" component={() => <AdminPanel />} />
@@ -138,8 +147,6 @@ function AppRoutes() {
 
           <Route path="/sales-team-management" component={SalesTeamManagement} />
           <Route path="/test" component={TestPage} />
-          {/* MCC_PERFORMANCE_SITE_INTEGRATION_1: 마감 확정 포함 — ADMIN 전용 */}
-          <Route path="/performance/closing" component={PerformanceClosing} />
         </>
       )}
 
