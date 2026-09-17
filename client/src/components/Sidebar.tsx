@@ -16,7 +16,9 @@ import {
   Trash2,
   Users,
   FileEditIcon,
-  MessageCircle
+  MessageCircle,
+  Megaphone,
+  ClipboardCheck
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
@@ -32,11 +34,16 @@ const navigation = [
   { name: '서식지', href: '/downloads', icon: Download },
   // MCC_SETTLEMENT_RESULT_COMPACT_UI_AND_SELECT_DELETE_1: 정산 관리 화면 미사용으로 메뉴 숨김 (복원 시 아래 줄 주석 해제)
   // { name: '정산 관리', href: '/settlements', icon: Calculator },
+  // MCC_PERFORMANCE_SITE_INTEGRATION_1: 실적 메뉴(비관리자도 조회 가능한 2개)
+  { name: '실적관리', href: '/performance', icon: BarChart3 },
+  { name: '전사 공지용 당일실적', href: '/performance/daily', icon: Megaphone },
 ];
 
 const adminNavigation = [
   { name: '관리자', href: '/admin-panel', icon: Settings },
   { name: '영업 조직', href: '/sales-team-management', icon: Users },
+  // MCC_PERFORMANCE_SITE_INTEGRATION_1: 마감 확정 기능 포함 — ADMIN 전용
+  { name: '마감보고 · 공지텍스트', href: '/performance/closing', icon: ClipboardCheck },
 ];
 
 interface SidebarProps {

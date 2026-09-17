@@ -1,0 +1,133 @@
+/*
+ * client/src/components/performance/EnterpriseDailyReportBoard.css
+ *
+ * 작업명: MCC_ENTERPRISE_DAILY_REPORT_EXACT_HTML_RESTORE_1
+ *
+ * MCC_UNIFIED_PERFORMANCE_REPORT_HTML_17/closing.html의 <style> 블록에서 그대로 추출.
+ * 값을 임의로 Tailwind/shadcn 기본값으로 대체하지 않았다 — 클래스 이름만 전역 충돌 방지를
+ * 위해 "edrb-" 접두어를 붙였을 뿐, 모든 색상/치수/폰트 값은 원본과 동일하다.
+ */
+
+.edrb-layout {
+  display: grid;
+  grid-template-columns: 390px minmax(1000px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .edrb-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.edrb-card {
+  background: #fff;
+  border: 1px solid #dbe3ef;
+  border-radius: 14px;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.edrb-rule {
+  background: #fff7dd;
+  border: 1px solid #f1c75b;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.edrb-textarea {
+  width: 100%;
+  height: 690px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 14px;
+  resize: vertical;
+  font: 14px/1.55 Consolas, "Malgun Gothic", monospace;
+  background: #fff;
+  color: #15233b;
+}
+
+.edrb-sales-block {
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  background: #fff;
+}
+.edrb-sales-block + .edrb-sales-block {
+  margin-top: -1px;
+}
+
+/* [MCC_ENTERPRISE_DAILY_REPORT_JPG_TABLE_FINAL_FIX_1] 강/구/수... 그룹 제목 행(.edrb-manager-title)은
+   삭제했다 — 그룹 구분은 판매점 행 배경색만으로 한다(edrb-sales-block 색상 규칙은 그대로 유지). */
+
+.edrb-pivot {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 1450px;
+  font-size: 10px;
+  white-space: nowrap;
+  table-layout: auto;
+}
+.edrb-pivot th,
+.edrb-pivot td {
+  border: 1px solid #000;
+  padding: 4px 8px;
+  text-align: center;
+  vertical-align: middle;
+  height: 23px;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+.edrb-pivot th {
+  background: #d9e2f3;
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 76px;
+}
+.edrb-pivot .edrb-dealer {
+  text-align: left;
+  vertical-align: middle;
+  min-width: 235px;
+  white-space: nowrap;
+  padding: 0 8px;
+  height: 23px;
+}
+/*
+ * [MCC_PERFORMANCE_HTML_UI_ROUTE_AND_EXPORT_FINAL_RESTORE_1 → 재검증 후 추가 수정
+ *  MCC_PERFORMANCE_TWO_JPG_EXPORTS_FINAL_RESTORE_1] 판매점명 셀 상하 중앙 정렬.
+ * vertical-align:middle 단독으로는 실제 렌더링에서 위/아래 여백이 비대칭이었다(사용자 실측
+ * 기준 폐기됨) — td 높이(padding 포함 box)를 그대로 고정하고, 그 안을 flex로 감싸서
+ * 텍스트 라인박스를 기하학적으로 정중앙에 배치했다.
+ * 그런데 flex 컨테이너(23px)는 정확히 중앙 정렬돼도, line-height:normal이 폰트 metric에 따라
+ * half-leading을 위/아래 비대칭으로 배치해 실제 글자(glyph) 자체는 1px 정도 아래로 치우쳐
+ * 보였다(Range.getBoundingClientRect()로 텍스트 자체를 실측해서 확인 — topGap 5.5px vs
+ * bottomGap 4.5px). line-height를 1로 명시해서 이 half-leading 여유값 자체를 최소화한다.
+ */
+.edrb-pivot .edrb-dealer-inner {
+  display: flex;
+  align-items: center;
+  height: 23px;
+  line-height: 1;
+}
+.edrb-pivot .edrb-totalrow td {
+  font-weight: 800;
+  background: #e2f0d9;
+}
+
+.edrb-grand .edrb-totalrow td {
+  background: #fff2cc;
+}
+
+.edrb-note {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 8px;
+}
+
+/* JPG 캡처 대상(오른쪽 표 영역)만 감싸는 클래스 — 화면 스타일에는 영향 없음, 식별용 */
+.edrb-table-export {
+  background: #fff;
+}

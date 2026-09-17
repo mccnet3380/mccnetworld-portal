@@ -1,0 +1,189 @@
+/*
+ * client/src/components/performance/ResultManagementBoard.css
+ *
+ * 작업명: MCC_PERFORMANCE_HTML_UI_ROUTE_AND_EXPORT_FINAL_RESTORE_1
+ *
+ * MCC_UNIFIED_PERFORMANCE_REPORT_HTML_17/result_management.html("실적관리",
+ * index.html routes.result가 가리키는 실제 파일)의 <style> 블록을 그대로 추출했다.
+ * 임의로 Tailwind/shadcn 기본값으로 대체하지 않았다 — 클래스 이름만 "rmb-" 접두어를 붙였다.
+ */
+
+.rmb-wrap {
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.rmb-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.rmb-head h1 {
+  margin: 0;
+  font-size: 23px;
+}
+.rmb-sub {
+  font-size: 13px;
+  color: #667085;
+  margin-top: 5px;
+}
+.rmb-badge {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #eaf7ef;
+  color: #137a43;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.rmb-tabs {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.rmb-tab {
+  border: 1px solid #d6deea;
+  background: #fff;
+  border-radius: 9px;
+  padding: 10px 15px;
+  font-weight: 800;
+  cursor: pointer;
+  color: #182230;
+}
+.rmb-tab.on {
+  background: #1769e0;
+  color: #fff;
+  border-color: #1769e0;
+}
+
+.rmb-panel {
+  display: none;
+}
+.rmb-panel.on {
+  display: block;
+}
+
+.rmb-card {
+  background: #fff;
+  border: 1px solid #dce3ed;
+  border-radius: 13px;
+  padding: 16px;
+  margin-bottom: 13px;
+}
+
+.rmb-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.rmb-toolbar label {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 5px;
+  color: #475467;
+}
+.rmb-toolbar select,
+.rmb-toolbar input {
+  height: 39px;
+  border: 1px solid #ccd5e2;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+}
+.rmb-btn {
+  height: 39px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 800;
+  cursor: pointer;
+  background: #e9eef5;
+}
+.rmb-btn.primary {
+  background: #1769e0;
+  color: #fff;
+}
+
+.rmb-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  margin: 12px 0;
+}
+.rmb-metric {
+  background: #fff;
+  border: 1px solid #dce3ed;
+  border-radius: 11px;
+  padding: 13px;
+}
+.rmb-metric small {
+  color: #667085;
+}
+.rmb-metric strong {
+  display: block;
+  font-size: 23px;
+  margin-top: 7px;
+}
+@media (max-width: 900px) {
+  .rmb-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.rmb-tablewrap {
+  overflow: auto;
+  border: 1px solid #dce3ed;
+  border-radius: 10px;
+}
+.rmb-tablewrap table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+.rmb-tablewrap th,
+.rmb-tablewrap td {
+  padding: 10px 9px;
+  border-bottom: 1px solid #e6ebf2;
+  font-size: 13px;
+  text-align: center;
+}
+.rmb-tablewrap th {
+  background: #f2f5f9;
+}
+.rmb-tablewrap td.left {
+  text-align: left;
+}
+
+.rmb-warn {
+  background: #fff8e5;
+  border: 1px solid #f0d98b;
+  padding: 11px;
+  border-radius: 9px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.rmb-note {
+  font-size: 12px;
+  color: #667085;
+  margin-top: 9px;
+  line-height: 1.55;
+}
+.rmb-empty {
+  padding: 28px;
+  color: #667085;
+  text-align: center;
+}
+.rmb-formula {
+  font-family: Consolas, monospace;
+  background: #f8fafc;
+  padding: 3px 6px;
+  border-radius: 5px;
+}

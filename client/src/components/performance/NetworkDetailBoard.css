@@ -1,0 +1,184 @@
+/*
+ * client/src/components/performance/NetworkDetailBoard.css
+ *
+ * 작업명: MCC_PERFORMANCE_HTML_UI_ROUTE_AND_EXPORT_FINAL_RESTORE_1
+ *
+ * MCC_UNIFIED_PERFORMANCE_REPORT_HTML_17/performance.html("전사 공지용 당일실적",
+ * index.html routes.daily가 가리키는 실제 파일)의 <style> 블록(.dashboard/.kpis/.carrierRows/
+ * .carrierPair/.gridBottom/.section/.head/table 등, 특히 마지막에 적용되는
+ * #mobile-daily-final-readable-layout-v11 블록의 최종 값)을 그대로 추출했다.
+ * 임의로 Tailwind/shadcn 기본값으로 대체하지 않았다 — 클래스 이름만 "ndb-" 접두어를 붙였다.
+ */
+
+.ndb-dashboard {
+  background: #fff;
+  border: 1px solid #d7e4f2;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 5px 22px rgba(20, 50, 90, 0.08);
+}
+
+.ndb-dash-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #edf3fa;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+.ndb-dash-head h2 {
+  margin: 0;
+  font-size: 25px;
+}
+.ndb-dash-head .ndb-file {
+  color: #64748b;
+  font-weight: 800;
+}
+
+.ndb-kpis {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ndb-kpi {
+  border: 1px solid #d7e4f2;
+  border-radius: 14px;
+  padding: 12px;
+  background: #fff;
+}
+.ndb-kpi .ndb-label {
+  color: #526174;
+  font-weight: 900;
+}
+.ndb-kpi .ndb-num {
+  font-size: 24px;
+  font-weight: 900;
+  margin: 4px 0;
+}
+.ndb-kpi .ndb-small {
+  font-size: 11px;
+  color: #64748b;
+}
+.ndb-kpi.kt { background: #eaf6ff; }
+.ndb-kpi.lg { background: #fff4cf; }
+.ndb-kpi.sk { background: #eef9e8; }
+.ndb-kpi.etc { background: #f7efff; }
+.ndb-kpi.sum { background: #f8fafc; }
+
+@media (max-width: 1200px) {
+  .ndb-kpis {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ndb-carrierRows {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.ndb-carrierPair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+@media (max-width: 1300px) {
+  .ndb-carrierPair,
+  .ndb-gridBottom {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.ndb-gridBottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.ndb-section {
+  border: 1px solid #d7e4f2;
+  border-radius: 14px;
+  overflow: hidden;
+  overflow-x: auto;
+  background: #fff;
+}
+.ndb-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 12px;
+  color: #fff;
+  font-weight: 900;
+}
+.ndb-head.kt { background: #bfe1f6; color: #071b3a; }
+.ndb-head.lg { background: #ffe5a0; color: #071b3a; }
+.ndb-head.sk { background: #d4edbc; color: #071b3a; }
+.ndb-head.etc { background: #eadcf8; color: #071b3a; }
+.ndb-head.sum { background: #334155; color: #fff; }
+.ndb-head small {
+  font-weight: 800;
+  opacity: 0.9;
+}
+
+.ndb-section table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+.ndb-section th {
+  padding: 6px 7px;
+  font-size: 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.16);
+  white-space: nowrap;
+}
+.ndb-section.kt th,
+.ndb-section.lg th,
+.ndb-section.sk th,
+.ndb-section.etc th {
+  color: #071b3a;
+}
+.ndb-section.sum th {
+  color: #fff;
+}
+.ndb-section td {
+  border: 1px solid #e3edf8;
+  padding: 6px 7px;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.ndb-section td.left {
+  text-align: left;
+  font-weight: 900;
+}
+.ndb-section td:first-child,
+.ndb-section th:first-child {
+  min-width: 72px;
+  text-align: left !important;
+  font-weight: 900;
+}
+.ndb-section td:nth-child(2),
+.ndb-section th:nth-child(2),
+.ndb-section td:nth-child(3),
+.ndb-section th:nth-child(3) {
+  min-width: 58px;
+  font-weight: 900;
+}
+.ndb-total-row td {
+  background: #eef3f8;
+  font-weight: 900;
+}
+.ndb-total-label {
+  text-align: left !important;
+}
+.ndb-total-num {
+  color: #0f172a;
+}
+.ndb-empty {
+  padding: 16px;
+  text-align: center;
+  color: #64748b;
+}

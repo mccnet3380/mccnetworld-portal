@@ -18,6 +18,9 @@ import { OtherApplication } from '@/pages/OtherApplication';
 import { Downloads } from '@/pages/Downloads';
 import { AdminPanel } from '@/pages/AdminPanel';
 import { Settlements } from '@/pages/Settlements';
+import { PerformanceManagement } from '@/pages/PerformanceManagement';
+import { DailyPerformanceBoard } from '@/pages/DailyPerformanceBoard';
+import { PerformanceClosing } from '@/pages/PerformanceClosing';
 
 // 판매점 관련 페이지
 import { DealerRegistration } from '@/pages/DealerRegistration';
@@ -70,7 +73,7 @@ function AppRoutes() {
     return <Login />;
   }
 
-  // 영업과장은 실적 대시보드로 리다이렉트  
+  // 영업과장은 실적 대시보드로 리다이렉트
   if (user && 'userType' in user && user.userType === 'sales_manager') {
     return (
       <Switch>
@@ -113,21 +116,33 @@ function AppRoutes() {
       <Route path="/discarded" component={DiscardedDocuments} />
       <Route path="/other-completions" component={OtherCompletions} />
       <Route path="/downloads" component={Downloads} />
+
       {/* MCC_SETTLEMENT_RESULT_COMPACT_UI_AND_SELECT_DELETE_1: 정산 관리 화면 미사용으로 라우트 숨김 (복원 시 아래 블록 주석 해제)
       {user?.userType === 'admin' && (
         <Route path="/settlements" component={Settlements} />
       )}
       */}
 
+      {/* MCC_PERFORMANCE_SITE_INTEGRATION_1: 실적관리/전사 공지용 당일실적 — admin/worker 등 내부 사용자 조회 가능 */}
+      <Route path="/performance" component={PerformanceManagement} />
+      <Route path="/performance/daily" component={DailyPerformanceBoard} />
+
       {user?.userType === 'admin' && (
         <>
           <Route path="/admin" component={() => <AdminPanel />} />
           <Route path="/admin-panel" component={() => <AdminPanel />} />
-          <Route path="/admin/other-business-carriers" component={() => <AdminPanel defaultTab="other-business-carriers" />} />
+          <Route
+            path="/admin/other-business-carriers"
+            component={() => <AdminPanel defaultTab="other-business-carriers" />}
+          />
+
           <Route path="/sales-team-management" component={SalesTeamManagement} />
           <Route path="/test" component={TestPage} />
+          {/* MCC_PERFORMANCE_SITE_INTEGRATION_1: 마감 확정 포함 — ADMIN 전용 */}
+          <Route path="/performance/closing" component={PerformanceClosing} />
         </>
       )}
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -150,10 +165,10 @@ function MainApp() {
       {/* 판매점 관련 라우트 (인증 없이 접근 가능) */}
       <Route path="/dealer-registration" component={DealerRegistration} />
       <Route path="/dealer-login" component={DealerLogin} />
-      
+
       {/* 영업과장 대시보드 (인증 우회) */}
       <Route path="/sales-manager-dashboard" component={SalesManagerDashboard} />
-      
+
       {/* 기존 인증이 필요한 라우트 */}
       <Route>
         <AuthGuard fallback={<Login />}>

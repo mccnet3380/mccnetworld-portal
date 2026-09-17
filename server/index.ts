@@ -9,6 +9,8 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { setupVite, serveStatic, log } from "./vite";
 import router from "./routes";
+import performanceAdminRoutes from "./routes/performance-admin";
+import performanceRoutes from "./routes/performance";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -215,6 +217,13 @@ if (process.env.APP_ENV === 'development') {
 // API 라우트 (vite보다 항상 먼저)
 // ─────────────────────────────
 app.use("/api/auth", authRouter);
+
+// 실적 관리 - 현재 연결된 Google Sheets 스프레드시트 상태 조회 (관리자 전용)
+app.use(performanceAdminRoutes);
+
+// 실적관리/전사 공지용 당일실적/마감보고 화면이 공유하는 데이터 API (로그인 사용자 전체)
+app.use(performanceRoutes);
+
 app.use(router);
 
 // ─────────────────────────────

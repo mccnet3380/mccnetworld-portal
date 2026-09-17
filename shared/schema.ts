@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { sql } from 'drizzle-orm';
 import {
   index,
+  uniqueIndex,
   jsonb,
   pgTable,
   timestamp,
@@ -556,6 +557,55 @@ export const settlementFiles = pgTable("settlement_files", {
   uploadedBy: integer("uploaded_by").notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
 });
+
+//===============================================
+// 유선(인터넷) 실적 마감 snapshot — MCC_INTERNET_LEGACY_CUMULATIVE_CLEANUP_1
+//
+// cumulative의 source of truth는 DB가 아니라 Google Spreadsheet의 4개 상태 시트
+// (인터넷진행/인터넷이월/인터넷완료/인터넷이월완료) 실시간 재조회다
+// (MCC_INTERNET_LIVE_STATE_CUMULATIVE_FINALIZE_1). 아래 테이블들은 "마감 시점에
+// 읽은 결과를 보존"하는 snapshot 저장소일 뿐이다 — previousCumulative/baseline처럼
+// "DB 전일누적 + 오늘daily"로 이어가던 구형 체인 모델의 컬럼/테이블은 완전히 제거했다.
+//===============================================
+
+// 카테고리별 일일 마감 snapshot (당일 접수/처리실적/대기 + 마감 시점 누적 상태 보존).
+// date+category 유니크 — 같은 날짜 재마감 시 새 행을 만들지 않고 그 시점 라이브 값으로 갱신한다.
+export const internetDailyClosings = pgTable(
+  "internet_daily_closings",
+  {
+    id: serial("id").primaryKey(),
+    date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+    yearMonth: varchar("year_month", { length: 7 }).notNull(), // YYYY-MM
+    category: varchar("category", { length: 20 }).notNull(), // WireCategory (SKB/KT/KT-U/KT-V/LG/LG(소호)/LGHV-B/SKY/KT-선불/LG-선불)
+    received: integer("received").notNull(), // 당일 접수 = daily + waiting
+    daily: integer("daily").notNull(), // 당일 처리실적 (작업자 이름 있는 건만)
+    waiting: integer("waiting").notNull(), // 대기 (작업자 이름 없는 건)
+    cumulative: integer("cumulative").notNull(), // 마감 시점에 4개 상태 시트를 읽어 계산한 값 (DB에서 계산한 값 아님)
+    closedAt: timestamp("closed_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("internet_daily_closings_date_category_uq").on(table.date, table.category),
+    index("internet_daily_closings_year_month_idx").on(table.yearMonth, table.category),
+  ],
+);
+
+// 작업자별 당일 유선 처리실적 (원본 요청점 단위). 대기(작업자 없음) 건은 저장하지 않는다.
+export const internetWorkerDailyClosings = pgTable(
+  "internet_worker_daily_closings",
+  {
+    id: serial("id").primaryKey(),
+    date: varchar("date", { length: 10 }).notNull(),
+    worker: varchar("worker", { length: 100 }).notNull(),
+    requestPoint: varchar("request_point", { length: 50 }).notNull(), // 원본 요청점 코드 (예: KT-탑)
+    category: varchar("category", { length: 20 }).notNull(),
+    count: integer("count").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("internet_worker_daily_closings_uq").on(table.date, table.worker, table.requestPoint),
+  ],
+);
 
 //===============================================
 // 타입 정의
