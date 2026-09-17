@@ -14,10 +14,15 @@
 // - buildClosingNoticeText() (closing-notice.ts) — 마감 공지텍스트 조립(순수 함수)
 
 import { computeDailyPerformanceSnapshot, type DailyPerformanceSnapshot, type NetworkTotals, type WorkerNetworkRow } from "./performance-calc";
-import { computeMobileCumulativeRaw, computeDataUsimDaily, type MobileCumulativeRaw } from "./mobile-cumulative";
+import {
+  computeMobileCumulativeRaw,
+  computeDataUsimDaily,
+  computeDataUsimDealerBreakdown,
+  type MobileCumulativeRaw,
+} from "./mobile-cumulative";
 import { computeWorkerPerformance, type WorkerPerformanceRow } from "./worker-performance";
 import { NOTICE_GROUPS, buildClosingNoticeText, type ClosingNetworkGroup } from "./closing-notice";
-import { computeDealerPerformanceMatrix, type DealerPerformanceMatrix } from "./dealer-performance";
+import { computeDealerPerformanceMatrix, mergeDataUsimIntoDealerMatrix, type DealerPerformanceMatrix } from "./dealer-performance";
 import { computeNetworkDetailMatrix, type NetworkDetailMatrix } from "./network-detail-matrix";
 import type { WirePerformanceSnapshot } from "./internet-cumulative";
 
@@ -60,10 +65,11 @@ function buildClosingGroups(dailyTotals: NetworkTotals, cumulative: MobileCumula
 }
 
 export async function computePerformanceDataset(date: Date): Promise<PerformanceDataset> {
-  const [snap, mobileCumulative, dataUsimDaily, dealerMatrix, networkDetail] = await Promise.all([
+  const [snap, mobileCumulative, dataUsimDaily, dataUsimBreakdown, dealerMatrixRaw, networkDetail] = await Promise.all([
     computeDailyPerformanceSnapshot(date),
     computeMobileCumulativeRaw(),
     computeDataUsimDaily(date),
+    computeDataUsimDealerBreakdown(date),
     computeDealerPerformanceMatrix(date),
     computeNetworkDetailMatrix(date),
   ]);
@@ -72,6 +78,10 @@ export async function computePerformanceDataset(date: Date): Promise<Performance
   const groups = buildClosingGroups(snap.mobileCompleted.totals, mobileCumulative, dataUsimDaily);
   const totalDaily = snap.mobileCompleted.totals.합계;
   const noticeText = buildClosingNoticeText({ totalDaily, groups });
+  // [DATA_USIM_DAILY_PERFORMANCE_RECONCILIATION_1] 전사공지 상세표 최우측에 "데이터유심"
+  // 컬럼을 순수 병합한다 — computeDealerPerformanceMatrix() 자체(■당일완료 기준)는 무변경.
+  // 병합에 쓰는 건 당일 6건(dataUsimBreakdown)뿐이다 — 누적 14는 여기 넣지 않는다.
+  const dealerMatrix = mergeDataUsimIntoDealerMatrix(dealerMatrixRaw, dataUsimBreakdown);
 
   return {
     date: snap.date,

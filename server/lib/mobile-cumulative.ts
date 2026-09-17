@@ -24,7 +24,16 @@
 //   간접 증거이지만, 이 이상은 추측하지 않는다 — "취소가 반영되는 메커니즘 자체"를 코드로
 //   재구현하지 않고, 이미 취소 반영이 끝난 결과물("개통처리부")을 그대로 읽기만 한다.
 // - "데이터유심"은 예외다 — 요청점/classifyReq 체계가 아니라 전용 시트이고, 그 시트 자체의
-//   행수가 곧 값이다(카테고리 분류 없음).
+//   유효 행수가 곧 값이다(카테고리 분류 없음).
+//
+// [DATA_USIM_CUMULATIVE_AND_DAILY_FIX_1] "유효 행"의 정의를 고정한다: 사용자가 실제
+// 원본 시트를 2026-09-17 기준으로 직접 대조해서 확정한 값은 누적=14, 당일=6(당일 6건은
+// 누적 14건에 이미 포함됨). 기존 "셀 하나라도 값이 있으면 유효 행" 판정은 작업자/접수일/
+// 판매점명이 전부 공백이면서 뒤쪽 메모 컬럼에만 잔여 텍스트가 남은 유령 행(예: 시트의
+// 마지막 행)까지 유효 행으로 잘못 세어 15가 나왔다. 데이터유심 실적 행을 실제로 식별하는
+// 핵심 컬럼은 작업자/접수일/판매점명이며, 이 셋이 전부 채워진 행만 유효 행으로 센다 —
+// 이렇게 하면 실측값(14)과 정확히 일치한다. computeDataUsimDaily()는 이미 정확했으므로
+// (접수일 날짜 매칭 자체가 이 유령 행을 자연스럽게 걸러냄) 그대로 두고 손대지 않는다.
 //
 // 절대 원칙:
 // - classifyReq()(performance-classify.ts)를 그대로 재사용한다 — 새 분류 규칙 없음.
@@ -85,9 +94,7 @@ export async function computeMobileCumulativeRaw(): Promise<MobileCumulativeRaw>
 
   const dataUsimValues = await fetchSheetValues(DATA_USIM_SHEET);
   const dataUsimCumulative =
-    dataUsimValues.length > 0
-      ? dataUsimValues.slice(1).filter((r) => r.some((c) => String(c ?? "").trim() !== "")).length
-      : 0;
+    dataUsimValues.length > 0 ? dataUsimValues.slice(1).filter((r) => isValidDataUsimRow(dataUsimValues[0], r)).length : 0;
 
   const byCategory: MobileCumulativeCategoryCount[] = Object.entries(byCategoryMap).map(([cat, count]) => ({
     net: netByCat[cat],
@@ -109,6 +116,24 @@ function two(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
+/**
+ * [DATA_USIM_CUMULATIVE_AND_DAILY_FIX_1] "데이터유심" 시트의 실제 실적 행 여부를
+ * 판정하는 핵심 컬럼(작업자/접수일/판매점명)이 전부 채워져 있는지로 유효 행을 정의한다.
+ * 뒤쪽 메모/잔여 텍스트 컬럼에 뭔가 남아있다는 이유만으로 유효 행으로 세지 않는다
+ * (실측 대조: 이 기준으로 누적을 세면 14 — 사용자가 원본에서 직접 확인한 값과 일치).
+ */
+function isValidDataUsimRow(header: string[], row: string[]): boolean {
+  const workerIdx = header.indexOf("작업자");
+  const receiptIdx = header.indexOf("접수일");
+  const dealerIdx = header.indexOf("판매점명");
+  if (workerIdx < 0 || receiptIdx < 0 || dealerIdx < 0) return false;
+  return (
+    String(row[workerIdx] ?? "").trim() !== "" &&
+    String(row[receiptIdx] ?? "").trim() !== "" &&
+    String(row[dealerIdx] ?? "").trim() !== ""
+  );
+}
+
 /** "데이터유심" 시트에는 개통일 개념이 없어(요청점/개통 이벤트 없음), 접수일이 오늘인 건을 당일로 본다. */
 export async function computeDataUsimDaily(date: Date): Promise<number> {
   const values = await fetchSheetValues(DATA_USIM_SHEET);
@@ -123,4 +148,46 @@ export async function computeDataUsimDaily(date: Date): Promise<number> {
 
   const rows = values.slice(1).filter((r) => r.some((c) => String(c ?? "").trim() !== ""));
   return rows.filter((r) => variants.includes(String(r[receiptIdx] ?? "").trim())).length;
+}
+
+export interface DataUsimDealerCount {
+  dealer: string; // 판매점명(접두어 포함), dealer-performance.ts의 dealer 문자열과 동일 표기
+  count: number;
+}
+
+export interface DataUsimDealerBreakdown {
+  total: number; // computeDataUsimDaily()와 반드시 같아야 하는 검증용 합계
+  byDealer: DataUsimDealerCount[];
+}
+
+/**
+ * [DATA_USIM_CUMULATIVE_AND_DAILY_FIX_1] 전사공지 상세표(dealerMatrix)의 최우측
+ * "데이터유심" 컬럼용 — 당일(오늘) 건만 판매점명 기준으로 집계한다. 날짜 판정 로직은
+ * computeDataUsimDaily()와 완전히 동일하게 복제했다(그 함수는 이미 정확하므로 수정하지
+ * 않고, 같은 규칙을 그대로 재사용). 새로운 담당자 추정 규칙을 만들지 않는다 — 판매점명은
+ * dealer-performance.ts가 이미 쓰는 것과 같은 "그룹코드)판매점명" 표기를 그대로 쓴다.
+ */
+export async function computeDataUsimDealerBreakdown(date: Date): Promise<DataUsimDealerBreakdown> {
+  const values = await fetchSheetValues(DATA_USIM_SHEET);
+  if (values.length === 0) return { total: 0, byDealer: [] };
+  const header = values[0];
+  const receiptIdx = header.indexOf("접수일");
+  const dealerIdx = header.indexOf("판매점명");
+  if (receiptIdx < 0 || dealerIdx < 0) return { total: 0, byDealer: [] };
+
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const variants = [`${m}/${d}`, `${two(m)}/${two(d)}`, `${m}.${d}`];
+
+  const rows = values.slice(1).filter((r) => r.some((c) => String(c ?? "").trim() !== ""));
+  const todayRows = rows.filter((r) => variants.includes(String(r[receiptIdx] ?? "").trim()));
+
+  const counts = new Map<string, number>();
+  for (const r of todayRows) {
+    const dealer = String(r[dealerIdx] ?? "").trim();
+    counts.set(dealer, (counts.get(dealer) || 0) + 1);
+  }
+
+  const byDealer = Array.from(counts.entries()).map(([dealer, count]) => ({ dealer, count }));
+  return { total: todayRows.length, byDealer };
 }
