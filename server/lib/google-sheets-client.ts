@@ -158,6 +158,39 @@ export async function fetchSheetValues(
 }
 
 /**
+ * LG_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1: 검수 날짜 기준으로 이미 resolve된
+ * spreadsheetId를 직접 받아 조회한다. 기존 fetchSheetValues()(항상 "오늘" 기준으로
+ * getSpreadsheetId()를 호출)는 그대로 두고 별도 함수로 추가했다 — 검증된 경로 무변경.
+ * LG 검수는 "검수 날짜"의 연/월로 resolve한 스프레드시트를 읽어야 하므로
+ * resolveActiveSpreadsheet(auditDate)의 결과를 호출부에서 직접 넘겨 쓴다.
+ */
+export async function fetchSheetValuesById(
+  spreadsheetId: string,
+  sheetName: string,
+  range = "A1:ZZ20000",
+): Promise<string[][]> {
+  const token = await getAccessToken();
+  const encodedRange = encodeURIComponent(`'${sheetName}'!${range}`);
+  const url =
+    `${SHEETS_API_BASE}/${spreadsheetId}/values/${encodedRange}` +
+    `?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `[GoogleSheets] 시트 조회 실패 (status=${res.status}) sheet="${sheetName}": ${body.slice(0, 500)}`,
+    );
+  }
+
+  const json = (await res.json()) as { values?: unknown[][] };
+  return (json.values || []).map((row) => row.map((cell) => (cell == null ? "" : String(cell))));
+}
+
+/**
  * MCC_INTERNET_EXISTING_EXCEL_RULE_TRACE_1: 진단 전용 — 셀의 "값"이 아니라 "수식 문자열"을 읽는다.
  * 기존 fetchSheetValues()는 그대로 두고 별도 함수로 추가했다 (검증된 경로 무변경).
  * 어떤 시트가 다른 시트를 SUMIF/COUNTIF 등으로 참조하는지 찾을 때 사용.

@@ -21,6 +21,7 @@ import { Settlements } from '@/pages/Settlements';
 import { PerformanceManagement } from '@/pages/PerformanceManagement';
 import { DailyPerformanceBoard } from '@/pages/DailyPerformanceBoard';
 import { PerformanceClosing } from '@/pages/PerformanceClosing';
+import { LgActivationAudit } from '@/pages/LgActivationAudit';
 
 // 판매점 관련 페이지
 import { DealerRegistration } from '@/pages/DealerRegistration';
@@ -79,6 +80,10 @@ function AppRoutes() {
       <Switch>
         <Route path="/" component={() => <Redirect to="/sales-manager-dashboard" />} />
         <Route path="/sales-manager-dashboard" component={SalesManagerDashboard} />
+        {/* [LG_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1] 영업과장도 LG 검수 접근 허용 —
+            이 분기는 sales_manager를 그 외 모든 경로에서 대시보드로 강제 리다이렉트하므로
+            /lg-audit도 명시적으로 뚫어줘야 실제로 도달 가능하다. */}
+        <Route path="/lg-audit" component={LgActivationAudit} />
         <Route component={() => <Redirect to="/sales-manager-dashboard" />} />
       </Switch>
     );
@@ -134,6 +139,17 @@ function AppRoutes() {
           'admin' 또는 'user'(worker)인 경우에만 허용한다. 화면/기능/계산/JPG는 무변경. */}
       {(user?.userType === 'admin' || user?.userType === 'user') && (
         <Route path="/performance/closing" component={PerformanceClosing} />
+      )}
+
+      {/* [LG_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1] LG 검수: admin/sales_manager/내부
+          WORKER만 허용, dealer 차단. dealer 계정도 userType='user'로 저장되므로 userType만으로는
+          내부 WORKER를 구분할 수 없다(감사에서 확인) — dealerId/dealerRegistrationId가 둘 다
+          없어야 내부 WORKER로 취급한다. 실제 게이트는 server/routes/lg-audit.ts의
+          requireLgAuditAccess이며, 이 조건은 화면 노출용 UX일 뿐이다. */}
+      {(user?.userType === 'admin' ||
+        user?.userType === 'sales_manager' ||
+        (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
+        <Route path="/lg-audit" component={LgActivationAudit} />
       )}
 
       {user?.userType === 'admin' && (

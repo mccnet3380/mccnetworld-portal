@@ -18,7 +18,8 @@ import {
   FileEditIcon,
   MessageCircle,
   Megaphone,
-  ClipboardCheck
+  ClipboardCheck,
+  FileSearch
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
@@ -42,6 +43,11 @@ const navigation = [
   // 여기(관리자/워커 공통, dealer는 dealerAllowedMenus로 별도 필터링되어 노출 안 됨)로 옮겼다.
   // 화면 기능/계산/JPG는 전혀 건드리지 않았다 — 메뉴 노출 위치만 이동.
   { name: '마감보고 · 공지텍스트', href: '/performance/closing', icon: ClipboardCheck },
+  // LG_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1: LG 검수 — 내부 작업자용 업무 기능(관리자
+  // 설정이 아님). admin/worker/sales_manager 공통 navigation에 배치하고, dealer는 아래
+  // dealerAllowedMenus 필터링으로 계속 제외된다. 실제 권한 게이트는 서버
+  // (server/routes/lg-audit.ts의 requireLgAuditAccess)이며 이 메뉴 노출은 UX일 뿐이다.
+  { name: 'LG 검수', href: '/lg-audit', icon: FileSearch },
 ];
 
 const adminNavigation = [

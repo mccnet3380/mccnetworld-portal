@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,7 +28,8 @@ import {
   LogOut,
   User,
   BarChart3,
-  Calendar
+  Calendar,
+  FileSearch
 } from 'lucide-react';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
 
@@ -306,9 +308,20 @@ export default function SalesManagerDashboard() {
           </div>
         </div>
 
+        {/* [LG_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1] 영업과장도 LG 검수 접근 허용 —
+            이 대시보드는 공용 Sidebar를 쓰지 않는 독립 레이아웃이라 여기 자체 메뉴에 추가한다. */}
         <div className="p-6 border-t">
-          <Button 
-            variant="outline" 
+          <Link href="/lg-audit">
+            <Button variant="outline" className="w-full justify-start">
+              <FileSearch className="mr-2 h-4 w-4" />
+              LG 검수
+            </Button>
+          </Link>
+        </div>
+
+        <div className="p-6 border-t">
+          <Button
+            variant="outline"
             className="w-full"
             onClick={handleLogout}
           >

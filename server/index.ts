@@ -11,6 +11,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import router from "./routes";
 import performanceAdminRoutes from "./routes/performance-admin";
 import performanceRoutes from "./routes/performance";
+import lgAuditRoutes from "./routes/lg-audit";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -223,6 +224,9 @@ app.use(performanceAdminRoutes);
 
 // 실적관리/전사 공지용 당일실적/마감보고 화면이 공유하는 데이터 API (로그인 사용자 전체)
 app.use(performanceRoutes);
+
+// LG 개통 검수 (admin/sales_manager/내부 worker — dealer 제외)
+app.use(lgAuditRoutes);
 
 app.use(router);
 
