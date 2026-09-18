@@ -27,6 +27,7 @@ import {
   settlementFiles,
   adjustmentRules,
   hiddenPolicyRows,
+  workerPerformanceTargets,
 } from "../shared/schema";
 import { getDatabase, getSchemaInfo } from "./db";
 
@@ -163,6 +164,13 @@ export interface IStorage {
   updateUserPassword(id: number, password: string): Promise<void>;
   getUserByUsername(username: string): Promise<any>;
   deleteUser(id: number): Promise<any>;
+
+  // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: worker mapping/월별 목표
+  updateUserPerformanceWorkerName(id: number, performanceWorkerName: string | null): Promise<any>;
+  listInternalWorkersWithMapping(): Promise<any[]>;
+  getPerformanceTarget(userId: number, year: number, month: number): Promise<any>;
+  upsertPerformanceTarget(userId: number, year: number, month: number, targetContributionRate: number): Promise<any>;
+  listPerformanceTargetsForMonth(year: number, month: number): Promise<any[]>;
 
   // Dealer methods
   createDealer(dealer: any): Promise<any>;
@@ -695,6 +703,93 @@ export class PostgreSQLStorage implements IStorage {
     return this.withDatabase(async (db) => {
       const user = await db.select().from(users).where(eq(users.id, id)).limit(1);
       return user.length > 0 ? user[0] : null;
+    });
+  }
+
+  // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: worker mapping — 관리자가
+  // 명시적으로 연결한 정확한 문자열만 저장한다(이름 추측/자동매칭 없음).
+  async updateUserPerformanceWorkerName(id: number, performanceWorkerName: string | null) {
+    return this.withDatabase(async (db) => {
+      const result = await db
+        .update(users)
+        .set({ performanceWorkerName })
+        .where(eq(users.id, id))
+        .returning();
+      return result[0] ?? null;
+    });
+  }
+
+  /** 내부 worker(딜러 아님) 전체 + 현재 매핑 상태 — 관리자 매핑/목표 관리 화면용 */
+  async listInternalWorkersWithMapping(): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      const rows = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          username: users.username,
+          performanceWorkerName: users.performanceWorkerName,
+        })
+        .from(users)
+        .where(and(eq(users.userType, "user"), isNull(users.dealerId), isNull(users.dealerRegistrationId)));
+      return rows;
+    });
+  }
+
+  async getPerformanceTarget(userId: number, year: number, month: number) {
+    return this.withDatabase(async (db) => {
+      const rows = await db
+        .select()
+        .from(workerPerformanceTargets)
+        .where(
+          and(
+            eq(workerPerformanceTargets.userId, userId),
+            eq(workerPerformanceTargets.year, year),
+            eq(workerPerformanceTargets.month, month),
+          ),
+        )
+        .limit(1);
+      return rows.length > 0 ? rows[0] : null;
+    });
+  }
+
+  /** 월별 목표 기여도 upsert — 매월 별도 설정(자동 복사 없음), userId+year+month unique */
+  async upsertPerformanceTarget(userId: number, year: number, month: number, targetContributionRate: number) {
+    return this.withDatabase(async (db) => {
+      const existing = await db
+        .select({ id: workerPerformanceTargets.id })
+        .from(workerPerformanceTargets)
+        .where(
+          and(
+            eq(workerPerformanceTargets.userId, userId),
+            eq(workerPerformanceTargets.year, year),
+            eq(workerPerformanceTargets.month, month),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        const updated = await db
+          .update(workerPerformanceTargets)
+          .set({ targetContributionRate: String(targetContributionRate), updatedAt: new Date() })
+          .where(eq(workerPerformanceTargets.id, existing[0].id))
+          .returning();
+        return updated[0];
+      }
+
+      const inserted = await db
+        .insert(workerPerformanceTargets)
+        .values({ userId, year, month, targetContributionRate: String(targetContributionRate) })
+        .returning();
+      return inserted[0];
+    });
+  }
+
+  async listPerformanceTargetsForMonth(year: number, month: number): Promise<any[]> {
+    return this.withDatabase(async (db) => {
+      return db
+        .select()
+        .from(workerPerformanceTargets)
+        .where(and(eq(workerPerformanceTargets.year, year), eq(workerPerformanceTargets.month, month)));
     });
   }
 

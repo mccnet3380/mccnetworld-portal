@@ -19,6 +19,7 @@ import { Downloads } from '@/pages/Downloads';
 import { AdminPanel } from '@/pages/AdminPanel';
 import { Settlements } from '@/pages/Settlements';
 import { PerformanceManagement } from '@/pages/PerformanceManagement';
+import { PersonalPerformance } from '@/pages/PersonalPerformance';
 import { DailyPerformanceBoard } from '@/pages/DailyPerformanceBoard';
 import { PerformanceClosing } from '@/pages/PerformanceClosing';
 import { LgActivationAudit } from '@/pages/LgActivationAudit';
@@ -134,6 +135,15 @@ function AppRoutes() {
       {/* MCC_PERFORMANCE_SITE_INTEGRATION_1: 실적관리/전사 공지용 당일실적 — admin/worker 등 내부 사용자 조회 가능 */}
       <Route path="/performance" component={PerformanceManagement} />
       <Route path="/performance/daily" component={DailyPerformanceBoard} />
+
+      {/* [MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1] 개인 실적: admin/내부 WORKER만.
+          sales_manager는 이 기능(내부 개통 근무자 실적) 대상이 아니라 제외한다(요구사항).
+          dealer는 dealerId/dealerRegistrationId 재조회 기준으로 제외. 실제 게이트는
+          server/routes/personal-performance.ts의 requirePersonalPerformanceSession. */}
+      {(user?.userType === 'admin' ||
+        (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
+        <Route path="/performance/me" component={PersonalPerformance} />
+      )}
 
       {/* [PERFORMANCE_CLOSING_WORKER_ACCESS_FIX_1] 마감보고 · 공지텍스트는 관리자 전용이
           아니라 내부 WORKER가 실제 업무에서 쓰는 화면이다 — admin뿐 아니라 내부 user(worker)도

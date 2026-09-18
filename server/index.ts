@@ -13,6 +13,8 @@ import performanceAdminRoutes from "./routes/performance-admin";
 import performanceRoutes from "./routes/performance";
 import lgAuditRoutes from "./routes/lg-audit";
 import ktAuditRoutes from "./routes/kt-audit";
+import personalPerformanceRoutes from "./routes/personal-performance";
+import performanceTargetsRoutes from "./routes/performance-targets";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -231,6 +233,12 @@ app.use(lgAuditRoutes);
 
 // KT 개통 검수 (admin/sales_manager/내부 worker — dealer 제외, LG와 독립된 라우트)
 app.use(ktAuditRoutes);
+
+// 개인 실적 대시보드 (admin/내부 worker — sales_manager/dealer 제외)
+app.use(personalPerformanceRoutes);
+
+// 개인 실적 관리자 화면(worker mapping/월별 목표) — admin 전용
+app.use(performanceTargetsRoutes);
 
 app.use(router);
 

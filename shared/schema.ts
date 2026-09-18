@@ -178,6 +178,11 @@ export const users = pgTable("users", {
   userType: varchar("user_type", { length: 20 }).notNull().default('user'),
   role: varchar("role", { length: 50 }),
   allowedCarriers: jsonb("allowed_carriers").$type<string[]>(),
+  // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 이 계정이 Google Sheets
+  // 실적 원장의 "작업자" 컬럼에서 정확히 어떤 문자열로 기록되는지 관리자가 명시적으로
+  // 연결한 값(예: "L)윤정"). 이름 문자열 자동 추측 매칭은 절대 하지 않는다 — 동명이인/
+  // 채널 접두어 불일치 위험 때문에 이 필드가 비어 있으면 "매핑 없음"으로 취급한다.
+  performanceWorkerName: varchar("performance_worker_name", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -607,6 +612,26 @@ export const internetWorkerDailyClosings = pgTable(
   ],
 );
 
+// MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 근무자 월별 목표 기여도.
+// "목표"는 개인 처리 건수가 아니라 소속망 공식 총실적에 대한 목표 기여도(%)다.
+// worker mapping(users.performanceWorkerName)은 사용자 단위로 한 번만 설정하고,
+// 이 테이블은 targetContributionRate만 매월 별도로 관리한다(월 자동 복사 없음).
+export const workerPerformanceTargets = pgTable(
+  "worker_performance_targets",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id).notNull(),
+    year: integer("year").notNull(),
+    month: integer("month").notNull(), // 1-12
+    targetContributionRate: decimal("target_contribution_rate", { precision: 5, scale: 2 }).notNull(), // 예: 40.00
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("worker_performance_targets_user_year_month_uq").on(table.userId, table.year, table.month),
+  ],
+);
+
 //===============================================
 // 타입 정의
 //===============================================
@@ -863,6 +888,8 @@ export const createWorkerSchema = z.object({
   username: z.string().min(3, "아이디는 최소 3자 이상이어야 합니다"),
   password: z.string().min(6, "비밀번호는 최소 6자 이상이어야 합니다"),
   name: z.string().min(1, "이름을 입력해주세요"),
+  // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 선택 항목 — 비워두면 매핑 없음
+  performanceWorkerName: z.string().trim().min(1).optional().nullable(),
 });
 
 export const createDocumentSchema = z.object({

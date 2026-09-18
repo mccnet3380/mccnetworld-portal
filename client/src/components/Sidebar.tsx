@@ -19,7 +19,8 @@ import {
   MessageCircle,
   Megaphone,
   ClipboardCheck,
-  FileSearch
+  FileSearch,
+  TrendingUp
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
@@ -37,6 +38,10 @@ const navigation = [
   // { name: '정산 관리', href: '/settlements', icon: Calculator },
   // MCC_PERFORMANCE_SITE_INTEGRATION_1: 실적 메뉴(비관리자도 조회 가능한 2개)
   { name: '실적관리', href: '/performance', icon: BarChart3 },
+  // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 개인 실적 — 로그인 계정에 연결된
+  // 실적 작업자 기준 본인 실적만 표시. sales_manager는 이 기능 대상이 아니라 아래
+  // isSalesManager 필터에서 제외한다(요구사항). dealer는 dealerAllowedMenus로 제외.
+  { name: '개인 실적', href: '/performance/me', icon: TrendingUp },
   { name: '전사 공지용 당일실적', href: '/performance/daily', icon: Megaphone },
   // [PERFORMANCE_CLOSING_WORKER_ACCESS_FIX_1] 마감보고 · 공지텍스트는 관리자 전용 기능이
   // 아니라 내부 WORKER가 실제 업무에서 쓰는 화면이다 — admin-only 목록에서 제거하고
@@ -83,8 +88,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     baseNavigation = navigation;
   } else if (isSalesManager) {
     // 영업과장은 읽기 전용 메뉴만 (정산 관리 제외)
-    baseNavigation = navigation.filter(item => 
-      item.name !== '정산 관리'
+    // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 개인 실적은 내부 개통 근무자
+    // 실적용 기능이라 sales_manager 대상이 아니다(요구사항) — 기본 노출 제외.
+    baseNavigation = navigation.filter(item =>
+      item.name !== '정산 관리' && item.name !== '개인 실적'
     );
   } else if (isWorker) {
     // 근무자는 전체 메뉴 접근 가능

@@ -2571,6 +2571,67 @@ function isSameStoreName(a: string, b: string): boolean {
   return normalizeDealerName(a) === normalizeDealerName(b);
 }
 
+// MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 실적 작업자 매핑 위젯.
+// 기존 editUserForm(react-hook-form)과는 완전히 독립적으로 동작한다 — 그 폼의 기존
+// 필드/제출 흐름을 전혀 건드리지 않기 위해 자체 상태 + 별도 저장 버튼으로 분리했다.
+// 이름 자동 추측 매칭 없음 — 관리자가 드롭다운에서 명시적으로 선택한 값만 저장한다.
+function PerformanceMappingField({ userId, initialValue }: { userId: number; initialValue: string | null }) {
+  const apiRequest = useApiRequest();
+  const { toast } = useToast();
+  const [value, setValue] = useState(initialValue || '');
+  const [options, setOptions] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setValue(initialValue || '');
+  }, [initialValue]);
+
+  useEffect(() => {
+    apiRequest('/api/admin/performance/worker-options')
+      .then((res: any) => setOptions(res?.workers || []))
+      .catch(() => setOptions([]));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await apiRequest(`/api/admin/users/${userId}/performance-mapping`, {
+        method: 'PATCH',
+        body: JSON.stringify({ performanceWorkerName: value || null }),
+      });
+      toast({ title: '성공', description: '실적 작업자 매핑이 저장되었습니다.' });
+    } catch (err: any) {
+      toast({ title: '오류', description: err?.message ?? String(err), variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium">실적 작업자 (Google 스프레드시트 작업자 매핑)</label>
+      <div className="text-xs text-muted-foreground">
+        개인 실적 대시보드에서 이 계정의 실적을 계산할 스프레드시트 "작업자" 값입니다. 이름을 추측해서 자동 연결하지 않습니다.
+      </div>
+      <div className="flex gap-2">
+        <select
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        >
+          <option value="">(매핑 없음)</option>
+          {options.map((w) => (
+            <option key={w} value={w}>{w}</option>
+          ))}
+        </select>
+        <Button type="button" variant="outline" disabled={saving} onClick={handleSave}>
+          {saving ? '저장 중...' : '저장'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const { user } = useAuth();
   const apiRequest = useApiRequest();
@@ -12378,6 +12439,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                 </div>
               </form>
             </Form>
+            {/* MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 관리자/영업과장 계정에는
+                해당 없음 — 내부 근무자(userType='user', dealer 아님) 계정에만 표시한다. */}
+            {editingUser && editingUser.accountType !== 'admin' && editingUser.accountType !== 'sales_manager' && !editingUser.dealerId && !editingUser.dealerRegistrationId && (
+              <div className="border-t pt-4 mt-2">
+                <PerformanceMappingField userId={editingUser.id} initialValue={editingUser.performanceWorkerName ?? null} />
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>
