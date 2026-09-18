@@ -22,6 +22,7 @@ import { PerformanceManagement } from '@/pages/PerformanceManagement';
 import { DailyPerformanceBoard } from '@/pages/DailyPerformanceBoard';
 import { PerformanceClosing } from '@/pages/PerformanceClosing';
 import { LgActivationAudit } from '@/pages/LgActivationAudit';
+import { KtActivationAudit } from '@/pages/KtActivationAudit';
 
 // 판매점 관련 페이지
 import { DealerRegistration } from '@/pages/DealerRegistration';
@@ -84,6 +85,8 @@ function AppRoutes() {
             이 분기는 sales_manager를 그 외 모든 경로에서 대시보드로 강제 리다이렉트하므로
             /lg-audit도 명시적으로 뚫어줘야 실제로 도달 가능하다. */}
         <Route path="/lg-audit" component={LgActivationAudit} />
+        {/* [KT_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1] 영업과장도 KT 검수 접근 허용 — LG와 동일 이유 */}
+        <Route path="/kt-audit" component={KtActivationAudit} />
         <Route component={() => <Redirect to="/sales-manager-dashboard" />} />
       </Switch>
     );
@@ -150,6 +153,14 @@ function AppRoutes() {
         user?.userType === 'sales_manager' ||
         (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
         <Route path="/lg-audit" component={LgActivationAudit} />
+      )}
+
+      {/* [KT_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1] KT 검수: LG와 동일한 권한 조건.
+          실제 게이트는 server/routes/kt-audit.ts의 requireInternalOrAdminAccess. */}
+      {(user?.userType === 'admin' ||
+        user?.userType === 'sales_manager' ||
+        (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
+        <Route path="/kt-audit" component={KtActivationAudit} />
       )}
 
       {user?.userType === 'admin' && (

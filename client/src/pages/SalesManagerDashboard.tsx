@@ -319,6 +319,16 @@ export default function SalesManagerDashboard() {
           </Link>
         </div>
 
+        {/* [KT_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1] KT 검수 — LG 검수 버튼과 동일한 이유로 추가 */}
+        <div className="p-6 border-t">
+          <Link href="/kt-audit">
+            <Button variant="outline" className="w-full justify-start">
+              <FileSearch className="mr-2 h-4 w-4" />
+              KT 검수
+            </Button>
+          </Link>
+        </div>
+
         <div className="p-6 border-t">
           <Button
             variant="outline"

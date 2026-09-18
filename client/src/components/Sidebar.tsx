@@ -48,6 +48,9 @@ const navigation = [
   // dealerAllowedMenus 필터링으로 계속 제외된다. 실제 권한 게이트는 서버
   // (server/routes/lg-audit.ts의 requireLgAuditAccess)이며 이 메뉴 노출은 UX일 뿐이다.
   { name: 'LG 검수', href: '/lg-audit', icon: FileSearch },
+  // KT_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1: KT 검수 — LG 검수와 동일한 위상의
+  // 내부 작업자용 업무 기능. LG 검수 바로 아래 배치, dealer는 dealerAllowedMenus로 계속 제외.
+  { name: 'KT 검수', href: '/kt-audit', icon: FileSearch },
 ];
 
 const adminNavigation = [

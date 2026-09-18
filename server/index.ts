@@ -12,6 +12,7 @@ import router from "./routes";
 import performanceAdminRoutes from "./routes/performance-admin";
 import performanceRoutes from "./routes/performance";
 import lgAuditRoutes from "./routes/lg-audit";
+import ktAuditRoutes from "./routes/kt-audit";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -227,6 +228,9 @@ app.use(performanceRoutes);
 
 // LG 개통 검수 (admin/sales_manager/내부 worker — dealer 제외)
 app.use(lgAuditRoutes);
+
+// KT 개통 검수 (admin/sales_manager/내부 worker — dealer 제외, LG와 독립된 라우트)
+app.use(ktAuditRoutes);
 
 app.use(router);
 
