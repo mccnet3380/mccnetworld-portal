@@ -398,6 +398,66 @@ function TerminateWorkerDialog({
   );
 }
 
+// [MCC_PERFORMANCE_DENOMINATOR_SANITY_AND_REEMPLOY_UI_FIX_1] 재직 복귀 — 새 API를
+// 만들지 않고 기존 PATCH .../employment(terminationDate: null 지원)를 그대로 재사용한다.
+// userId/username/performanceWorkerName/hireDate/targets/과거 실적/권한/소속은 전혀
+// 건드리지 않는다 — terminationDate 필드만 null로 바꾼다.
+function ReemployWorkerDialog({
+  open,
+  onOpenChange,
+  worker,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  worker: TargetWorkerRow | null;
+  onSaved: () => void;
+}) {
+  const apiRequest = useApiRequest();
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+
+  if (!open || !worker) return null;
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await apiRequest(`/api/admin/users/${worker.userId}/employment`, {
+        method: "PATCH",
+        body: JSON.stringify({ terminationDate: null }),
+      });
+      toast({ title: "성공", description: `${worker.name}님을 재직 상태로 복귀했습니다.` });
+      onOpenChange(false);
+      onSaved();
+    } catch (err: any) {
+      toast({ title: "오류", description: err?.message ?? String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rmb-modal-backdrop" onClick={() => onOpenChange(false)}>
+      <div className="rmb-card rmb-modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>재직 복귀 — {worker.name}</h3>
+        <div className="rmb-note">
+          이 근무자를 재직 상태로 복귀하시겠습니까?
+          <br />
+          퇴사일이 삭제되고 현재 실적 관리 대상에 다시 포함됩니다.
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button className="rmb-btn" onClick={() => onOpenChange(false)}>
+            취소
+          </button>
+          <button className="rmb-btn primary" disabled={saving} onClick={submit}>
+            {saving ? "처리 중..." : "확인"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] 로그인 ID 변경 —
 // 새 계정 생성이 아니라 같은 userId의 username만 바꾼다. performanceWorkerName/hireDate/
 // terminationDate/targets/과거 실적은 전부 userId 기준으로 연결되어 있어 그대로 유지된다
@@ -489,6 +549,7 @@ export function ResultManagementBoard({ dataset }: Props) {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [terminateTarget, setTerminateTarget] = useState<TargetWorkerRow | null>(null);
   const [usernameTarget, setUsernameTarget] = useState<TargetWorkerRow | null>(null);
+  const [reemployTarget, setReemployTarget] = useState<TargetWorkerRow | null>(null);
 
   // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 실적현황 roster 병합 — "사람의
   // 존재 여부"는 근무자 관리(조회일 재직자) 기준, "실적 숫자"는 기존 LOCK 계산 결과
@@ -829,7 +890,9 @@ export function ResultManagementBoard({ dataset }: Props) {
                                 퇴사 처리
                               </button>
                             ) : (
-                              <span style={{ fontSize: 12, color: "#667085", alignSelf: "center" }}>과거 실적 보존</span>
+                              <button className="rmb-btn" onClick={() => setReemployTarget(w)}>
+                                재직 복귀
+                              </button>
                             )}
                           </div>
                         </td>
@@ -854,6 +917,12 @@ export function ResultManagementBoard({ dataset }: Props) {
         open={!!usernameTarget}
         onOpenChange={(v) => !v && setUsernameTarget(null)}
         worker={usernameTarget}
+        onSaved={monthlyTargets.reload}
+      />
+      <ReemployWorkerDialog
+        open={!!reemployTarget}
+        onOpenChange={(v) => !v && setReemployTarget(null)}
+        worker={reemployTarget}
         onSaved={monthlyTargets.reload}
       />
     </div>
