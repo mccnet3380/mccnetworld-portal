@@ -91,20 +91,33 @@ http://localhost:3000/dashboard
 ### 배포 원칙
 
 - 운영 배포 전 반드시 app 백업
+- 운영 배포 전 반드시 **디스크 여유 공간 확인**(최소 5GB 이상 — 미만이면 백업/배포 자체를 진행하지 않는다)
 - 운영 배포 전 반드시 DB 백업
 - `.env.production`은 절대 삭제하지 않음
 - `uploads`, `attached_assets`는 보존
 - 코드만 교체하고 운영 데이터는 유지
 - 배포 후 `npm install`, `npm run build`, `pm2 restart portal-backend --update-env` 순서 유지
+- 오래된 자동 배포 백업(`/root/mcc_backup/app_before_*`)은 정리 없이 방치하지 않는다 — 최신 2개만
+  유지 (2026-09-19 디스크 100% → PostgreSQL 응답 불가 → 사이트 전체 로딩 정지 장애의 직접 원인이
+  바로 이 누적이었다: `MCC_PRODUCTION_POST_DEPLOY_LOADING_FREEZE_EMERGENCY_FIX_1` 참고)
 
 ### 백업 필수 명령
 
 ```bash
+# 배포 전 디스크 여유 공간 확인 — 부족하면 아래 백업/배포를 진행하지 않는다.
+df -h /
+
 cd /var/www
 
 BACKUP_DIR="/root/mcc_backup/app_before_deploy_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BACKUP_DIR"
-cp -a /var/www/app "$BACKUP_DIR/app"
+# node_modules는 npm install로 완전히 재생성 가능하므로 백업에서 제외한다(매 백업 1.5GB+
+# 절약 — 이 폴더가 오래된 백업 누적과 맞물려 디스크 100% 장애를 일으킨 직접 원인이었다).
+rsync -a --exclude 'node_modules' /var/www/app/ "$BACKUP_DIR/app/"
+
+# 새 백업 생성 후 이 스크립트가 만든 패턴("app_before_deploy_*")의 오래된 백업 중
+# 최신 2개를 제외한 나머지를 정리한다(수동/특수 목적 백업, DB 백업은 건드리지 않는다).
+ls -1dt /root/mcc_backup/app_before_deploy_*/ 2>/dev/null | tail -n +3 | xargs -r rm -rf
 ```
 
 ```bash
