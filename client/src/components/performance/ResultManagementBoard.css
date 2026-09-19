@@ -187,3 +187,36 @@
   padding: 3px 6px;
   border-radius: 5px;
 }
+
+/* MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1: 근무자 등록/퇴사 처리 다이얼로그 */
+.rmb-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.rmb-modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.rmb-modal label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+  margin-bottom: 2px;
+}
+.rmb-modal input,
+.rmb-modal select {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  font-size: 14px;
+}

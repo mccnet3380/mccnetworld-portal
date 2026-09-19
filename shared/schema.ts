@@ -183,6 +183,11 @@ export const users = pgTable("users", {
   // 연결한 값(예: "L)윤정"). 이름 문자열 자동 추측 매칭은 절대 하지 않는다 — 동명이인/
   // 채널 접두어 불일치 위험 때문에 이 필드가 비어 있으면 "매핑 없음"으로 취급한다.
   performanceWorkerName: varchar("performance_worker_name", { length: 100 }),
+  // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] "YYYY-MM-DD" 문자열(다른 날짜
+  // 문자열 컬럼과 동일 관례). NULL hireDate = 하한 없음(기존 계정 전부 이 상태 —
+  // 항상 재직으로 간주해 회귀 없음). NULL terminationDate = 재직 중.
+  hireDate: varchar("hire_date", { length: 10 }),
+  terminationDate: varchar("termination_date", { length: 10 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -897,6 +902,8 @@ export const createWorkerSchema = z.object({
   name: z.string().min(1, "이름을 입력해주세요"),
   // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 선택 항목 — 비워두면 매핑 없음
   performanceWorkerName: z.string().trim().min(1).optional().nullable(),
+  // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 선택 항목 — 비워두면 하한 없음(NULL)
+  hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 형식이어야 합니다").optional().nullable(),
 });
 
 export const createDocumentSchema = z.object({

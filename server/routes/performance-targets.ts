@@ -90,6 +90,10 @@ router.get("/api/admin/performance/targets", requireAdminSession, async (req, re
         homeNetwork: w.performanceWorkerName ? workerHomeNetwork(w.performanceWorkerName) : null,
         targetContributionRate: t?.targetContributionRate != null ? Number(t.targetContributionRate) : null,
         changeTargetRate: t?.changeTargetRate != null ? Number(t.changeTargetRate) : null,
+        // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 월과 무관한 계정 단위 값이라
+        // 매달 동일하게 포함한다 — 실적현황 roster 병합/근무자 관리 화면에서 사용.
+        hireDate: w.hireDate || null,
+        terminationDate: w.terminationDate || null,
       };
     });
 
@@ -164,6 +168,42 @@ router.patch("/api/admin/users/:id/performance-mapping", requireAdminSession, as
     const updated = await getStorage().updateUserPerformanceWorkerName(id, value);
     if (!updated) return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
     res.json({ id: updated.id, name: updated.name, performanceWorkerName: updated.performanceWorkerName });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 입사일 정정/퇴사 처리 — 계정/과거
+// 실적/목표를 절대 삭제하지 않는다. 두 필드는 독립적으로 보낼 수 있고(목표와 동일 패턴),
+// 보내지 않은 쪽은 storage 계층에서 건드리지 않는다. terminationDate: null을 보내면
+// "퇴사 취소(재직으로 되돌림)"도 가능하게 한다(실수로 퇴사 처리한 경우 복구용).
+function parseOptionalDate(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  return "invalid";
+}
+
+router.patch("/api/admin/users/:id/employment", requireAdminSession, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "잘못된 사용자 ID입니다." });
+
+  const hireDate = parseOptionalDate(req.body?.hireDate);
+  const terminationDate = parseOptionalDate(req.body?.terminationDate);
+  if (hireDate === "invalid" || terminationDate === "invalid") {
+    return res.status(400).json({ error: "hireDate/terminationDate는 YYYY-MM-DD 형식이거나 null이어야 합니다." });
+  }
+  if (hireDate === undefined && terminationDate === undefined) {
+    return res.status(400).json({ error: "hireDate 또는 terminationDate 중 최소 하나는 보내야 합니다." });
+  }
+
+  try {
+    const fields: { hireDate?: string | null; terminationDate?: string | null } = {};
+    if (hireDate !== undefined) fields.hireDate = hireDate;
+    if (terminationDate !== undefined) fields.terminationDate = terminationDate;
+    const updated = await getStorage().updateUserEmployment(id, fields);
+    if (!updated) return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    res.json({ id: updated.id, name: updated.name, hireDate: updated.hireDate ?? null, terminationDate: updated.terminationDate ?? null });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

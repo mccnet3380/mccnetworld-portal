@@ -36,8 +36,8 @@
 //   재확인했으므로(수동 연결이 필요 없음) 탭 자체를 제거한다. 자동 탐색 로직
 //   (spreadsheet-resolver.ts)은 전혀 건드리지 않았다.
 
-import { useEffect, useState } from "react";
-import type { PerformanceDataset } from "@/types/performance";
+import { useEffect, useMemo, useState } from "react";
+import type { PerformanceDataset, WorkerPerformanceRow } from "@/types/performance";
 import { useToast } from "@/hooks/use-toast";
 import { useApiRequest } from "@/lib/auth";
 import "./ResultManagementBoard.css";
@@ -75,9 +75,40 @@ function supportDetail(w: PerformanceDataset["workers"][number]): string {
 // 행에만 그 달 목표 입력/저장을 제공한다. 저장 API(PUT, userId 기준)는 기존 그대로 재사용.
 interface TargetWorkerRow {
   userId: number;
+  name: string;
+  username: string;
   performanceWorkerName: string | null;
+  homeNetwork: string | null;
   targetContributionRate: number | null;
   changeTargetRate: number | null;
+  hireDate: string | null;
+  terminationDate: string | null;
+}
+
+// [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 조회 날짜 기준 재직 여부 판정.
+// 기존 시스템에 이 개념이 전혀 없었다(조사 완료 — users에 입/퇴사 필드 없음, "근무자
+// 관리" 탭은 100% 정적 데모). 확정된 기존 정의가 없으므로 다음을 이번 작업에서 명시적으로
+// 정의한다(보고서 명시): hireDate가 없으면 하한 없음(기존 계정 전부 이 상태 — 항상 재직
+// 취급, 회귀 없음). terminationDate는 "그 날짜까지 재직"(당일 포함, inclusive)으로 해석—
+// 즉 퇴사일 당일 조회는 여전히 재직자 명단에 포함된다. 이 해석은 확정된 사내 규정을
+// 대체하는 것이 아니라 미정 상태에서 내린 합리적 기본값이며, 보고서에 그대로 명시한다.
+function isEmployedOn(row: { hireDate: string | null; terminationDate: string | null }, dateStr: string): boolean {
+  if (row.hireDate && dateStr < row.hireDate) return false;
+  if (row.terminationDate && dateStr > row.terminationDate) return false;
+  return true;
+}
+
+/** 관리자 매핑/등록 다이얼로그의 "실적 작업자" 선택지 — 8bcf3b4의 기존 discovery API 재사용. */
+function useWorkerOptions() {
+  const apiRequest = useApiRequest();
+  const [options, setOptions] = useState<string[]>([]);
+  useEffect(() => {
+    apiRequest("/api/admin/performance/worker-options")
+      .then((res: any) => setOptions(res?.workers || []))
+      .catch(() => setOptions([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return options;
 }
 
 function useMonthlyTargets(dateStr: string) {
@@ -193,16 +224,246 @@ function StatusGoalCells({
   );
 }
 
+// [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 근무자 등록 — 기존
+// POST /api/admin/create-worker(+ createWorkerSchema)를 그대로 재사용한다(AdminPanel의
+// "근무자 생성" 다이얼로그와 동일 API, 이번에 hireDate 필드만 추가됨). 사용자 한글 이름을
+// 보고 Sheets 작업자명을 추론하지 않는다 — worker-options에서 실제 발견된 이름만 선택.
+function RegisterWorkerDialog({ open, onOpenChange, onRegistered }: { open: boolean; onOpenChange: (v: boolean) => void; onRegistered: () => void }) {
+  const apiRequest = useApiRequest();
+  const { toast } = useToast();
+  const workerOptions = useWorkerOptions();
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [performanceWorkerName, setPerformanceWorkerName] = useState("");
+  const [hireDate, setHireDate] = useState(todayStr);
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => {
+    setName("");
+    setUsername("");
+    setPassword("");
+    setPerformanceWorkerName("");
+    setHireDate(todayStr);
+  };
+
+  const submit = async () => {
+    if (!name.trim() || username.trim().length < 3 || password.length < 6) {
+      toast({ title: "오류", description: "이름/아이디(3자 이상)/비밀번호(6자 이상)를 확인해주세요.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiRequest("/api/admin/create-worker", {
+        method: "POST",
+        body: JSON.stringify({
+          name: name.trim(),
+          username: username.trim(),
+          password,
+          performanceWorkerName: performanceWorkerName || null,
+          hireDate: hireDate || null,
+        }),
+      });
+      toast({ title: "성공", description: "근무자 계정이 생성되었습니다." });
+      reset();
+      onOpenChange(false);
+      onRegistered();
+    } catch (err: any) {
+      toast({ title: "오류", description: err?.message ?? String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="rmb-modal-backdrop" onClick={() => onOpenChange(false)}>
+      <div className="rmb-card rmb-modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>근무자 등록</h3>
+        <div className="rmb-note">
+          기존 사용자 계정 생성 기능을 그대로 사용합니다. 실적 작업자는 이름으로 추측하지 않고 Google Sheets에서 실제
+          발견된 이름 중에서만 선택합니다.
+        </div>
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          <label>
+            이름
+            <input style={{ width: "100%" }} value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 신유리" />
+          </label>
+          <label>
+            아이디
+            <input style={{ width: "100%" }} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="로그인 아이디" />
+          </label>
+          <label>
+            비밀번호
+            <input style={{ width: "100%" }} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="6자 이상" />
+          </label>
+          <label>
+            실적 작업자 (Google 스프레드시트 작업자 매핑)
+            <select style={{ width: "100%" }} value={performanceWorkerName} onChange={(e) => setPerformanceWorkerName(e.target.value)}>
+              <option value="">(매핑 없음)</option>
+              {workerOptions.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            입사일
+            <input style={{ width: "100%" }} type="date" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
+          </label>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button className="rmb-btn" onClick={() => onOpenChange(false)}>
+            취소
+          </button>
+          <button className="rmb-btn primary" disabled={saving} onClick={submit}>
+            {saving ? "등록 중..." : "등록"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 퇴사 처리 — 기존 안내 문구("퇴사일을
+// 지정해...")와 실제 UI가 불일치하던 문제 수정. 퇴사일은 오늘을 기본값으로 하되 관리자가
+// 과거 날짜도 선택 가능해야 한다(요구사항) — <input type="date">에 max 제한을 두지 않는다.
+// 사용자 계정/과거 실적을 삭제하지 않는다 — terminationDate 필드만 변경.
+function TerminateWorkerDialog({
+  open,
+  onOpenChange,
+  worker,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  worker: TargetWorkerRow | null;
+  onSaved: () => void;
+}) {
+  const apiRequest = useApiRequest();
+  const { toast } = useToast();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [terminationDate, setTerminationDate] = useState(todayStr);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) setTerminationDate(todayStr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, worker?.userId]);
+
+  if (!open || !worker) return null;
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await apiRequest(`/api/admin/users/${worker.userId}/employment`, {
+        method: "PATCH",
+        body: JSON.stringify({ terminationDate }),
+      });
+      toast({ title: "성공", description: `${worker.name}님을 ${terminationDate}자로 퇴사 처리했습니다. 계정/과거 실적은 삭제되지 않습니다.` });
+      onOpenChange(false);
+      onSaved();
+    } catch (err: any) {
+      toast({ title: "오류", description: err?.message ?? String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rmb-modal-backdrop" onClick={() => onOpenChange(false)}>
+      <div className="rmb-card rmb-modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>퇴사 처리 — {worker.name}</h3>
+        <div className="rmb-note">퇴사일을 지정해 퇴사 처리합니다. 계정과 과거 실적은 삭제하지 않습니다.</div>
+        <div style={{ marginTop: 12 }}>
+          <label>
+            퇴사일
+            <input style={{ width: "100%" }} type="date" value={terminationDate} onChange={(e) => setTerminationDate(e.target.value)} />
+          </label>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button className="rmb-btn" onClick={() => onOpenChange(false)}>
+            취소
+          </button>
+          <button className="rmb-btn" disabled={saving} onClick={submit}>
+            {saving ? "처리 중..." : "퇴사 처리"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ResultManagementBoard({ dataset }: Props) {
   const [tab, setTab] = useState<TabId>("status");
   const [showExample, setShowExample] = useState(false);
-  const { toast } = useToast();
   // [MCC_PERFORMANCE_ADMIN_GOAL_MANAGEMENT_UI_SIMPLIFICATION_1] 목표 편집을 실적현황
   // 표 안으로 옮기면서 필요해진 조회일 기준 월별 목표 매핑(그 달의 targetContributionRate/
   // changeTargetRate를 performanceWorkerName으로 조회).
   const monthlyTargets = useMonthlyTargets(dataset.date);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [terminateTarget, setTerminateTarget] = useState<TargetWorkerRow | null>(null);
 
-  const demoToast = (msg: string) => toast({ title: "검토용 화면", description: msg });
+  // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 실적현황 roster 병합 — "사람의
+  // 존재 여부"는 근무자 관리(조회일 재직자) 기준, "실적 숫자"는 기존 LOCK 계산 결과
+  // (dataset.workers) 기준으로 역할을 분리한다(요구사항). 새 계산식을 만들지 않는다 —
+  // 0건 재직자의 소속채널 공식총수량도 같은 망의 실제 dataset.workers 값을 그대로
+  // 재사용한다(그 값 자체가 이미 회사 전체 공통값이라 특정 개인 행이 없어도 유효).
+  const mergedStatusRows = useMemo(() => {
+    const officialTotalByNetwork = new Map<string, number>();
+    for (const w of dataset.workers) {
+      if (w.homeNetworkOfficialTotal != null && !officialTotalByNetwork.has(w.homeNetwork)) {
+        officialTotalByNetwork.set(w.homeNetwork, w.homeNetworkOfficialTotal);
+      }
+    }
+    const datasetByWorker = new Map(dataset.workers.map((w) => [w.worker, w]));
+    const rosterRows = Array.from(monthlyTargets.byWorker.values()).filter(
+      (r) => r.performanceWorkerName && isEmployedOn(r, dataset.date),
+    );
+    const rosterNames = new Set(rosterRows.map((r) => r.performanceWorkerName!));
+
+    const rows: WorkerPerformanceRow[] = [];
+    for (const r of rosterRows) {
+      const name = r.performanceWorkerName!;
+      const existing = datasetByWorker.get(name);
+      if (existing) {
+        rows.push(existing);
+      } else {
+        // 실적 0건인 재직자 — 표시용 0 상태(새 계산식 아님, 기존 값 재사용/0 채움뿐).
+        const home = (r.homeNetwork as WorkerPerformanceRow["homeNetwork"]) ?? "기타";
+        const officialTotal = officialTotalByNetwork.get(r.homeNetwork ?? "") ?? null;
+        rows.push({
+          worker: name,
+          homeNetwork: home,
+          homeCount: 0,
+          supportSK: 0,
+          supportKT: 0,
+          supportLG: 0,
+          supportTOSS: 0,
+          supportTotal: 0,
+          totalHandled: 0,
+          homeNetworkOfficialTotal: officialTotal,
+          performanceRate: officialTotal && officialTotal > 0 ? 0 : null,
+        });
+      }
+    }
+    // Sheets 실적은 있으나 조회일 기준 재직 roster에 없는 worker(매핑 없음 또는 그
+    // 날짜에 비재직) — 데이터를 숨기지 않는다(요구사항 H).
+    for (const w of dataset.workers) {
+      if (!rosterNames.has(w.worker)) rows.push(w);
+    }
+    return rows;
+  }, [dataset.workers, dataset.date, monthlyTargets.byWorker]);
+
+  // "근무자 관리" 탭 표시용 — 전체 내부 근무자(재직/퇴사 무관), 이름순.
+  const allWorkers = useMemo(
+    () => Array.from(monthlyTargets.byWorker.values()).sort((a, b) => a.name.localeCompare(b.name, "ko")),
+    [monthlyTargets.byWorker],
+  );
 
   return (
     <div className="rmb-wrap">
@@ -377,14 +638,15 @@ export function ResultManagementBoard({ dataset }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {dataset.workers.length === 0 ? (
+                {mergedStatusRows.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="rmb-empty">
-                      {dataset.date} 기준으로 표시할 근무자 실적이 없습니다.
+                      {dataset.date} 기준으로 표시할 근무자가 없습니다(재직 중인 근무자가 없거나 아직 등록되지
+                      않았습니다).
                     </td>
                   </tr>
                 ) : (
-                  dataset.workers.map((w) => (
+                  mergedStatusRows.map((w) => (
                     <tr key={w.worker}>
                       <td className="left">
                         <b>{w.worker}</b>
@@ -424,17 +686,28 @@ export function ResultManagementBoard({ dataset }: Props) {
 
       <section className={`rmb-panel ${tab === "people" ? "on" : ""}`}>
         <div className="rmb-card">
-          <h3>근무자 관리</h3>
-          <p>ADMIN 전용. 신입/재직/근무지원/퇴사와 적용기간을 관리하는 영역입니다.</p>
+          <div className="rmb-toolbar" style={{ justifyContent: "space-between" }}>
+            <div>
+              <h3 style={{ margin: 0 }}>근무자 관리</h3>
+              <p style={{ margin: "4px 0 0" }}>ADMIN 전용. 신입/재직/퇴사와 적용기간을 관리하는 영역입니다.</p>
+            </div>
+            <button className="rmb-btn primary" onClick={() => setRegisterOpen(true)}>
+              근무자 등록
+            </button>
+          </div>
         </div>
         <div className="rmb-card">
-          <h3 style={{ margin: "0 0 6px" }}>근무자 등록 기준</h3>
-          <div className="rmb-note">직원은 삭제하지 않고 재직/퇴사 상태와 근무기간으로 관리합니다.</div>
+          <h3 style={{ margin: "0 0 6px" }}>근무자 등록 현황</h3>
+          <div className="rmb-note">
+            직원은 삭제하지 않고 재직/퇴사 상태와 근무기간으로 관리합니다. 퇴사 처리해도 계정과 과거 실적은 그대로
+            보존됩니다.
+          </div>
           <div className="rmb-tablewrap" style={{ marginTop: 12 }}>
             <table>
               <thead>
                 <tr>
                   <th>근무자</th>
+                  <th>실적 작업자</th>
                   <th>소속</th>
                   <th>입사일</th>
                   <th>퇴사일</th>
@@ -443,36 +716,51 @@ export function ResultManagementBoard({ dataset }: Props) {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>H)민지</td>
-                  <td>유선</td>
-                  <td>2026-09-16</td>
-                  <td>-</td>
-                  <td>
-                    <b>재직</b>
-                  </td>
-                  <td>
-                    <button
-                      className="rmb-btn"
-                      onClick={() => demoToast("퇴사일을 지정해 퇴사 처리합니다. 직원과 과거 실적은 삭제하지 않습니다.")}
-                    >
-                      퇴사 처리
-                    </button>
-                  </td>
-                </tr>
-                <tr>
-                  <td>H)유미</td>
-                  <td>유선</td>
-                  <td>2025-01-01</td>
-                  <td>2026-08-31</td>
-                  <td>퇴사</td>
-                  <td>과거 실적 보존</td>
-                </tr>
+                {allWorkers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="rmb-empty">
+                      등록된 내부 근무자 계정이 없습니다. [근무자 등록]으로 추가하세요.
+                    </td>
+                  </tr>
+                ) : (
+                  allWorkers.map((w) => {
+                    const employed = !w.terminationDate;
+                    return (
+                      <tr key={w.userId}>
+                        <td className="left">{w.name}</td>
+                        <td>{w.performanceWorkerName ?? "(매핑 없음)"}</td>
+                        <td>{w.homeNetwork ?? "-"}</td>
+                        <td>{w.hireDate ?? "-"}</td>
+                        <td>{w.terminationDate ?? "-"}</td>
+                        <td>
+                          <b>{employed ? "재직" : "퇴사"}</b>
+                        </td>
+                        <td>
+                          {employed ? (
+                            <button className="rmb-btn" onClick={() => setTerminateTarget(w)}>
+                              퇴사 처리
+                            </button>
+                          ) : (
+                            "과거 실적 보존"
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         </div>
       </section>
+
+      <RegisterWorkerDialog open={registerOpen} onOpenChange={setRegisterOpen} onRegistered={monthlyTargets.reload} />
+      <TerminateWorkerDialog
+        open={!!terminateTarget}
+        onOpenChange={(v) => !v && setTerminateTarget(null)}
+        worker={terminateTarget}
+        onSaved={monthlyTargets.reload}
+      />
     </div>
   );
 }

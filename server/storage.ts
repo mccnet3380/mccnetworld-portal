@@ -167,6 +167,7 @@ export interface IStorage {
 
   // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: worker mapping/월별 목표
   updateUserPerformanceWorkerName(id: number, performanceWorkerName: string | null): Promise<any>;
+  updateUserEmployment(id: number, fields: { hireDate?: string | null; terminationDate?: string | null }): Promise<any>;
   listInternalWorkersWithMapping(): Promise<any[]>;
   getPerformanceTarget(userId: number, year: number, month: number): Promise<any>;
   upsertPerformanceTarget(userId: number, year: number, month: number, fields: { targetContributionRate?: number; changeTargetRate?: number }): Promise<any>;
@@ -728,10 +729,31 @@ export class PostgreSQLStorage implements IStorage {
           name: users.name,
           username: users.username,
           performanceWorkerName: users.performanceWorkerName,
+          // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 실적현황 roster 병합 및
+          // 근무자 관리 화면(입사일/퇴사일 표시)에 필요.
+          hireDate: users.hireDate,
+          terminationDate: users.terminationDate,
         })
         .from(users)
         .where(and(eq(users.userType, "user"), isNull(users.dealerId), isNull(users.dealerRegistrationId)));
       return rows;
+    });
+  }
+
+  // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 입사일/퇴사일 독립 부분 업데이트.
+  // 목표(targetContributionRate/changeTargetRate)와 동일한 패턴 — body에 없는(undefined)
+  // 필드는 건드리지 않는다. 사용자 계정/과거 실적을 삭제하지 않는다(날짜 필드만 변경).
+  async updateUserEmployment(id: number, fields: { hireDate?: string | null; terminationDate?: string | null }) {
+    return this.withDatabase(async (db) => {
+      const patch: Record<string, any> = {};
+      if (fields.hireDate !== undefined) patch.hireDate = fields.hireDate;
+      if (fields.terminationDate !== undefined) patch.terminationDate = fields.terminationDate;
+      if (Object.keys(patch).length === 0) {
+        const existing = await db.select().from(users).where(eq(users.id, id)).limit(1);
+        return existing[0] ?? null;
+      }
+      const result = await db.update(users).set(patch).where(eq(users.id, id)).returning();
+      return result[0] ?? null;
     });
   }
 
