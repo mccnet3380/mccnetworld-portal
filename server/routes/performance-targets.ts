@@ -11,7 +11,7 @@
 import { Router } from "express";
 import { getStorage } from "../storage";
 import { workerHomeNetwork } from "../lib/performance-classify";
-import { resolveRangeDates, computeWorkerPerformanceForDates, createLedgerCache } from "../lib/personal-performance";
+import { resolveRangeDates, discoverWorkerNamesForDates, createLedgerCache } from "../lib/personal-performance";
 
 const router = Router();
 
@@ -43,23 +43,26 @@ function parseYearMonth(q: any): { year: number; month: number } | null {
 // "오늘" 하루만 조회했는데, 실제 dev 환경 QA에서 오늘자 "■당일완료"에 아직 등록된 처리
 // 건수가 0건이면 dataset.workers가 완전히 빈 배열이 되어 관리자 매핑 dropdown에 선택지가
 // 하나도 없는 실제 버그를 발견했다(그날 첫 처리가 올라오기 전까지, 또는 휴일에는 매핑 자체가
-// 불가능해짐). "이번 달 1일~오늘"로 넓혀서 이번 달에 한 번이라도 등장한 worker는 항상
-// dropdown에 뜨게 한다. 새 파서를 만들지 않는다 — personal-performance.ts가 이미 갖고 있는
-// 저비용 경로(■당일완료 시트를 스프레드시트당 1회만 읽고 날짜별로 메모리에서 필터링)를
-// 그대로 재사용한다. 오히려 computePerformanceDataset(모바일/유선/마감/딜러매트릭스 등 여러
-// 시트를 매번 새로 읽음)보다 Google Sheets 쿼터 소모가 훨씬 적다.
+// 불가능해짐). "이번 달 1일~오늘"로 넓혔다.
+//
+// [MCC_PERFORMANCE_WORKER_MAPPING_DROPDOWN_FIX_1] 그런데도 Production에서 여전히
+// workers=[]가 반환되는 문제가 다시 발견됐다 — 원인은 "이번 달 1일~오늘" 범위를 봐도
+// "■당일완료" 단일 시트에 이번 달 데이터가 아직 하나도 없으면 여전히 빈 배열이라는 것.
+// 기존 실적관리(performance-calc.ts의 buildSourceBlock)는 "확정 실적 source"로
+// ■당일완료 하나만 보지 않는다 — "기타 완료" 집계에 ■변경완료/00700결합도 동일하게
+// "작업자/개통일" 컬럼을 갖는 소스로 취급한다(LOCK 파일 그대로, 무수정 확인). 그래서
+// worker 이름 discovery만 이 3개 시트를 전부 보도록 personal-performance.ts에
+// discoverWorkerNamesForDates()를 추가해서 재사용한다(계산 공식은 전혀 건드리지 않음 —
+// 이 함수는 이름 목록만 만들고 실적 숫자를 계산하지 않는다). 이름은 시트에서 발견된
+// 문자열 그대로만 사용한다 — 추정/변환 없음.
 router.get("/api/admin/performance/worker-options", requireAdminSession, async (_req, res) => {
   try {
     const today = new Date();
     const cache = createLedgerCache();
     const monthDates = resolveRangeDates("month", today);
-    const perDay = await computeWorkerPerformanceForDates(monthDates, cache);
-    const names = new Set<string>();
-    for (const day of perDay) {
-      for (const w of day.workers) names.add(w.worker);
-    }
+    const names = await discoverWorkerNamesForDates(monthDates, cache);
     res.set("Cache-Control", "no-store");
-    res.json({ workers: Array.from(names).sort() });
+    res.json({ workers: names });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

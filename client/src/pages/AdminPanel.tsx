@@ -12268,7 +12268,11 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
 
         {/* Edit User Dialog */}
         <Dialog open={editUserDialogOpen} onOpenChange={setEditUserDialogOpen}>
-          <DialogContent>
+          {/* MCC_PERFORMANCE_WORKER_MAPPING_DROPDOWN_FIX_1: 이 다이얼로그 하단의 "실적 작업자"
+              영역이 브라우저를 최대화하지 않으면 viewport 밖으로 잘려서 보이지 않는 문제 —
+              이 파일 다른 큰 다이얼로그들(예: 1150/10020/10103행)과 동일한 기존 패턴
+              (max-h-[90vh] overflow-y-auto)만 그대로 적용한다. 폼 필드/제출 로직은 무수정. */}
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>사용자 정보 수정</DialogTitle>
               <DialogDescription>

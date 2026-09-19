@@ -91,9 +91,14 @@ interface SharedLedgerCacheEntry extends LedgerCacheEntry {
 }
 const sharedLedgerCache = new Map<string, SharedLedgerCacheEntry>();
 
-async function fetchLedgerCached(date: Date, cache: LedgerCache): Promise<LedgerCacheEntry> {
+// MCC_PERFORMANCE_WORKER_MAPPING_DROPDOWN_FIX_1: sheetName을 매개변수화했다(기본값은
+// 기존과 동일한 LEDGER_SHEET="■당일완료"). computeWorkerPerformanceForDates()(LOCK된
+// 개인 실적 계산에 쓰이는 경로)는 인자를 그대로 생략해서 호출하므로 동작이 전혀 바뀌지
+// 않는다. discoverWorkerNamesForDates()만 다른 sheetName으로 이 함수를 재호출한다.
+// 캐시 키에 sheetName을 포함시켜 시트별로 독립적으로 캐시된다.
+async function fetchLedgerCached(date: Date, cache: LedgerCache, sheetName: string = LEDGER_SHEET): Promise<LedgerCacheEntry> {
   const resolved = await resolveActiveSpreadsheet(date);
-  const key = resolved.id;
+  const key = `${resolved.id}::${sheetName}`;
 
   const local = cache.get(key);
   if (local) return local;
@@ -105,7 +110,7 @@ async function fetchLedgerCached(date: Date, cache: LedgerCache): Promise<Ledger
     return entry;
   }
 
-  const values = await fetchSheetValuesById(resolved.id, LEDGER_SHEET);
+  const values = await fetchSheetValuesById(resolved.id, sheetName);
   const header = values[0] || [];
   const rows = values.slice(1).filter((r) => r.some((c) => String(c ?? "").trim() !== ""));
   const entry: LedgerCacheEntry = { header, rows };
@@ -158,6 +163,57 @@ export async function computeWorkerPerformanceForDates(
     out.push({ date: ymd(date), workers });
   }
   return out;
+}
+
+// MCC_PERFORMANCE_WORKER_MAPPING_DROPDOWN_FIX_1: 관리자 매핑 dropdown 전용 worker 이름
+// discovery. LOCK된 개인 실적 계산(computeWorkerPerformanceForDates, "■당일완료" 단일
+// 소스)과는 완전히 분리된 별도 경로다 — 여기서 찾은 이름은 어떤 실적 숫자 계산에도
+// 재사용되지 않고, 오직 "선택 가능한 문자열 목록"으로만 쓰인다.
+//
+// "오늘 실적이 있는 사람만" 뜨는 문제(오늘 ■당일완료가 0건이면 dropdown이 비는 구조적
+// 결함)를 고치기 위해, 기존 performance-calc.ts의 buildSourceBlock()이 이미 "확정 실적
+// source"로 취급하는 3개 시트(■당일완료, ■변경완료, 00700결합 — 전부 "작업자/개통일"
+// 컬럼을 갖는 동일 구조, LOCK 파일에서 그대로 확인됨)를 전부 스캔한다. 새 파서를 만들지
+// 않는다 — 이미 이 파일에 있는 컬럼 탐지/날짜 매칭(matchesDateCopy) 그대로 재사용하고,
+// sheetName만 fetchLedgerCached()에 다르게 넘긴다. 작업자명은 원문 그대로만 모은다 —
+// 추정/변환/정규화 없음.
+const WORKER_DISCOVERY_SHEETS = [LEDGER_SHEET, "■변경완료", "00700결합"];
+
+function extractWorkerNamesForDate(entry: LedgerCacheEntry, date: Date): string[] {
+  const workerIdx = entry.header.indexOf("작업자");
+  const dateIdx = entry.header.findIndex((h) => h.includes("개통일"));
+  if (workerIdx < 0 || dateIdx < 0) return [];
+
+  const out: string[] = [];
+  for (const r of entry.rows) {
+    if (!matchesDateCopy(r[dateIdx], date)) continue;
+    const worker = String(r[workerIdx] ?? "").trim();
+    if (worker) out.push(worker);
+  }
+  return out;
+}
+
+/**
+ * 지정한 날짜 범위에서 실제로 등장한 작업자 이름을 모은다(관리자 매핑 dropdown 전용).
+ * "오늘 실적 0건"이어도 같은 범위(예: 이번 달) 안의 다른 날짜에 등장한 이름은 그대로 포함된다.
+ */
+export async function discoverWorkerNamesForDates(
+  dates: Date[],
+  cache: LedgerCache = createLedgerCache(),
+): Promise<string[]> {
+  const names = new Set<string>();
+  for (const date of dates) {
+    for (const sheetName of WORKER_DISCOVERY_SHEETS) {
+      let entry: LedgerCacheEntry;
+      try {
+        entry = await fetchLedgerCached(date, cache, sheetName);
+      } catch {
+        continue; // 해당 월 스프레드시트에 그 시트 탭이 없을 수 있음 — 조용히 건너뜀
+      }
+      for (const w of extractWorkerNamesForDate(entry, date)) names.add(w);
+    }
+  }
+  return Array.from(names).sort();
 }
 
 /** 오늘 기준으로 today/week(월~오늘)/month(1일~오늘) 날짜 목록을 만든다 — 미래 날짜는 포함하지 않는다. */
