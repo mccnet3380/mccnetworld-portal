@@ -21,18 +21,20 @@
 // 따라서 예시 섹션은 "계산 예시 보기" 버튼을 눌렀을 때만 보이도록 토글 처리한다 — 표/카드
 // 자체의 레이아웃·색상·폰트·간격은 전혀 바꾸지 않았고 노출 여부만 바꿨다.
 //
-// "근무자 관리"/"이번 달 실적자료 연결" 2개 admin-only 탭은 MCC_PERFORMANCE_SITE_INTEGRATION_1에서
-// 확정된 범위 결정("이번 1차 사이트 연결에서는 실제 실적 조회를 우선 완성한다 — 억지로
-// 한꺼번에 새로 개발하지 않는다")에 따라 원본 HTML의 정적 데모 구조를 그대로 유지하되(정보
-// 삭제 없음), 새로운 백엔드 연결은 하지 않는다(원본도 버튼 클릭 시 alert()만 띄우는
-// 시뮬레이션 UI였다 — 동일하게 토스트로 대체).
+// "근무자 관리" admin-only 탭은 MCC_PERFORMANCE_SITE_INTEGRATION_1에서 확정된 범위
+// 결정("이번 1차 사이트 연결에서는 실제 실적 조회를 우선 완성한다 — 억지로 한꺼번에 새로
+// 개발하지 않는다")에 따라 원본 HTML의 정적 데모 구조를 그대로 유지한다(정보 삭제 없음,
+// 새 백엔드 연결 없음).
 //
-// [MCC_PERSONAL_PERFORMANCE_DASHBOARD_CORRECTION_1] "월별 인원·목표" 탭만 예외 —
-// worker_performance_targets(개인 실적 대시보드 작업에서 추가)를 실제로 연결한다.
-// 별도 독립 관리자 화면을 새로 만들지 않고, 이미 존재하던 이 탭의 자리를 그대로 쓴다.
-// mapping(실적 작업자)은 여전히 사용자 단위(AdminPanel의 사용자 수정 다이얼로그)에서
-// 관리하고, 여기서는 "연/월 선택 + 근무자별 현재 매핑 확인 + 그 달 목표 기여도(%) 저장"만
-// 담당한다 — 중복 관리 화면이 아니라 목표(월 단위)만 다루는 화면이다.
+// [MCC_PERFORMANCE_ADMIN_GOAL_MANAGEMENT_UI_SIMPLIFICATION_1] "월별 인원·목표" 탭과
+// "이번 달 실적자료 연결" 탭을 UI에서 제거했다(요구사항). DB/API는 전혀 삭제하지 않았다:
+// - 목표 편집 기능(개통/변경 목표 입력·저장, worker_performance_targets +
+//   /api/admin/performance/targets)은 "실적현황" 표 안으로 그대로 이동했다(아래
+//   targetsByWorker/StatusGoalCell). 저장 로직 자체는 기존 PUT API를 변경 없이 재사용.
+// - "이번 달 실적자료 연결"은 애초에 실제 백엔드가 없는 정적 데모였고(수동 스프레드시트
+//   연결 UI), resolveActiveSpreadsheet()의 자동 월별 탐색이 이미 실제로 동작 중임을
+//   재확인했으므로(수동 연결이 필요 없음) 탭 자체를 제거한다. 자동 탐색 로직
+//   (spreadsheet-resolver.ts)은 전혀 건드리지 않았다.
 
 import { useEffect, useState } from "react";
 import type { PerformanceDataset } from "@/types/performance";
@@ -46,9 +48,7 @@ interface Props {
 
 const TABS = [
   { id: "status", label: "실적현황" },
-  { id: "goals", label: "월별 인원·목표" },
   { id: "people", label: "근무자 관리" },
-  { id: "sources", label: "이번 달 실적자료 연결" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -67,166 +67,129 @@ function supportDetail(w: PerformanceDataset["workers"][number]): string {
   return parts.length ? parts.join(", ") : "-";
 }
 
-// MCC_PERSONAL_PERFORMANCE_DASHBOARD_CORRECTION_1: "월별 인원·목표" 탭 실제 연결.
-// mapping(실적 작업자)은 AdminPanel 사용자 수정 다이얼로그(PerformanceMappingField)에서
-// 이미 관리하므로 여기서 다시 매핑을 편집하지 않는다(중복 관리 UI 방지) — 여기서는
-// 연/월별 목표 기여도(%)만 설정한다. 매핑이 없는 근무자는 "매핑 없음"으로만 표시한다.
-interface GoalsWorkerRow {
+// [MCC_PERFORMANCE_ADMIN_GOAL_MANAGEMENT_UI_SIMPLIFICATION_1] 목표(개통/변경) 편집을
+// "월별 인원·목표" 탭에서 "실적현황" 표 안으로 이동했다. mapping(실적 작업자)은 여전히
+// AdminPanel 사용자 수정 다이얼로그(PerformanceMappingField)에서만 관리한다(중복 관리
+// UI 방지) — 여기서는 dataset.workers(그 조회일에 실제 등장한 Sheets worker 이름)를
+// /api/admin/performance/targets 응답의 performanceWorkerName으로 매칭해서, 매핑된
+// 행에만 그 달 목표 입력/저장을 제공한다. 저장 API(PUT, userId 기준)는 기존 그대로 재사용.
+interface TargetWorkerRow {
   userId: number;
-  name: string;
-  username: string;
   performanceWorkerName: string | null;
-  homeNetwork: string | null;
   targetContributionRate: number | null;
   changeTargetRate: number | null;
 }
 
-function MonthlyGoalsPanel({ active, defaultMonth }: { active: boolean; defaultMonth: string }) {
+function useMonthlyTargets(dateStr: string) {
   const apiRequest = useApiRequest();
-  const { toast } = useToast();
-  const [year, setYear] = useState(Number(defaultMonth.slice(0, 4)));
-  const [month, setMonth] = useState(Number(defaultMonth.slice(5, 7)));
-  const [rows, setRows] = useState<GoalsWorkerRow[]>([]);
+  const year = Number(dateStr.slice(0, 4));
+  const month = Number(dateStr.slice(5, 7));
+  const [byWorker, setByWorker] = useState<Map<string, TargetWorkerRow>>(new Map());
   const [loading, setLoading] = useState(false);
-  const [savingId, setSavingId] = useState<number | null>(null);
 
-  const load = async (y: number, m: number) => {
+  const reload = async () => {
     setLoading(true);
     try {
-      const res = await apiRequest(`/api/admin/performance/targets?year=${y}&month=${m}`);
-      setRows(res.workers || []);
-    } catch (err: any) {
-      toast({ title: "오류", description: err?.message ?? String(err), variant: "destructive" });
+      const res = await apiRequest(`/api/admin/performance/targets?year=${year}&month=${month}`);
+      const map = new Map<string, TargetWorkerRow>();
+      for (const w of res.workers || []) {
+        if (w.performanceWorkerName) map.set(w.performanceWorkerName, w);
+      }
+      setByWorker(map);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // 실제 실행 중인 tab이 "월별 인원·목표"일 때만 조회한다 — 이 컴포넌트를 담는 4개
-    // <section>이 항상 함께 마운트되어 있어(탭 전환은 CSS class로만 처리) 그냥 useEffect만
-    // 쓰면 admin이 이 탭을 클릭하지 않아도 페이지 진입 시 매번 불필요하게 조회하게 된다.
-    if (!active) return;
-    load(year, month);
+    reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, year, month]);
+  }, [year, month]);
 
-  // MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4: 개통 목표와 변경 목표는
+  return { year, month, byWorker, loading, reload };
+}
+
+function StatusGoalCells({
+  workerName,
+  target,
+  year,
+  month,
+  onSaved,
+}: {
+  workerName: string;
+  target: TargetWorkerRow | undefined;
+  year: number;
+  month: number;
+  onSaved: () => void;
+}) {
+  const apiRequest = useApiRequest();
+  const { toast } = useToast();
+  const [actValue, setActValue] = useState(target?.targetContributionRate != null ? String(target.targetContributionRate) : "");
+  const [chgValue, setChgValue] = useState(target?.changeTargetRate != null ? String(target.changeTargetRate) : "");
+  const [saving, setSaving] = useState<"" | "targetContributionRate" | "changeTargetRate">("");
+
+  useEffect(() => {
+    setActValue(target?.targetContributionRate != null ? String(target.targetContributionRate) : "");
+    setChgValue(target?.changeTargetRate != null ? String(target.changeTargetRate) : "");
+  }, [target?.targetContributionRate, target?.changeTargetRate]);
+
+  if (!target) {
+    // 이 Sheets worker 이름에 매핑된 MCC 계정이 없다 — 저장할 userId가 없으므로 편집 불가.
+    return (
+      <>
+        <td className="rmb-empty" style={{ fontSize: 12 }}>
+          매핑 필요
+        </td>
+        <td className="rmb-empty" style={{ fontSize: 12 }}>
+          매핑 필요
+        </td>
+      </>
+    );
+  }
+
+  // [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] 개통 목표와 변경 목표는
   // 독립된 값이라 저장 요청에도 그 kind에 해당하는 필드만 담아 보낸다 — 다른 쪽 값은
   // body에 아예 넣지 않아서(undefined) storage 계층이 건드리지 않는다(기존 값 보존).
-  const saveTarget = async (userId: number, kind: "targetContributionRate" | "changeTargetRate", rate: string) => {
+  const save = async (kind: "targetContributionRate" | "changeTargetRate", rate: string) => {
     const value = Number(rate);
     if (!Number.isFinite(value) || value < 0) {
       toast({ title: "오류", description: "목표(%)는 0 이상 숫자여야 합니다.", variant: "destructive" });
       return;
     }
-    setSavingId(userId);
+    setSaving(kind);
     try {
       await apiRequest("/api/admin/performance/targets", {
         method: "PUT",
-        body: JSON.stringify({ userId, year, month, [kind]: value }),
+        body: JSON.stringify({ userId: target.userId, year, month, [kind]: value }),
       });
-      await load(year, month);
-      toast({ title: "성공", description: "목표가 저장되었습니다." });
+      await onSaved();
+      toast({ title: "성공", description: `${workerName} ${kind === "targetContributionRate" ? "개통" : "변경"} 목표가 저장되었습니다.` });
     } catch (err: any) {
       toast({ title: "오류", description: err?.message ?? String(err), variant: "destructive" });
     } finally {
-      setSavingId(null);
+      setSaving("");
     }
   };
 
   return (
-    <div className="rmb-card">
-      <h3>월별 인원·목표</h3>
-      <p>ADMIN 전용입니다. 근무자별 그 달의 목표 기여도(%)를 설정합니다(건수 목표가 아닙니다).</p>
-      <div className="rmb-toolbar">
-        <div>
-          <label>연도</label>
-          <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} />
-        </div>
-        <div>
-          <label>월</label>
-          <input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(Number(e.target.value))} />
-        </div>
-      </div>
-
-      <div className="rmb-tablewrap" style={{ marginTop: 12 }}>
-        <table>
-          <thead>
-            <tr>
-              <th>근무자 실명</th>
-              <th>실적 작업자</th>
-              <th>소속망</th>
-              <th>
-                {year}-{String(month).padStart(2, "0")} 개통 목표(%)
-              </th>
-              <th>
-                {year}-{String(month).padStart(2, "0")} 변경 목표(%)
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <GoalsRowEditor
-                key={r.userId}
-                row={r}
-                saving={savingId === r.userId}
-                onSave={(kind, v) => saveTarget(r.userId, kind, v)}
-              />
-            ))}
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={5} className="rmb-empty">
-                  내부 근무자 계정이 없습니다.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <div className="rmb-note">
-        실적 작업자 매핑(계정 ↔ 스프레드시트 작업자)은 사용자 관리(관리자 패널)에서 근무자 단위로 1회 설정합니다. 여기서는
-        매월 목표만 설정하며, 이전 달 값이 자동으로 복사되지 않습니다. 개통 목표와 변경 목표는 서로 독립된 값으로,
-        한쪽만 저장해도 다른 쪽 값은 그대로 유지됩니다. 변경 목표는 현재 목표값만 저장하며, 달성률 계산 공식은 아직
-        확정되지 않아 개인 실적 화면에는 달성률을 표시하지 않습니다.
-      </div>
-    </div>
-  );
-}
-
-function GoalsRowEditor({
-  row,
-  saving,
-  onSave,
-}: {
-  row: GoalsWorkerRow;
-  saving: boolean;
-  onSave: (kind: "targetContributionRate" | "changeTargetRate", v: string) => void;
-}) {
-  const [value, setValue] = useState(row.targetContributionRate != null ? String(row.targetContributionRate) : "");
-  const [changeValue, setChangeValue] = useState(row.changeTargetRate != null ? String(row.changeTargetRate) : "");
-  return (
-    <tr>
-      <td className="left">{row.name}</td>
-      <td>{row.performanceWorkerName ?? "(매핑 없음)"}</td>
-      <td>{row.homeNetwork ?? "-"}</td>
+    <>
       <td>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input type="number" step="0.1" style={{ width: 90 }} value={value} onChange={(e) => setValue(e.target.value)} />
-          <button className="rmb-btn" disabled={saving} onClick={() => onSave("targetContributionRate", value)}>
-            {saving ? "저장 중..." : "저장"}
+          <input type="number" step="0.1" style={{ width: 80 }} value={actValue} onChange={(e) => setActValue(e.target.value)} />
+          <button className="rmb-btn" disabled={saving === "targetContributionRate"} onClick={() => save("targetContributionRate", actValue)}>
+            {saving === "targetContributionRate" ? "저장 중..." : "저장"}
           </button>
         </div>
       </td>
       <td>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input type="number" step="0.1" style={{ width: 90 }} value={changeValue} onChange={(e) => setChangeValue(e.target.value)} />
-          <button className="rmb-btn" disabled={saving} onClick={() => onSave("changeTargetRate", changeValue)}>
-            {saving ? "저장 중..." : "저장"}
+          <input type="number" step="0.1" style={{ width: 80 }} value={chgValue} onChange={(e) => setChgValue(e.target.value)} />
+          <button className="rmb-btn" disabled={saving === "changeTargetRate"} onClick={() => save("changeTargetRate", chgValue)}>
+            {saving === "changeTargetRate" ? "저장 중..." : "저장"}
           </button>
         </div>
       </td>
-    </tr>
+    </>
   );
 }
 
@@ -234,6 +197,10 @@ export function ResultManagementBoard({ dataset }: Props) {
   const [tab, setTab] = useState<TabId>("status");
   const [showExample, setShowExample] = useState(false);
   const { toast } = useToast();
+  // [MCC_PERFORMANCE_ADMIN_GOAL_MANAGEMENT_UI_SIMPLIFICATION_1] 목표 편집을 실적현황
+  // 표 안으로 옮기면서 필요해진 조회일 기준 월별 목표 매핑(그 달의 targetContributionRate/
+  // changeTargetRate를 performanceWorkerName으로 조회).
+  const monthlyTargets = useMonthlyTargets(dataset.date);
 
   const demoToast = (msg: string) => toast({ title: "검토용 화면", description: msg });
 
@@ -405,8 +372,8 @@ export function ResultManagementBoard({ dataset }: Props) {
                   <th>인정 처리량</th>
                   <th>소속채널 당일 총수량</th>
                   <th>현재 실적률</th>
-                  <th>목표%</th>
-                  <th>차이</th>
+                  <th>개통 목표(%)</th>
+                  <th>변경 목표(%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -432,20 +399,27 @@ export function ResultManagementBoard({ dataset }: Props) {
                       <td>
                         <b>{w.performanceRate != null ? `${w.performanceRate.toFixed(1)}%` : "-"}</b>
                       </td>
-                      <td>-</td>
-                      <td>-</td>
+                      <StatusGoalCells
+                        workerName={w.worker}
+                        target={monthlyTargets.byWorker.get(w.worker)}
+                        year={monthlyTargets.year}
+                        month={monthlyTargets.month}
+                        onSaved={monthlyTargets.reload}
+                      />
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
-          <div className="rmb-note">00700을 포함한 등록된 모든 업무 항목의 지원실적을 개인 인정 처리량에 반영합니다.</div>
+          <div className="rmb-note">
+            00700을 포함한 등록된 모든 업무 항목의 지원실적을 개인 인정 처리량에 반영합니다. 개통 목표와 변경 목표는
+            서로 독립된 값입니다(한쪽만 저장해도 다른 쪽은 유지됩니다) — {monthlyTargets.year}-
+            {String(monthlyTargets.month).padStart(2, "0")} 목표 기준. "매핑 필요"로 표시되면 사용자 관리에서 이
+            Sheets 작업자 이름을 먼저 계정에 연결해야 목표를 저장할 수 있습니다. 변경 목표는 목표값만 저장하며,
+            달성률 계산 공식은 아직 확정되지 않아 표시하지 않습니다.
+          </div>
         </div>
-      </section>
-
-      <section className={`rmb-panel ${tab === "goals" ? "on" : ""}`}>
-        <MonthlyGoalsPanel active={tab === "goals"} defaultMonth={dataset.date.slice(0, 7)} />
       </section>
 
       <section className={`rmb-panel ${tab === "people" ? "on" : ""}`}>
@@ -496,71 +470,6 @@ export function ResultManagementBoard({ dataset }: Props) {
                 </tr>
               </tbody>
             </table>
-          </div>
-        </div>
-      </section>
-
-      <section className={`rmb-panel ${tab === "sources" ? "on" : ""}`}>
-        <div className="rmb-card">
-          <h3 style={{ margin: "0 0 6px" }}>이번 달 실적자료 연결</h3>
-          <div className="rmb-note" style={{ fontSize: 13 }}>
-            매달 새로 사용하는 스프레드시트 주소만 연결하면 됩니다. 어려운 열 번호나 GID를 직접 입력할 필요 없이{" "}
-            <b>주소 붙여넣기 → 시트 선택 → 자료 확인 → 저장</b> 순서로 진행합니다.
-          </div>
-          <div className="rmb-toolbar" style={{ marginTop: 14 }}>
-            <div>
-              <label>설정할 월</label>
-              <input type="month" defaultValue={dataset.date.slice(0, 7)} />
-            </div>
-            <button className="rmb-btn" onClick={() => demoToast("지난달 주소와 시트 설정을 복사한 뒤 이번 달 주소만 바꾸는 흐름입니다.")}>
-              지난달 설정 복사
-            </button>
-            <button
-              className="rmb-btn primary"
-              onClick={() => demoToast("이번 달 실적자료 연결 설정을 저장합니다. 실제 MCC에서는 관리자 설정으로 DB에 저장됩니다.")}
-            >
-              이번 달 설정 저장
-            </button>
-          </div>
-        </div>
-
-        {["① 개통 실적", "② 기타업무 실적", "③ 00700 실적"].map((name) => (
-          <div className="rmb-card" key={name}>
-            <h3 style={{ margin: "0 0 5px" }}>{name}</h3>
-            <div className="rmb-note">이번 달 스프레드시트를 연결합니다.</div>
-            <div className="rmb-toolbar" style={{ marginTop: 12 }}>
-              <div style={{ flex: 1, minWidth: 330 }}>
-                <label>스프레드시트 주소</label>
-                <input style={{ width: "100%" }} placeholder="여기에 이번 달 주소를 붙여넣으세요" />
-              </div>
-              <div>
-                <label>사용할 시트</label>
-                <select>
-                  <option value="">주소 확인 후 선택</option>
-                </select>
-              </div>
-              <button className="rmb-btn" onClick={() => demoToast("주소 확인 ✓ 사용할 시트를 선택한 뒤 다시 [자료 확인]을 누르세요.")}>
-                자료 확인
-              </button>
-            </div>
-            <div className="rmb-note" style={{ marginTop: 12 }}>
-              아직 연결하지 않았습니다.
-            </div>
-          </div>
-        ))}
-
-        <div className="rmb-card">
-          <h3 style={{ margin: "0 0 6px" }}>새로운 근무자 확인</h3>
-          <div className="rmb-note">
-            실적자료에서 처음 보는 이름이 나오면 자동 등록하지 않고 한 번만 확인합니다. 승인 후에는 같은 이름의
-            실적이 자동 연결됩니다.
-          </div>
-          <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#f7f9fc" }}>
-            <b>퇴사자는 자동 삭제하지 않습니다.</b>
-            <div className="rmb-note" style={{ marginTop: 5 }}>
-              관리자가 근무자 관리에서 퇴사일을 지정합니다. 과거 실적은 그대로 보존되고 퇴사일 이후 현재 실적에서만
-              제외됩니다.
-            </div>
           </div>
         </div>
       </section>
