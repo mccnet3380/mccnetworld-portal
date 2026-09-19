@@ -18,10 +18,38 @@
 import { fetchSheetValuesById } from "./google-sheets-client";
 import { resolveActiveSpreadsheet } from "./spreadsheet-resolver";
 import { classifyReq, workerHomeNetwork } from "./performance-classify";
-import { summarizeNetworkTotals, summarizeWorkerNetworkMatrix, type ClassifiedRow } from "./performance-calc";
+import { summarizeNetworkTotals, summarizeWorkerNetworkMatrix, type ClassifiedRow, type WorkerNetworkRow } from "./performance-calc";
 import { computeWorkerPerformance, type WorkerPerformanceRow } from "./worker-performance";
 
 const LEDGER_SHEET = "■당일완료";
+
+// [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] 실제 시트 조사 결과(사용자
+// 지시로 코드 수정 전에 직접 확인):
+// - "■당일완료"는 그날그날의 "오늘" 라이브 원장이다(조사 시점: 이번 달 전체 행이 오늘자
+//   1건뿐 — 다른 날짜 행이 전혀 없음). 하루가 지나면 그 행은 여기 남아있지 않다.
+// - "개통처리부"는 헤더가 "■당일완료"와 완전히 동일(작업자/개통일/요청점 등 같은 위치)한
+//   이번 달 전체 개통 마스터 로그다. 조사 시점 기준 9/1~9/18 데이터가 있고 9/19(당일) 행은
+//   아직 없었다 — "당일완료"의 오늘 건과 "개통처리부"의 과거 건이 개통번호 기준으로 전혀
+//   겹치지 않음을 실제로 확인했다(교집합 0건). 즉 "오늘=당일완료, 그 이전 날짜=개통처리부"
+//   경계가 데이터 자체에 이미 자연스럽게 존재한다 — 새로 발명한 규칙이 아니라 실측 결과다.
+// - "■변경완료"의 요청점은 전부 "기타)"/"유심)" 접두어였고(개통처리부의 "후불)/선불)/단말)"
+//   접두어와 요청점 네임스페이스가 완전히 분리됨), 개통번호 기준 개통처리부와의 교집합도
+//   5595행 중 7건뿐(대부분 변경완료 행 자체가 개통번호를 비워둠 — 신규 개통이 아니라 사후
+//   변경 업무라 개통번호가 없는 게 정상). "00700결합"도 개통처리부/변경완료 어느 쪽과도
+//   개통번호 교집합이 0건. → 개통 업무와 변경 업무는 사실상 분리된 모집단이며, 이미
+//   기존 performance-calc.ts의 buildSourceBlock(["■변경완료","00700결합"], ...)가 이 둘을
+//   "기타업무(otherDuty)" 하나로 묶어온 것이 바로 그 기존 검증된 구분이다 — 그대로 재사용한다.
+const MASTER_LEDGER_SHEET = "개통처리부"; // 개통 업무의 "오늘 이전" historical source
+const CHANGE_WORK_SHEETS = ["■변경완료", "00700결합"]; // 변경 업무 source(기존 otherDuty 페어링 그대로)
+
+function isSameCalendarDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** 특정 날짜의 개통 업무 데이터가 어느 source에서 왔는지(라우트의 최근 7일/내역 표시용). */
+export function activationSourceLabel(date: Date, today: Date): string {
+  return isSameCalendarDay(date, today) ? LEDGER_SHEET : MASTER_LEDGER_SHEET;
+}
 
 function two(n: number): string {
   return n < 10 ? `0${n}` : String(n);
@@ -119,13 +147,13 @@ async function fetchLedgerCached(date: Date, cache: LedgerCache, sheetName: stri
   return entry;
 }
 
-function classifyForDate(entry: LedgerCacheEntry, date: Date): ClassifiedRow[] {
+function classifyForDate(entry: LedgerCacheEntry, date: Date, sheetLabel: string = LEDGER_SHEET): ClassifiedRow[] {
   const workerIdx = entry.header.indexOf("작업자");
   const dateIdx = entry.header.findIndex((h) => h.includes("개통일"));
   const reqIdx = entry.header.indexOf("요청점");
   if (workerIdx < 0 || dateIdx < 0 || reqIdx < 0) {
     throw new Error(
-      `[PersonalPerformance] "${LEDGER_SHEET}" 시트에서 필수 컬럼(작업자/개통일/요청점)을 찾지 못했습니다. 헤더: ${entry.header.join(", ")}`,
+      `[PersonalPerformance] "${sheetLabel}" 시트에서 필수 컬럼(작업자/개통일/요청점)을 찾지 못했습니다. 헤더: ${entry.header.join(", ")}`,
     );
   }
 
@@ -163,6 +191,120 @@ export async function computeWorkerPerformanceForDates(
     out.push({ date: ymd(date), workers });
   }
   return out;
+}
+
+// [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] 개통 업무의 기간 집계.
+// "오늘"(today 인자와 달력상 같은 날)은 실시간 소스("■당일완료")를, 그 이전 날짜는
+// 확정 historical 소스("개통처리부")를 사용한다 — 오늘 실적 계산 방식 자체는 전혀
+// 바꾸지 않는다(같은 함수, 같은 컬럼 탐지, 같은 classifyForDate/LOCK 계산 재사용). 두
+// source가 개통번호 기준으로 절대 겹치지 않음을 실제 데이터로 확인했으므로(위 주석
+// 참고) 같은 날짜를 두 source에서 동시에 합산하는 이중 집계 위험이 없다.
+export async function computeActivationPerformanceForDates(
+  dates: Date[],
+  today: Date,
+  cache: LedgerCache = createLedgerCache(),
+): Promise<DayWorkerPerformance[]> {
+  const out: DayWorkerPerformance[] = [];
+  for (const date of dates) {
+    const sheetName = isSameCalendarDay(date, today) ? LEDGER_SHEET : MASTER_LEDGER_SHEET;
+    const entry = await fetchLedgerCached(date, cache, sheetName);
+    const rows = classifyForDate(entry, date, sheetName);
+    const totals = summarizeNetworkTotals(rows);
+    const matrix = summarizeWorkerNetworkMatrix(rows);
+    const workers = computeWorkerPerformance(matrix, totals);
+    out.push({ date: ymd(date), workers });
+  }
+  return out;
+}
+
+export interface DayChangeWorkerPerformance {
+  date: string;
+  workers: WorkerNetworkRow[];
+}
+
+// [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] 변경 업무(기타업무) 기간
+// 집계. source는 기존 performance-calc.ts의 buildSourceBlock(["■변경완료","00700결합"])와
+// 동일한 2개 시트다 — 새 페어링이 아니라 기존 "기타업무(otherDuty)" 정의를 그대로 재사용.
+// ■변경완료는 오늘 건도 이미 그 시트 안에 존재함을 실제 데이터로 확인했으므로(개통
+// 업무처럼 "오늘=별도 시트" 경계가 없다), 날짜와 무관하게 항상 이 2개 시트만 본다.
+//
+// 중요: computeWorkerPerformance()(officialTotal/기여도% 계산, LOCK)는 절대 호출하지
+// 않는다 — 변경 업무의 "기여도/목표율" 공식은 기존 코드/HTML 어디에도 없음을 조사로
+// 확인했다(개통 업무처럼 소속망 공식 총실적에 대한 비율 개념 자체가 어디서도 계산되지
+// 않았음). 그 공식을 임의로 만들지 않고(개통 공식을 그대로 복사하는 것도 금지) 본업/지원
+// 처리량(raw count)만 제공한다 — summarizeWorkerNetworkMatrix()의 순수 구조적 분류
+// (작업자의 소속망 대비 어느 망에서 처리했는지)만 재사용한다.
+export async function computeChangeWorkForDates(
+  dates: Date[],
+  cache: LedgerCache = createLedgerCache(),
+): Promise<DayChangeWorkerPerformance[]> {
+  const out: DayChangeWorkerPerformance[] = [];
+  for (const date of dates) {
+    const rowsPerSheet: ClassifiedRow[][] = [];
+    for (const sheetName of CHANGE_WORK_SHEETS) {
+      let entry: LedgerCacheEntry;
+      try {
+        entry = await fetchLedgerCached(date, cache, sheetName);
+      } catch {
+        continue; // 해당 월 스프레드시트에 그 시트 탭이 없을 수 있음 — 조용히 건너뜀
+      }
+      rowsPerSheet.push(classifyForDate(entry, date, sheetName));
+    }
+    const rows = rowsPerSheet.flat();
+    const workers = summarizeWorkerNetworkMatrix(rows);
+    out.push({ date: ymd(date), workers });
+  }
+  return out;
+}
+
+export interface AggregatedChangeWorkPerformance {
+  self: number;
+  supportSK: number;
+  supportKT: number;
+  supportLG: number;
+  supportTOSS: number;
+  supportTotal: number;
+  total: number; // self + supportTotal — "인정 처리량"이라는 개통 용어와 구분하기 위해 total로 표기
+}
+
+/** perDay 결과에서 특정 performanceWorkerName의 기간 변경 업무 합계를 뽑는다. 기여도/목표율은 계산하지 않는다(공식 미확인, HOLD). */
+export function aggregateChangeForWorker(
+  perDay: DayChangeWorkerPerformance[],
+  performanceWorkerName: string,
+): AggregatedChangeWorkPerformance {
+  let self = 0, supportSK = 0, supportKT = 0, supportLG = 0, supportTOSS = 0;
+  for (const day of perDay) {
+    const mine = day.workers.find((w) => w.worker === performanceWorkerName);
+    if (!mine) continue;
+    const home = mine.home;
+    if (home === "SK") self += mine.SK; else supportSK += mine.SK;
+    if (home === "KT") self += mine.KT; else supportKT += mine.KT;
+    if (home === "LG") self += mine.LG; else supportLG += mine.LG;
+    // workerHomeNetwork()는 절대 "TOSS"를 반환하지 않으므로(SK/KT/LG/유선/본사/기타만
+    // 가능) TOSS 실적은 항상 지원 처리로 집계된다 — LOCK된 computeWorkerPerformance()의
+    // 동일한 처리와 일치.
+    supportTOSS += mine.TOSS;
+  }
+  const supportTotal = supportSK + supportKT + supportLG + supportTOSS;
+  return { self, supportSK, supportKT, supportLG, supportTOSS, supportTotal, total: self + supportTotal };
+}
+
+/** perDay 결과에서 같은 homeNetwork 작업자들의 기간 변경 업무 합계 평균(팀 비교, 본인 포함). */
+export function teamAverageChangeForHome(
+  perDay: DayChangeWorkerPerformance[],
+  home: ReturnType<typeof workerHomeNetwork>,
+): number | null {
+  const totals = new Map<string, number>();
+  const homes = new Map<string, string>();
+  for (const day of perDay) {
+    for (const w of day.workers) {
+      totals.set(w.worker, (totals.get(w.worker) || 0) + w["합계"]);
+      homes.set(w.worker, w.home);
+    }
+  }
+  const teammates = Array.from(totals.entries()).filter(([worker]) => homes.get(worker) === home);
+  if (teammates.length === 0) return null;
+  return teammates.reduce((sum, [, v]) => sum + v, 0) / teammates.length;
 }
 
 // MCC_PERFORMANCE_WORKER_MAPPING_DROPDOWN_FIX_1: 관리자 매핑 dropdown 전용 worker 이름

@@ -13,13 +13,11 @@
 // admin은 매핑 대상이 아니라 항상 mapped:false로 응답받는다 — 그 경우 이 페이지는
 // "/performance의 월별 인원·목표에서 관리하라"는 안내만 보여준다.
 //
-// [MCC_PERSONAL_PERFORMANCE_DASHBOARD_CORRECTION_1] 관리자가 전체 직원 목표/매핑을 관리하는
-// 표를 이 개인 페이지 하단에 중복해서 두지 않는다 — 실제 존재하는 기존
-// client/src/components/performance/ResultManagementBoard.tsx의 "월별 인원·목표" 탭에
-// worker_performance_targets 데이터를 연결했다(이 파일은 개인 결과 표시 전용으로 되돌림).
-//
-// 최근 7일 추이는 참고 HTML(MCC_PERSONAL_PERFORMANCE_DASHBOARD_V1.html)의 SVG 라인/영역
-// 차트 형태를 실제 데이터로 그대로 포팅한다(막대 그래프로 단순화하지 않음).
+// [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] MCC의 개인 업무 실적은
+// 개통 업무와 변경 업무, 최소 두 개의 독립 KPI다(요구사항) — 하나로 합쳐서 하나의
+// 기여도/목표율을 계산하지 않는다. 이 화면은 기존 디자인 언어를 유지하면서 "개통 업무"
+// 섹션(기존 히어로 카드, LOCK 공식 그대로)과 "변경 업무" 섹션(신규, 처리량만 — 기여도/
+// 목표 달성률 공식은 기존 코드/HTML 어디에도 없어 HOLD, 처리량만 표시)을 분리해서 보여준다.
 
 import { useEffect, useState } from "react";
 import { Layout } from "@/components/Layout";
@@ -29,22 +27,31 @@ import { cn } from "@/lib/utils";
 
 type Range = "today" | "week" | "month";
 
+interface ActivationBlock {
+  recognized: number;
+  self: number;
+  support: { SK: number; KT: number; LG: number; TOSS: number; total: number };
+  homeNetworkOfficialTotal: number | null;
+  contributionRate: number | null;
+  teamAverage: number | null;
+}
+
+interface ChangeBlock {
+  total: number;
+  self: number;
+  support: { SK: number; KT: number; LG: number; TOSS: number; total: number };
+  teamAverage: number | null;
+}
+
 interface PersonalPerformanceResponse {
   mapped: boolean;
   isAdmin: boolean;
   user: { name: string; homeNetwork?: string; performanceWorkerName?: string; userType?: string };
   message?: string;
   range?: { type: Range; dates: string[] };
-  performance?: {
-    recognized: number;
-    self: number;
-    support: { SK: number; KT: number; LG: number; TOSS: number; total: number };
-    homeNetworkOfficialTotal: number | null;
-    contributionRate: number | null;
-    teamAverage: number | null;
-  };
-  month?: { recognized: number; homeNetworkOfficialTotal: number | null; contributionRate: number | null };
-  target?: {
+  activation?: ActivationBlock;
+  activationMonth?: { recognized: number; homeNetworkOfficialTotal: number | null; contributionRate: number | null };
+  activationTarget?: {
     year: number;
     month: number;
     targetContributionRate: number | null;
@@ -52,8 +59,11 @@ interface PersonalPerformanceResponse {
     diffPoints?: number | null;
     message?: string;
   };
-  trend?: { date: string; recognized: number }[];
-  recent?: { date: string; channel: string; type: string; count: number }[];
+  change?: ChangeBlock;
+  changeMonth?: { total: number; self: number };
+  changeTarget?: { year: number; month: number; changeTargetRate: number | null; note?: string; message?: string };
+  trend?: { date: string; activationSource: string; activationRecognized: number; changeTotal: number }[];
+  recent?: { date: string; workType: "개통" | "변경"; channel: string; type: string; count: number }[];
 }
 
 function fmtPct(v: number | null | undefined, digits = 1): string {
@@ -101,7 +111,7 @@ export function PersonalPerformance() {
             <h1 className="text-xl font-semibold text-gray-900">
               {data?.user?.name ? `${data.user.name}님, 오늘도 좋은 흐름이에요` : "개인 실적"}
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">내 처리 실적과 팀 기여도를 한눈에 확인하세요.</p>
+            <p className="text-sm text-muted-foreground mt-1">내 개통·변경 업무 실적을 한눈에 확인하세요.</p>
           </div>
           <div className="flex gap-1 rounded-lg bg-muted p-1">
             {(["today", "week", "month"] as Range[]).map((r) => (
@@ -137,7 +147,7 @@ export function PersonalPerformance() {
           </Card>
         )}
 
-        {!loading && !error && data && data.mapped && data.performance && (
+        {!loading && !error && data && data.mapped && data.activation && (
           <PersonalPerformanceView data={data} />
         )}
       </div>
@@ -146,82 +156,131 @@ export function PersonalPerformance() {
 }
 
 function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }) {
-  const perf = data.performance!;
-  const target = data.target;
+  const act = data.activation!;
+  const chg = data.change!;
+  const target = data.activationTarget;
+  const changeTarget = data.changeTarget;
   const ringPct = target?.achievementRate != null ? Math.max(0, Math.min(100, target.achievementRate)) : 0;
+  const rangeLabel = data.range?.type === "today" ? "오늘" : data.range?.type === "week" ? "이번 주" : "이번 달";
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-[1.2fr_.8fr]">
-        <Card className="border-0 text-white" style={{ background: "linear-gradient(135deg,#173968 0%,#245ec0 62%,#4b7ee1 100%)" }}>
-          <CardContent className="py-5 flex items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold opacity-75 mb-2">이번 달 현재 기여도</div>
-              <div className="text-3xl font-extrabold">
-                {fmtPct(data.month?.contributionRate)}
-                <span className="text-sm font-semibold opacity-80 ml-2">
-                  {target?.targetContributionRate != null ? `목표 ${fmtPct(target.targetContributionRate)}` : "목표 미설정"}
-                </span>
+    <div className="space-y-8">
+      {/* ── 개통 업무 ────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-bold text-gray-500 tracking-wide">개통 업무</h2>
+
+        <div className="grid gap-4 md:grid-cols-[1.2fr_.8fr]">
+          <Card className="border-0 text-white" style={{ background: "linear-gradient(135deg,#173968 0%,#245ec0 62%,#4b7ee1 100%)" }}>
+            <CardContent className="py-5 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold opacity-75 mb-2">이번 달 개통 현재 기여도</div>
+                <div className="text-3xl font-extrabold">
+                  {fmtPct(data.activationMonth?.contributionRate)}
+                  <span className="text-sm font-semibold opacity-80 ml-2">
+                    {target?.targetContributionRate != null ? `목표 ${fmtPct(target.targetContributionRate)}` : "목표 미설정"}
+                  </span>
+                </div>
+                <div className="text-xs mt-2 opacity-90">
+                  {target?.targetContributionRate != null
+                    ? `목표 대비 달성 ${fmtPct(target.achievementRate)} · 목표와 차이 ${fmtPtDiff(target.diffPoints)}`
+                    : "이번 달 개통 목표가 아직 설정되지 않았습니다."}
+                </div>
               </div>
-              <div className="text-xs mt-2 opacity-90">
-                {target?.targetContributionRate != null
-                  ? `목표 대비 달성 ${fmtPct(target.achievementRate)} · 목표와 차이 ${fmtPtDiff(target.diffPoints)}`
-                  : "이번 달 목표가 아직 설정되지 않았습니다."}
+              <div
+                className="h-[110px] w-[110px] rounded-full grid place-items-center flex-shrink-0"
+                style={{ background: `conic-gradient(#75e1c2 0 ${ringPct}%, rgba(255,255,255,.18) ${ringPct}% 100%)` }}
+              >
+                <div className="h-[80px] w-[80px] rounded-full grid place-items-center text-lg font-extrabold" style={{ background: "#275bb4" }}>
+                  {target?.targetContributionRate != null ? `${ringPct.toFixed(0)}%` : "-"}
+                </div>
               </div>
-            </div>
-            <div
-              className="h-[110px] w-[110px] rounded-full grid place-items-center flex-shrink-0"
-              style={{ background: `conic-gradient(#75e1c2 0 ${ringPct}%, rgba(255,255,255,.18) ${ringPct}% 100%)` }}
-            >
-              <div className="h-[80px] w-[80px] rounded-full grid place-items-center text-lg font-extrabold" style={{ background: "#275bb4" }}>
-                {target?.targetContributionRate != null ? `${ringPct.toFixed(0)}%` : "-"}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">개통 팀 평균과 비교 ({rangeLabel})</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <CompareBar label="내 인정 처리량" value={act.recognized} max={Math.max(act.recognized, act.teamAverage ?? 0, 1)} color="#266be9" />
+              <CompareBar label={`${data.user.homeNetwork}팀 평균`} value={act.teamAverage} max={Math.max(act.recognized, act.teamAverage ?? 0, 1)} color="#a9b5c6" />
+              <p className="text-xs text-muted-foreground pt-1">
+                * 팀 평균은 같은 기간 실적이 등록된 같은 망({data.user.homeNetwork}) 근무자 기준입니다. 휴무/근태는 반영하지 않습니다.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MetricCard label={`${rangeLabel} 개통 인정 처리량`} value={`${act.recognized}건`} />
+          <MetricCard label="본인 처리" value={`${act.self}건`} />
+          <MetricCard label="지원 처리" value={`${act.support.total}건`} sub={act.support.total === 0 ? "현재 지원업무 없음" : undefined} />
+          <MetricCard label={`${data.user.homeNetwork}망 총실적`} value={act.homeNetworkOfficialTotal != null ? `${act.homeNetworkOfficialTotal}건` : "-"} sub={`${data.user.homeNetwork}망 기준`} />
+        </div>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">팀 평균과 비교 ({data.range?.type === "today" ? "오늘" : data.range?.type === "week" ? "이번 주" : "이번 달"})</CardTitle>
+            <CardTitle className="text-sm">개통 처리 구성 ({rangeLabel})</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <CompareBar label="내 인정 처리량" value={perf.recognized} max={Math.max(perf.recognized, perf.teamAverage ?? 0, 1)} color="#266be9" />
-            <CompareBar label={`${data.user.homeNetwork}팀 평균`} value={perf.teamAverage} max={Math.max(perf.recognized, perf.teamAverage ?? 0, 1)} color="#a9b5c6" />
-            <p className="text-xs text-muted-foreground pt-1">
-              * 팀 평균은 당일 실적이 등록된 같은 망({data.user.homeNetwork}) 근무자 기준입니다. 휴무/근태는 반영하지 않습니다.
-            </p>
+            <ChannelBar label={`${data.user.homeNetwork} 본인 처리`} value={act.self} max={Math.max(act.recognized, 1)} color="#e9579c" />
+            {(["SK", "KT", "LG", "TOSS"] as const)
+              .filter((net) => net !== data.user.homeNetwork)
+              .map((net) => (
+                <ChannelBar key={net} label={`${net} 지원 처리`} value={act.support[net]} max={Math.max(act.recognized, 1)} color={net === "KT" ? "#2c74e8" : net === "SK" ? "#ef7f47" : "#7e5bef"} />
+              ))}
           </CardContent>
         </Card>
       </section>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MetricCard label="오늘 인정 처리량" value={`${perf.recognized}건`} />
-        <MetricCard label="본인 처리" value={`${perf.self}건`} />
-        <MetricCard label="지원 처리" value={`${perf.support.total}건`} sub={perf.support.total === 0 ? "현재 지원업무 없음" : undefined} />
-        <MetricCard label={`${data.user.homeNetwork}망 총실적`} value={perf.homeNetworkOfficialTotal != null ? `${perf.homeNetworkOfficialTotal}건` : "-"} sub={`${data.user.homeNetwork}망 기준`} />
+      {/* ── 변경 업무 ────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-bold text-gray-500 tracking-wide">변경 업무</h2>
+        <div className="grid gap-4 md:grid-cols-[1.2fr_.8fr]">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">{rangeLabel} 변경 처리량</CardTitle>
+              <CardDescription>■변경완료(00700 포함) 기준. 개통 처리량과 합산되지 않습니다.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-extrabold text-gray-900">{chg.total}건</div>
+              <div className="text-sm text-muted-foreground mt-1">본인 {chg.self}건 · 지원 {chg.support.total}건</div>
+              <div className="text-xs mt-3 text-muted-foreground">
+                {changeTarget?.changeTargetRate != null
+                  ? `이번 달 변경 목표: ${fmtPct(changeTarget.changeTargetRate)} — ${changeTarget.note ?? ""}`
+                  : "이번 달 변경 목표 미설정"}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">변경 팀 평균과 비교 ({rangeLabel})</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <CompareBar label="내 변경 처리량" value={chg.total} max={Math.max(chg.total, chg.teamAverage ?? 0, 1)} color="#7e5bef" />
+              <CompareBar label={`${data.user.homeNetwork}팀 평균`} value={chg.teamAverage} max={Math.max(chg.total, chg.teamAverage ?? 0, 1)} color="#a9b5c6" />
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-[1.4fr_.8fr]">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">최근 7일 실적 추이</CardTitle>
+            <CardTitle className="text-sm">최근 7일 실적 추이 (개통 · 변경)</CardTitle>
           </CardHeader>
           <CardContent>
             <TrendChart trend={data.trend || []} />
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">처리 구성</CardTitle>
+            <CardTitle className="text-sm">범례</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <ChannelBar label={`${data.user.homeNetwork} 본인 처리`} value={perf.self} max={Math.max(perf.recognized, 1)} color="#e9579c" />
-            {(["SK", "KT", "LG", "TOSS"] as const)
-              .filter((net) => net !== data.user.homeNetwork)
-              .map((net) => (
-                <ChannelBar key={net} label={`${net} 지원 처리`} value={perf.support[net]} max={Math.max(perf.recognized, 1)} color={net === "KT" ? "#2c74e8" : net === "SK" ? "#ef7f47" : "#7e5bef"} />
-              ))}
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full inline-block" style={{ background: "#286de7" }} /> 개통 인정 처리량</div>
+            <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full inline-block" style={{ background: "#7e5bef" }} /> 변경 처리량</div>
+            <p className="text-xs text-muted-foreground pt-1">오늘은 ■당일완료, 그 이전 날짜는 개통처리부 기준입니다.</p>
           </CardContent>
         </Card>
       </section>
@@ -233,10 +292,11 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
         </CardHeader>
         <CardContent>
           <div className="overflow-auto border rounded-md">
-            <table className="w-full text-sm min-w-[500px]">
+            <table className="w-full text-sm min-w-[560px]">
               <thead className="bg-muted">
                 <tr>
                   <th className="p-2 text-left font-medium">날짜</th>
+                  <th className="p-2 text-left font-medium">업무</th>
                   <th className="p-2 text-left font-medium">소속</th>
                   <th className="p-2 text-left font-medium">처리 구분</th>
                   <th className="p-2 text-left font-medium">수량</th>
@@ -246,6 +306,7 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
                 {(data.recent || []).map((r, i) => (
                   <tr key={i} className="border-t">
                     <td className="p-2">{r.date}</td>
+                    <td className="p-2">{r.workType}</td>
                     <td className="p-2">{r.channel}</td>
                     <td className="p-2">{r.type}</td>
                     <td className="p-2 font-semibold">{r.count}건</td>
@@ -253,7 +314,7 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
                 ))}
                 {(!data.recent || data.recent.length === 0) && (
                   <tr>
-                    <td colSpan={4} className="p-6 text-center text-muted-foreground">최근 7일 내 처리 내역이 없습니다.</td>
+                    <td colSpan={5} className="p-6 text-center text-muted-foreground">최근 7일 내 처리 내역이 없습니다.</td>
                   </tr>
                 )}
               </tbody>
@@ -310,27 +371,38 @@ function MetricCard({ label, value, sub }: { label: string; value: string; sub?:
 // MCC_PERSONAL_PERFORMANCE_DASHBOARD_CORRECTION_1: 참고 HTML의 SVG 라인/영역 차트를
 // 실제 trend 데이터로 그대로 포팅한다(막대그래프 대체 금지). 값 자체(날짜/수량)는
 // API 응답 그대로 사용 — 좌표만 계산한다.
-function TrendChart({ trend }: { trend: { date: string; recognized: number }[] }) {
+// [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] 개통(activationRecognized)과
+// 변경(changeTotal) 두 선을 함께 그린다.
+function TrendChart({ trend }: { trend: { date: string; activationSource: string; activationRecognized: number; changeTotal: number }[] }) {
   const width = 620;
   const height = 180;
   const yTop = 20;
   const yBase = 150;
   const yClose = 170;
 
-  const values = trend.map((t) => t.recognized);
-  const max = Math.max(1, ...values);
+  const allValues = trend.flatMap((t) => [t.activationRecognized, t.changeTotal]);
+  const max = Math.max(1, ...allValues);
   const n = trend.length;
 
-  const points = trend.map((t, i) => {
-    const x = n > 1 ? (i / (n - 1)) * width : width / 2;
-    const frac = t.recognized / max;
-    const y = yBase - frac * (yBase - yTop);
-    return { x, y };
-  });
+  function pointsFor(key: "activationRecognized" | "changeTotal") {
+    return trend.map((t, i) => {
+      const x = n > 1 ? (i / (n - 1)) * width : width / 2;
+      const frac = t[key] / max;
+      const y = yBase - frac * (yBase - yTop);
+      return { x, y };
+    });
+  }
+  const actPoints = pointsFor("activationRecognized");
+  const chgPoints = pointsFor("changeTotal");
 
-  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-  const areaPath = points.length ? `${linePath} L${width} ${yClose} L0 ${yClose} Z` : "";
-  const last = points[points.length - 1];
+  function toPath(points: { x: number; y: number }[]) {
+    return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  }
+  const actLine = toPath(actPoints);
+  const actArea = actPoints.length ? `${actLine} L${width} ${yClose} L0 ${yClose} Z` : "";
+  const chgLine = toPath(chgPoints);
+  const lastAct = actPoints[actPoints.length - 1];
+  const lastChg = chgPoints[chgPoints.length - 1];
 
   const weekdayLabels = ["일", "월", "화", "수", "목", "금", "토"];
   const dayLabels = trend.map((t, i) => {
@@ -352,9 +424,11 @@ function TrendChart({ trend }: { trend: { date: string; recognized: number }[] }
           <line x1="0" y1="35" x2={width} y2="35" stroke="#e8edf4" strokeWidth={1} />
           <line x1="0" y1="90" x2={width} y2="90" stroke="#e8edf4" strokeWidth={1} />
           <line x1="0" y1="145" x2={width} y2="145" stroke="#e8edf4" strokeWidth={1} />
-          {areaPath && <path d={areaPath} fill="url(#personalPerfArea)" />}
-          {linePath && <path d={linePath} fill="none" stroke="#286de7" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />}
-          {last && <circle cx={last.x} cy={last.y} r={5} fill="#fff" stroke="#286de7" strokeWidth={3} />}
+          {actArea && <path d={actArea} fill="url(#personalPerfArea)" />}
+          {actLine && <path d={actLine} fill="none" stroke="#286de7" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />}
+          {chgLine && <path d={chgLine} fill="none" stroke="#7e5bef" strokeWidth={2.5} strokeDasharray="5,4" strokeLinecap="round" strokeLinejoin="round" />}
+          {lastAct && <circle cx={lastAct.x} cy={lastAct.y} r={5} fill="#fff" stroke="#286de7" strokeWidth={3} />}
+          {lastChg && <circle cx={lastChg.x} cy={lastChg.y} r={4} fill="#fff" stroke="#7e5bef" strokeWidth={2.5} />}
         </svg>
       </div>
       <div className="flex justify-between text-[11px] text-muted-foreground px-1">
@@ -364,7 +438,7 @@ function TrendChart({ trend }: { trend: { date: string; recognized: number }[] }
       </div>
       <div className="flex justify-between text-xs font-semibold text-muted-foreground px-1 mt-0.5">
         {trend.map((t) => (
-          <span key={t.date}>{t.recognized}건</span>
+          <span key={t.date}>{t.activationRecognized}/{t.changeTotal}</span>
         ))}
       </div>
     </div>

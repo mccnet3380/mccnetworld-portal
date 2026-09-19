@@ -169,7 +169,7 @@ export interface IStorage {
   updateUserPerformanceWorkerName(id: number, performanceWorkerName: string | null): Promise<any>;
   listInternalWorkersWithMapping(): Promise<any[]>;
   getPerformanceTarget(userId: number, year: number, month: number): Promise<any>;
-  upsertPerformanceTarget(userId: number, year: number, month: number, targetContributionRate: number): Promise<any>;
+  upsertPerformanceTarget(userId: number, year: number, month: number, fields: { targetContributionRate?: number; changeTargetRate?: number }): Promise<any>;
   listPerformanceTargetsForMonth(year: number, month: number): Promise<any[]>;
 
   // Dealer methods
@@ -753,7 +753,16 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   /** 월별 목표 기여도 upsert — 매월 별도 설정(자동 복사 없음), userId+year+month unique */
-  async upsertPerformanceTarget(userId: number, year: number, month: number, targetContributionRate: number) {
+  // MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4: 개통 목표(기존
+  // targetContributionRate)와 변경 목표(신규 changeTargetRate)는 서로 독립된 값이다.
+  // fields에 없는(undefined) 쪽은 UPDATE 시 절대 건드리지 않는다 — 한쪽 목표 저장이
+  // 다른 쪽 기존 값을 덮어쓰지 않게 하기 위함(기존 데이터 보존 원칙).
+  async upsertPerformanceTarget(
+    userId: number,
+    year: number,
+    month: number,
+    fields: { targetContributionRate?: number; changeTargetRate?: number },
+  ) {
     return this.withDatabase(async (db) => {
       const existing = await db
         .select({ id: workerPerformanceTargets.id })
@@ -768,9 +777,12 @@ export class PostgreSQLStorage implements IStorage {
         .limit(1);
 
       if (existing.length > 0) {
+        const patch: Record<string, any> = { updatedAt: new Date() };
+        if (fields.targetContributionRate !== undefined) patch.targetContributionRate = String(fields.targetContributionRate);
+        if (fields.changeTargetRate !== undefined) patch.changeTargetRate = String(fields.changeTargetRate);
         const updated = await db
           .update(workerPerformanceTargets)
-          .set({ targetContributionRate: String(targetContributionRate), updatedAt: new Date() })
+          .set(patch)
           .where(eq(workerPerformanceTargets.id, existing[0].id))
           .returning();
         return updated[0];
@@ -778,7 +790,13 @@ export class PostgreSQLStorage implements IStorage {
 
       const inserted = await db
         .insert(workerPerformanceTargets)
-        .values({ userId, year, month, targetContributionRate: String(targetContributionRate) })
+        .values({
+          userId,
+          year,
+          month,
+          targetContributionRate: fields.targetContributionRate !== undefined ? String(fields.targetContributionRate) : null,
+          changeTargetRate: fields.changeTargetRate !== undefined ? String(fields.changeTargetRate) : null,
+        })
         .returning();
       return inserted[0];
     });

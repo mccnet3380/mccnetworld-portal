@@ -88,7 +88,8 @@ router.get("/api/admin/performance/targets", requireAdminSession, async (req, re
         username: w.username,
         performanceWorkerName: w.performanceWorkerName || null,
         homeNetwork: w.performanceWorkerName ? workerHomeNetwork(w.performanceWorkerName) : null,
-        targetContributionRate: t ? Number(t.targetContributionRate) : null,
+        targetContributionRate: t?.targetContributionRate != null ? Number(t.targetContributionRate) : null,
+        changeTargetRate: t?.changeTargetRate != null ? Number(t.changeTargetRate) : null,
       };
     });
 
@@ -99,23 +100,36 @@ router.get("/api/admin/performance/targets", requireAdminSession, async (req, re
   }
 });
 
-/** 월별 목표 기여도(%) upsert — userId+year+month 단위, 자동 복사 없음 */
+// MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4: 개통 목표(targetContributionRate)와
+// 변경 목표(changeTargetRate)는 독립된 값이라 각각 선택적으로 보낼 수 있다 — 최소 하나는
+// 있어야 하고, 보내지 않은 쪽은 storage 계층에서 기존 값을 그대로 둔다(덮어쓰지 않음).
+function parseOptionalRate(v: unknown): number | undefined | null {
+  if (v === undefined) return undefined; // 이 필드는 건드리지 않음
+  if (v === null) return null; // 명시적으로 null이면? 현재는 지원 안 함(아래에서 걸러냄)
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+/** 월별 목표(개통/변경) upsert — userId+year+month 단위, 자동 복사 없음, 두 목표는 독립 저장 */
 router.put("/api/admin/performance/targets", requireAdminSession, async (req, res) => {
-  const { userId, year, month, targetContributionRate } = req.body || {};
-  if (
-    !Number.isInteger(userId) ||
-    !Number.isInteger(year) ||
-    !Number.isInteger(month) ||
-    month < 1 ||
-    month > 12 ||
-    typeof targetContributionRate !== "number" ||
-    !Number.isFinite(targetContributionRate) ||
-    targetContributionRate < 0
-  ) {
-    return res.status(400).json({ error: "userId/year/month/targetContributionRate(0 이상 숫자)가 필요합니다." });
+  const { userId, year, month, targetContributionRate, changeTargetRate } = req.body || {};
+  if (!Number.isInteger(userId) || !Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return res.status(400).json({ error: "userId/year/month가 필요합니다(month는 1-12)." });
   }
+
+  const parsedTarget = parseOptionalRate(targetContributionRate);
+  const parsedChange = parseOptionalRate(changeTargetRate);
+  if (parsedTarget === null || parsedChange === null) {
+    return res.status(400).json({ error: "targetContributionRate/changeTargetRate는 0 이상 숫자여야 합니다." });
+  }
+  if (parsedTarget === undefined && parsedChange === undefined) {
+    return res.status(400).json({ error: "targetContributionRate 또는 changeTargetRate 중 최소 하나는 보내야 합니다." });
+  }
+
   try {
-    const saved = await getStorage().upsertPerformanceTarget(userId, year, month, targetContributionRate);
+    const fields: { targetContributionRate?: number; changeTargetRate?: number } = {};
+    if (parsedTarget !== undefined) fields.targetContributionRate = parsedTarget;
+    if (parsedChange !== undefined) fields.changeTargetRate = parsedChange;
+    const saved = await getStorage().upsertPerformanceTarget(userId, year, month, fields);
     res.json(saved);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -78,6 +78,7 @@ interface GoalsWorkerRow {
   performanceWorkerName: string | null;
   homeNetwork: string | null;
   targetContributionRate: number | null;
+  changeTargetRate: number | null;
 }
 
 function MonthlyGoalsPanel({ active, defaultMonth }: { active: boolean; defaultMonth: string }) {
@@ -110,20 +111,23 @@ function MonthlyGoalsPanel({ active, defaultMonth }: { active: boolean; defaultM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, year, month]);
 
-  const saveTarget = async (userId: number, rate: string) => {
+  // MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4: 개통 목표와 변경 목표는
+  // 독립된 값이라 저장 요청에도 그 kind에 해당하는 필드만 담아 보낸다 — 다른 쪽 값은
+  // body에 아예 넣지 않아서(undefined) storage 계층이 건드리지 않는다(기존 값 보존).
+  const saveTarget = async (userId: number, kind: "targetContributionRate" | "changeTargetRate", rate: string) => {
     const value = Number(rate);
     if (!Number.isFinite(value) || value < 0) {
-      toast({ title: "오류", description: "목표 기여도는 0 이상 숫자여야 합니다.", variant: "destructive" });
+      toast({ title: "오류", description: "목표(%)는 0 이상 숫자여야 합니다.", variant: "destructive" });
       return;
     }
     setSavingId(userId);
     try {
       await apiRequest("/api/admin/performance/targets", {
         method: "PUT",
-        body: JSON.stringify({ userId, year, month, targetContributionRate: value }),
+        body: JSON.stringify({ userId, year, month, [kind]: value }),
       });
       await load(year, month);
-      toast({ title: "성공", description: "목표 기여도가 저장되었습니다." });
+      toast({ title: "성공", description: "목표가 저장되었습니다." });
     } catch (err: any) {
       toast({ title: "오류", description: err?.message ?? String(err), variant: "destructive" });
     } finally {
@@ -154,14 +158,21 @@ function MonthlyGoalsPanel({ active, defaultMonth }: { active: boolean; defaultM
               <th>실적 작업자</th>
               <th>소속망</th>
               <th>
-                {year}-{String(month).padStart(2, "0")} 목표 기여도(%)
+                {year}-{String(month).padStart(2, "0")} 개통 목표(%)
               </th>
-              <th>저장</th>
+              <th>
+                {year}-{String(month).padStart(2, "0")} 변경 목표(%)
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <GoalsRowEditor key={r.userId} row={r} saving={savingId === r.userId} onSave={(v) => saveTarget(r.userId, v)} />
+              <GoalsRowEditor
+                key={r.userId}
+                row={r}
+                saving={savingId === r.userId}
+                onSave={(kind, v) => saveTarget(r.userId, kind, v)}
+              />
             ))}
             {rows.length === 0 && !loading && (
               <tr>
@@ -175,26 +186,45 @@ function MonthlyGoalsPanel({ active, defaultMonth }: { active: boolean; defaultM
       </div>
       <div className="rmb-note">
         실적 작업자 매핑(계정 ↔ 스프레드시트 작업자)은 사용자 관리(관리자 패널)에서 근무자 단위로 1회 설정합니다. 여기서는
-        매월 목표 기여도만 설정하며, 이전 달 값이 자동으로 복사되지 않습니다.
+        매월 목표만 설정하며, 이전 달 값이 자동으로 복사되지 않습니다. 개통 목표와 변경 목표는 서로 독립된 값으로,
+        한쪽만 저장해도 다른 쪽 값은 그대로 유지됩니다. 변경 목표는 현재 목표값만 저장하며, 달성률 계산 공식은 아직
+        확정되지 않아 개인 실적 화면에는 달성률을 표시하지 않습니다.
       </div>
     </div>
   );
 }
 
-function GoalsRowEditor({ row, saving, onSave }: { row: GoalsWorkerRow; saving: boolean; onSave: (v: string) => void }) {
+function GoalsRowEditor({
+  row,
+  saving,
+  onSave,
+}: {
+  row: GoalsWorkerRow;
+  saving: boolean;
+  onSave: (kind: "targetContributionRate" | "changeTargetRate", v: string) => void;
+}) {
   const [value, setValue] = useState(row.targetContributionRate != null ? String(row.targetContributionRate) : "");
+  const [changeValue, setChangeValue] = useState(row.changeTargetRate != null ? String(row.changeTargetRate) : "");
   return (
     <tr>
       <td className="left">{row.name}</td>
       <td>{row.performanceWorkerName ?? "(매핑 없음)"}</td>
       <td>{row.homeNetwork ?? "-"}</td>
       <td>
-        <input type="number" step="0.1" style={{ width: 90 }} value={value} onChange={(e) => setValue(e.target.value)} />
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="number" step="0.1" style={{ width: 90 }} value={value} onChange={(e) => setValue(e.target.value)} />
+          <button className="rmb-btn" disabled={saving} onClick={() => onSave("targetContributionRate", value)}>
+            {saving ? "저장 중..." : "저장"}
+          </button>
+        </div>
       </td>
       <td>
-        <button className="rmb-btn" disabled={saving} onClick={() => onSave(value)}>
-          {saving ? "저장 중..." : "저장"}
-        </button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="number" step="0.1" style={{ width: 90 }} value={changeValue} onChange={(e) => setChangeValue(e.target.value)} />
+          <button className="rmb-btn" disabled={saving} onClick={() => onSave("changeTargetRate", changeValue)}>
+            {saving ? "저장 중..." : "저장"}
+          </button>
+        </div>
       </td>
     </tr>
   );

@@ -616,6 +616,12 @@ export const internetWorkerDailyClosings = pgTable(
 // "목표"는 개인 처리 건수가 아니라 소속망 공식 총실적에 대한 목표 기여도(%)다.
 // worker mapping(users.performanceWorkerName)은 사용자 단위로 한 번만 설정하고,
 // 이 테이블은 targetContributionRate만 매월 별도로 관리한다(월 자동 복사 없음).
+//
+// [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] changeTargetRate 추가 —
+// 개통 업무 목표(targetContributionRate)와 변경 업무 목표는 서로 다른 독립 KPI라 하나로
+// 합쳐 저장하면 안 된다(요구사항). 두 값 모두 선택적으로 설정 가능해야 하므로
+// targetContributionRate의 기존 NOT NULL 제약도 함께 완화한다(0006 migration, 기존 값은
+// 그대로 보존 — 완화는 데이터 손실이 없는 additive 변경).
 export const workerPerformanceTargets = pgTable(
   "worker_performance_targets",
   {
@@ -623,7 +629,8 @@ export const workerPerformanceTargets = pgTable(
     userId: integer("user_id").references(() => users.id).notNull(),
     year: integer("year").notNull(),
     month: integer("month").notNull(), // 1-12
-    targetContributionRate: decimal("target_contribution_rate", { precision: 5, scale: 2 }).notNull(), // 예: 40.00
+    targetContributionRate: decimal("target_contribution_rate", { precision: 5, scale: 2 }), // 개통 목표(%). 예: 40.00
+    changeTargetRate: decimal("change_target_rate", { precision: 5, scale: 2 }), // 변경 목표(%, 별도 값)
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
