@@ -19,12 +19,20 @@
 // 기여도 = performance.html의 renderTable() 그대로: 이 표(네트워크) 안에서
 // (작업자의 당일총합계) ÷ (표 전체 합계) × 100.
 //
-// classifyReq()(performance-classify.ts, 무변경)를 그대로 재사용한다. 날짜/컬럼 탐색은
-// performance-calc.ts의 loadClassifiedRows와 동일한 규칙을 복제했다(그 파일은 export하지
-// 않고 수정 금지라서 재사용 불가 — 새 규칙이 아니라 기존 규칙의 재사용).
+// classifyReq()(performance-classify.ts, 무변경)를 그대로 재사용한다.
+//
+// [MCC_SIDEBAR_REORDER_AND_REMAINING_DATE_PREFIX_MATCH_ROOT_FIX_1] 날짜 판정은 원래
+// performance-calc.ts의 loadClassifiedRows와 동일한 규칙을 복제해서 썼는데(그 파일이
+// export하지 않는다는 이유), 그 복제본에 접두어(startsWith) 오매칭 버그가 그대로
+// 들어있었다(예: "9/1"이 "9/10"~"9/19"에도 매치 — extra(변경업무) 테이블은 날짜가
+// 여러 개 존재하는 ■변경완료/00700결합을 읽어서 실제로 이 버그의 영향을 받았다).
+// MCC_PERFORMANCE_EXACT_DATE_MATCHING_ROOT_FIX_1에서 performance-calc.ts의
+// matchesDate()가 이미 export되고 정확 매칭으로 수정됐으므로, 복제본을 삭제하고 그
+// 함수를 그대로 재사용한다(새 parser를 만들지 않음).
 
 import { fetchSheetValues } from "./google-sheets-client";
 import { classifyReq, type Network } from "./performance-classify";
+import { matchesDate } from "./performance-calc";
 
 export const ACT_COLUMNS: Record<Network, string[]> = {
   KT: ["단말)KTM", "후불)엠모바일", "후불)카카오KT", "후불)중고KT", "후불)스카이", "선불)코드", "단말)KT"],
@@ -38,35 +46,6 @@ export const EXTRA_COLUMNS: Record<"KT" | "LG" | "SK", string[]> = {
   LG: ["기타-L", "기타)미디어", "기타)헬로", "기타)프리티LG", "기타)밸류컴", "유심-L"],
   SK: ["기타-S", "기타)텔링크", "00700", "기타-프리S", "유심-S"],
 };
-
-function two(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-function formatDateLabel(date: Date): string {
-  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
-}
-/** performance-calc.ts의 matchesDate()와 동일 로직(그 파일은 export하지 않아 복제) */
-function matchesDate(cell: string, date: Date): boolean {
-  const s = String(cell ?? "").trim();
-  if (!s) return false;
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-  const variants = [
-    `${m}/${d}`,
-    `${two(m)}/${two(d)}`,
-    `${m}.${d}`,
-    formatDateLabel(date),
-    formatDateLabel(date).replace(/-/g, "."),
-    formatDateLabel(date).replace(/-/g, "/"),
-  ];
-  if (variants.some((v) => s === v || s.startsWith(v))) return true;
-  if (/^\d+$/.test(s)) return false;
-  const parsed = new Date(s);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.getFullYear() === date.getFullYear() && parsed.getMonth() === date.getMonth() && parsed.getDate() === date.getDate();
-  }
-  return false;
-}
 
 interface Row {
   worker: string;

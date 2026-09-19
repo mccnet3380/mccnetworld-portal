@@ -28,6 +28,14 @@ import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_175
 // navigation 목록에서 제거해 Sidebar에서만 숨긴다 — Dashboard 컴포넌트/라우트/API는
 // 전혀 삭제하지 않았다(App.tsx의 "/dashboard" 라우트는 그대로 유지, 직접 URL 접근 가능).
 const navigation = [
+  // [MCC_SIDEBAR_REORDER_AND_REMAINING_DATE_PREFIX_MATCH_ROOT_FIX_1] "개인 실적"을
+  // navigation 배열의 맨 앞으로 이동(요구사항 — 표시 위치만 변경). 아래 role별
+  // filter(sales_manager 제외/dealer 허용목록)는 이름 기준으로 동작해서 배열 순서와
+  // 무관하게 그대로 유지된다 — 권한/라우트/아이콘/active 스타일은 전혀 건드리지 않았다.
+  // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 로그인 계정에 연결된 실적
+  // 작업자 기준 본인 실적만 표시. sales_manager는 이 기능 대상이 아니라 아래
+  // isSalesManager 필터에서 제외한다(요구사항). dealer는 dealerAllowedMenus로 제외.
+  { name: '개인 실적', href: '/performance/me', icon: TrendingUp },
   { name: '접수 관리', href: '/documents', icon: FileText },
   { name: '업무 진행', href: '/work-requests', icon: Clock },
   { name: '개통 완료', href: '/completed', icon: CheckCircle },
@@ -42,10 +50,6 @@ const navigation = [
   // performanceManagementNavItem으로 분리해서 isAdmin일 때만 currentNavigation 맨 앞에
   // 붙인다(아래 참고). 일반 worker/딜러는 여기 남아있는 목록에 실적관리가 없으므로
   // 자동으로 노출되지 않는다.
-  // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 개인 실적 — 로그인 계정에 연결된
-  // 실적 작업자 기준 본인 실적만 표시. sales_manager는 이 기능 대상이 아니라 아래
-  // isSalesManager 필터에서 제외한다(요구사항). dealer는 dealerAllowedMenus로 제외.
-  { name: '개인 실적', href: '/performance/me', icon: TrendingUp },
   { name: '전사 공지용 당일실적', href: '/performance/daily', icon: Megaphone },
   // [PERFORMANCE_CLOSING_WORKER_ACCESS_FIX_1] 마감보고 · 공지텍스트는 관리자 전용 기능이
   // 아니라 내부 WORKER가 실제 업무에서 쓰는 화면이다 — admin-only 목록에서 제거하고

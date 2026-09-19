@@ -12,55 +12,21 @@
 // - 정렬: 그룹/판매점/업무유형 컬럼 전부 가나다순(closing.html 예시와 동일한 순서 원리)
 //
 // 왼쪽 공지텍스트(closing-notice.ts)와 같은 "당일" 모집단을 써야 총합계가 일치하므로,
-// mobileCompleted가 읽는 것과 동일한 "■당일완료" 시트를 동일한 날짜 조건으로 다시 읽는다
-// (performance-calc.ts의 loadClassifiedRows/matchesDate는 export되지 않아 재사용할 수 없고
-// 수정도 금지된 파일이라, 동일 로직을 이 파일 안에 그대로 복제했다 — 새 규칙이 아니라 기존
-// 규칙의 재사용이다).
-
+// mobileCompleted가 읽는 것과 동일한 "■당일완료" 시트를 동일한 날짜 조건으로 다시 읽는다.
+//
+// [MCC_SIDEBAR_REORDER_AND_REMAINING_DATE_PREFIX_MATCH_ROOT_FIX_1] 원래 이 파일은
+// performance-calc.ts의 matchesDate()가 export되지 않는다는 이유로 동일 로직을 복제해서
+// 갖고 있었는데, 그 복제본에 접두어(startsWith) 오매칭 버그(예: "9/1"이 "9/10"~"9/19"에도
+// 매치)가 그대로 들어있었다. MCC_PERFORMANCE_EXACT_DATE_MATCHING_ROOT_FIX_1에서
+// performance-calc.ts의 matchesDate()가 이미 export되고 정확 매칭으로 수정됐으므로,
+// 복제본을 삭제하고 그 함수를 그대로 재사용한다(새 parser를 만들지 않음).
 import { fetchSheetValues } from "./google-sheets-client";
 import { classifyReq } from "./performance-classify";
+import { matchesDate } from "./performance-calc";
 import type { DataUsimDealerBreakdown } from "./mobile-cumulative";
 
 const DAILY_SHEET = "■당일완료";
 const UNGROUPED_LABEL = "(판매점 미기재)";
-
-function two(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-function formatDateLabel(date: Date): string {
-  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
-}
-
-/** performance-calc.ts의 matchesDate()와 동일한 로직(그 파일은 export하지 않아 복제) */
-function matchesDate(cell: string, date: Date): boolean {
-  const s = String(cell ?? "").trim();
-  if (!s) return false;
-
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-  const variants = [
-    `${m}/${d}`,
-    `${two(m)}/${two(d)}`,
-    `${m}.${d}`,
-    formatDateLabel(date),
-    formatDateLabel(date).replace(/-/g, "."),
-    formatDateLabel(date).replace(/-/g, "/"),
-  ];
-  if (variants.some((v) => s === v || s.startsWith(v))) return true;
-
-  if (/^\d+$/.test(s)) return false;
-
-  const parsed = new Date(s);
-  if (!Number.isNaN(parsed.getTime())) {
-    return (
-      parsed.getFullYear() === date.getFullYear() &&
-      parsed.getMonth() === date.getMonth() &&
-      parsed.getDate() === date.getDate()
-    );
-  }
-  return false;
-}
 
 function extractGroup(dealer: string): string {
   const idx = dealer.indexOf(")");
