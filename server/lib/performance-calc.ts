@@ -32,6 +32,7 @@
 import { fetchSheetValues } from "./google-sheets-client";
 import { classifyReq, workerHomeNetwork, type Network } from "./performance-classify";
 import { computeWirePerformanceSnapshot, type WirePerformanceSnapshot } from "./internet-cumulative";
+import { normalizeLedgerDate, isSameExactDate } from "./lg-audit-date";
 
 const NETWORKS: Network[] = ["SK", "KT", "LG", "TOSS"];
 
@@ -107,34 +108,20 @@ function formatDateLabel(date: Date): string {
   return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
 }
 
-/** 시트의 "개통일" 셀이 주어진 날짜와 같은지 확인 (텍스트 변형 + Date 파싱 모두 시도) */
-function matchesDate(cell: string, date: Date): boolean {
-  const s = String(cell ?? "").trim();
-  if (!s) return false;
-
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-  const variants = [
-    `${m}/${d}`,
-    `${two(m)}/${two(d)}`,
-    `${m}.${d}`,
-    formatDateLabel(date),
-    formatDateLabel(date).replace(/-/g, "."),
-    formatDateLabel(date).replace(/-/g, "/"),
-  ];
-  if (variants.some((v) => s === v || s.startsWith(v))) return true;
-
-  if (/^\d+$/.test(s)) return false; // 엑셀 시리얼 넘버 등은 건너뜀 (날짜서식 셀이 아닌 경우)
-
-  const parsed = new Date(s);
-  if (!Number.isNaN(parsed.getTime())) {
-    return (
-      parsed.getFullYear() === date.getFullYear() &&
-      parsed.getMonth() === date.getMonth() &&
-      parsed.getDate() === date.getDate()
-    );
-  }
-  return false;
+// [MCC_PERFORMANCE_EXACT_DATE_MATCHING_ROOT_FIX_1] 이 함수는 원래 "변형 문자열과
+// startsWith 접두어 일치"를 사용했다 — "9/1"이 "9/10"~"9/19"의 접두어와도 일치해서
+// 09-01 조회 시 09-10~09-19의 행이 전부 함께 잘못 포함되는 버그가 실측으로 확인됐다
+// (2026-09-01 KT: 정확일치 167건, 접두어 버그 포함 시 1165건 — 09-02~09-18의 KT
+// 합계 998건이 그대로 더해진 값과 정확히 일치). LG_ACTIVATION_AUDIT_MCC_SITE_
+// IMPLEMENTATION_1에서 이미 이 버그를 발견해 독립적인 정확 매칭 파서
+// (lg-audit-date.ts의 normalizeLedgerDate/isSameExactDate, prefix 비교 전혀 없음)를
+// 만들어뒀으므로 새로 만들지 않고 그대로 재사용한다. 연도가 없는 "M/D" 셀은 date의
+// 연도를 fallback으로 사용한다(스프레드시트 자체가 이미 해당 연/월 단위로 분리되어
+// 있어 연도 혼동 위험 없음, resolveActiveSpreadsheet() 무변경).
+/** 시트의 "개통일" 셀이 주어진 날짜와 정확히 같은지 확인 (prefix/부분 일치 없음) */
+export function matchesDate(cell: string, date: Date): boolean {
+  const normalized = normalizeLedgerDate(cell, date.getFullYear());
+  return isSameExactDate(normalized, { year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate() });
 }
 
 /**

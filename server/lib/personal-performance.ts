@@ -12,13 +12,20 @@
 // API 쿼터를 불필요하게 소모 — 운영에서 429 rate limit이 이미 관측된 적 있다) 같은 달에
 // 속한 날짜들도 시트를 여러 번 읽게 된다. 그래서 이 파일은 "■당일완료" 시트를
 // (spreadsheetId 기준) 한 번만 fetch하고, 날짜별 필터링만 메모리에서 반복한다.
-// 날짜-매칭 판정은 performance-calc.ts의 비공개 matchesDate()를 그대로 복사했다(그 파일을
-// export 추가로도 건드리지 않기 위함) — 판정 로직 자체는 한 글자도 바꾸지 않았다.
-
+//
+// [MCC_PERFORMANCE_EXACT_DATE_MATCHING_ROOT_FIX_1] 날짜-매칭 판정은 원래 performance-calc.ts의
+// 비공개 matchesDate()를 그대로 복사해서 썼다(그 파일을 export 추가로도 건드리지 않기
+// 위함) — 그런데 그 복사본에 있던 "접두어(startsWith) 일치" 버그(예: "9/1"이 "9/10"~
+// "9/19"에도 매치되어 09-01 조회 시 해당 날짜들의 행이 전부 잘못 포함됨, 09-01 KT
+// officialTotal이 실제 167건이어야 할 것이 1165건으로 계산됨)가 실측으로 확인됐다.
+// 이번 라운드에서는 performance-calc.ts도 함께 수정이 허용되어, 그 파일이 이제 export하는
+// matchesDate()(내부적으로 lg-audit-date.ts의 정확 매칭 파서 재사용, prefix 비교 없음)를
+// 그대로 가져다 쓴다 — 복사본을 만들지 않고 동일한 함수를 공유해서 두 계산 경로의 날짜
+// 판정이 항상 같은 결과를 내도록 한다.
 import { fetchSheetValuesById } from "./google-sheets-client";
 import { resolveActiveSpreadsheet } from "./spreadsheet-resolver";
 import { classifyReq, workerHomeNetwork } from "./performance-classify";
-import { summarizeNetworkTotals, summarizeWorkerNetworkMatrix, type ClassifiedRow, type WorkerNetworkRow, type NetworkTotals } from "./performance-calc";
+import { summarizeNetworkTotals, summarizeWorkerNetworkMatrix, matchesDate, type ClassifiedRow, type WorkerNetworkRow, type NetworkTotals } from "./performance-calc";
 import { computeWorkerPerformance, type WorkerPerformanceRow } from "./worker-performance";
 
 const LEDGER_SHEET = "■당일완료";
@@ -56,36 +63,6 @@ function two(n: number): string {
 }
 export function ymd(date: Date): string {
   return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
-}
-
-/** performance-calc.ts의 matchesDate()를 그대로 복사(그 파일 무수정 원칙) — 판정 로직 동일. */
-function matchesDateCopy(cell: string, date: Date): boolean {
-  const s = String(cell ?? "").trim();
-  if (!s) return false;
-
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-  const variants = [
-    `${m}/${d}`,
-    `${two(m)}/${two(d)}`,
-    `${m}.${d}`,
-    ymd(date),
-    ymd(date).replace(/-/g, "."),
-    ymd(date).replace(/-/g, "/"),
-  ];
-  if (variants.some((v) => s === v || s.startsWith(v))) return true;
-
-  if (/^\d+$/.test(s)) return false;
-
-  const parsed = new Date(s);
-  if (!Number.isNaN(parsed.getTime())) {
-    return (
-      parsed.getFullYear() === date.getFullYear() &&
-      parsed.getMonth() === date.getMonth() &&
-      parsed.getDate() === date.getDate()
-    );
-  }
-  return false;
 }
 
 interface LedgerCacheEntry {
@@ -159,7 +136,7 @@ function classifyForDate(entry: LedgerCacheEntry, date: Date, sheetLabel: string
 
   const out: ClassifiedRow[] = [];
   for (const r of entry.rows) {
-    if (!matchesDateCopy(r[dateIdx], date)) continue;
+    if (!matchesDate(r[dateIdx], date)) continue;
     const requestPoint = String(r[reqIdx] ?? "").trim();
     const worker = String(r[workerIdx] ?? "").trim();
     const c = classifyReq(requestPoint);
@@ -323,7 +300,7 @@ export function teamAverageChangeForHome(
 // 결함)를 고치기 위해, 기존 performance-calc.ts의 buildSourceBlock()이 이미 "확정 실적
 // source"로 취급하는 3개 시트(■당일완료, ■변경완료, 00700결합 — 전부 "작업자/개통일"
 // 컬럼을 갖는 동일 구조, LOCK 파일에서 그대로 확인됨)를 전부 스캔한다. 새 파서를 만들지
-// 않는다 — 이미 이 파일에 있는 컬럼 탐지/날짜 매칭(matchesDateCopy) 그대로 재사용하고,
+// 않는다 — 이미 이 파일에 있는 컬럼 탐지/날짜 매칭(matchesDate) 그대로 재사용하고,
 // sheetName만 fetchLedgerCached()에 다르게 넘긴다. 작업자명은 원문 그대로만 모은다 —
 // 추정/변환/정규화 없음.
 const WORKER_DISCOVERY_SHEETS = [LEDGER_SHEET, "■변경완료", "00700결합"];
@@ -335,7 +312,7 @@ function extractWorkerNamesForDate(entry: LedgerCacheEntry, date: Date): string[
 
   const out: string[] = [];
   for (const r of entry.rows) {
-    if (!matchesDateCopy(r[dateIdx], date)) continue;
+    if (!matchesDate(r[dateIdx], date)) continue;
     const worker = String(r[workerIdx] ?? "").trim();
     if (worker) out.push(worker);
   }

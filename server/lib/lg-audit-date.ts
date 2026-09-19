@@ -3,12 +3,17 @@
 // 작업명: LG_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1
 //
 // "개통처리부" 시트의 "개통일" 셀을 검수일(auditDate)과 정확히(exact) 비교하기 위한 전용 파서.
-// server/lib/performance-calc.ts의 matchesDate()는 셀 값이 대상 날짜 문자열로 "시작"만 해도
-// 일치로 처리하는 startsWith 비교를 쓰고 있어(예: 검수일 9/1을 찾을 때 셀 값 "9/17"도 매치됨)
-// 감사에서 확인됐다. LG 검수는 하루 단위 정확 매칭이 핵심이라 그 함수를 재사용하거나 수정하지 않고,
-// 이 파일에서 완전히 독립적으로 prefix 비교가 전혀 없는 연/월/일 정수 비교만 사용한다.
+// 원래 server/lib/performance-calc.ts의 matchesDate()는 셀 값이 대상 날짜 문자열로 "시작"만
+// 해도 일치로 처리하는 startsWith 비교를 쓰고 있어(예: 검수일 9/1을 찾을 때 셀 값 "9/17"도
+// 매치됨) 감사에서 확인됐다. 당시 LG 검수는 하루 단위 정확 매칭이 핵심이라 그 함수를
+// 재사용/수정하지 않고 이 파일에서 완전히 독립적으로 prefix 비교가 전혀 없는 연/월/일
+// 정수 비교만 사용하도록 만들었다.
 //
-// server/lib/performance-calc.ts는 이번 작업에서 손대지 않는다.
+// [MCC_PERFORMANCE_EXACT_DATE_MATCHING_ROOT_FIX_1] 이후 동일한 접두어 오매칭 버그가
+// performance-calc.ts/personal-performance.ts의 날짜 판정에도 실측으로 확인되어,
+// 이 파일의 normalizeLedgerDate()/isSameExactDate()를 performance-calc.ts의
+// matchesDate()가 그대로 재사용하도록 변경했다(새 파서를 또 만들지 않음). 이 파일
+// 자체의 로직은 무수정이다.
 
 export interface ExactDate {
   year: number;
