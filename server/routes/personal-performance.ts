@@ -73,7 +73,7 @@ router.get("/api/personal-performance/me", requirePersonalPerformanceSession, as
         mapped: false,
         isAdmin: true,
         user: { name: admin?.name ?? "", userType: "admin" },
-        message: "관리자 계정은 개인 실적 매핑 대상이 아닙니다. 근무자 관리에서 매핑을 설정하세요.",
+        message: "관리자 계정은 실적관리에서 전체 근무자 실적을 확인할 수 있습니다.",
       });
     }
 

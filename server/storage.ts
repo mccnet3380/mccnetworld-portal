@@ -799,15 +799,24 @@ export class PostgreSQLStorage implements IStorage {
         id: users.id,
         name: users.name,
         username: users.username,
-        userType: users.userType
+        userType: users.userType,
+        // MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1: 이 narrow select만 쓰던
+        // /api/admin/users가 performanceWorkerName/dealerId/dealerRegistrationId를
+        // 아예 내려주지 않아서, AdminPanel의 editingUser 기준으로는 저장된 매핑이 항상
+        // 빈 값으로 보이고(재조회 시 선택값이 유지되지 않는 것처럼 보임) 딜러 제외 조건도
+        // 항상 무효화되고 있었다. 다른 필드(role/team/allowedCarriers 등)는 이번 범위가
+        // 아니므로 그대로 두고, 이 3개만 추가한다.
+        performanceWorkerName: users.performanceWorkerName,
+        dealerId: users.dealerId,
+        dealerRegistrationId: users.dealerRegistrationId,
       }).from(users);
-      
+
       const adminUsers = await db.select({
         id: admins.id,
         name: admins.name,
         username: admins.username
       }).from(admins);
-      
+
       // admins와 users를 합쳐서 반환 (admins에 userType 추가)
       const allUsers = [
         ...adminUsers.map((admin: any) => ({
@@ -820,7 +829,10 @@ export class PostgreSQLStorage implements IStorage {
           id: user.id,
           name: user.name,
           username: user.username,
-          userType: user.userType
+          userType: user.userType,
+          performanceWorkerName: user.performanceWorkerName,
+          dealerId: user.dealerId,
+          dealerRegistrationId: user.dealerRegistrationId,
         }))
       ];
       

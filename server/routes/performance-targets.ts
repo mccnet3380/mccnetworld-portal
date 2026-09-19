@@ -10,8 +10,8 @@
 
 import { Router } from "express";
 import { getStorage } from "../storage";
-import { computePerformanceDataset } from "../lib/performance-dataset";
 import { workerHomeNetwork } from "../lib/performance-classify";
+import { resolveRangeDates, computeWorkerPerformanceForDates, createLedgerCache } from "../lib/personal-performance";
 
 const router = Router();
 
@@ -39,13 +39,27 @@ function parseYearMonth(q: any): { year: number; month: number } | null {
   return { year, month };
 }
 
-/** 오늘 기준 라이브 dataset.workers에서 발견된 worker 문자열 목록 — 별도 파서 없이 재사용 */
+// [MCC_PERSONAL_PERFORMANCE_REAL_DATA_QA_1] 원래 computePerformanceDataset(new Date())로
+// "오늘" 하루만 조회했는데, 실제 dev 환경 QA에서 오늘자 "■당일완료"에 아직 등록된 처리
+// 건수가 0건이면 dataset.workers가 완전히 빈 배열이 되어 관리자 매핑 dropdown에 선택지가
+// 하나도 없는 실제 버그를 발견했다(그날 첫 처리가 올라오기 전까지, 또는 휴일에는 매핑 자체가
+// 불가능해짐). "이번 달 1일~오늘"로 넓혀서 이번 달에 한 번이라도 등장한 worker는 항상
+// dropdown에 뜨게 한다. 새 파서를 만들지 않는다 — personal-performance.ts가 이미 갖고 있는
+// 저비용 경로(■당일완료 시트를 스프레드시트당 1회만 읽고 날짜별로 메모리에서 필터링)를
+// 그대로 재사용한다. 오히려 computePerformanceDataset(모바일/유선/마감/딜러매트릭스 등 여러
+// 시트를 매번 새로 읽음)보다 Google Sheets 쿼터 소모가 훨씬 적다.
 router.get("/api/admin/performance/worker-options", requireAdminSession, async (_req, res) => {
   try {
-    const dataset = await computePerformanceDataset(new Date());
-    const names = Array.from(new Set(dataset.workers.map((w) => w.worker))).sort();
+    const today = new Date();
+    const cache = createLedgerCache();
+    const monthDates = resolveRangeDates("month", today);
+    const perDay = await computeWorkerPerformanceForDates(monthDates, cache);
+    const names = new Set<string>();
+    for (const day of perDay) {
+      for (const w of day.workers) names.add(w.worker);
+    }
     res.set("Cache-Control", "no-store");
-    res.json({ workers: names });
+    res.json({ workers: Array.from(names).sort() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -117,6 +131,19 @@ router.patch("/api/admin/users/:id/performance-mapping", requireAdminSession, as
   const value = typeof raw === "string" ? raw.trim() || null : null;
 
   try {
+    // MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1: 같은 Spreadsheet worker를
+    // 두 MCC 사용자에게 실수로 연결하는 것을 막는다. schema UNIQUE는 추가하지 않고
+    // (기존 DB에 이미 중복이 있을 수 있어 migration을 깨뜨릴 위험) application 검증만 한다.
+    if (value !== null) {
+      const workers = await getStorage().listInternalWorkersWithMapping();
+      const conflict = workers.find((w: any) => w.id !== id && w.performanceWorkerName === value);
+      if (conflict) {
+        return res.status(409).json({
+          error: `이미 "${conflict.name}"(${conflict.username}) 사용자에게 연결된 작업자입니다. 같은 작업자를 두 사용자에게 연결할 수 없습니다.`,
+        });
+      }
+    }
+
     const updated = await getStorage().updateUserPerformanceWorkerName(id, value);
     if (!updated) return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
     res.json({ id: updated.id, name: updated.name, performanceWorkerName: updated.performanceWorkerName });

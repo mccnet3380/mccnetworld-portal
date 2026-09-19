@@ -126,11 +126,11 @@ export function PersonalPerformance() {
           <Card>
             <CardContent className="py-10 text-center">
               <p className="text-base font-semibold text-gray-800">
-                {data.isAdmin ? "관리자 계정은 개인 실적 매핑 대상이 아닙니다." : "실적 작업자가 아직 연결되지 않았습니다."}
+                {data.isAdmin ? "관리자 계정은 실적관리에서 전체 근무자 실적을 확인할 수 있습니다." : "실적 작업자가 아직 연결되지 않았습니다."}
               </p>
               <p className="text-sm text-muted-foreground mt-2">
                 {data.isAdmin
-                  ? "근무자별 실적 작업자/월별 목표는 실적관리(/performance)의 \"월별 인원·목표\" 탭에서 관리합니다."
+                  ? "근무자별 실적 작업자 연결과 월별 목표는 실적관리(/performance)의 \"월별 인원·목표\" 탭에서 관리합니다."
                   : "관리자에게 실적 작업자 연결을 요청해 주세요."}
               </p>
             </CardContent>

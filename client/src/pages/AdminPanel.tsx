@@ -2578,6 +2578,7 @@ function isSameStoreName(a: string, b: string): boolean {
 function PerformanceMappingField({ userId, initialValue }: { userId: number; initialValue: string | null }) {
   const apiRequest = useApiRequest();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [value, setValue] = useState(initialValue || '');
   const [options, setOptions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -2599,6 +2600,10 @@ function PerformanceMappingField({ userId, initialValue }: { userId: number; ini
         method: 'PATCH',
         body: JSON.stringify({ performanceWorkerName: value || null }),
       });
+      // 저장 후 사용자 목록 캐시를 무효화해야 다이얼로그를 다시 열었을 때 editingUser에
+      // 최신 performanceWorkerName이 반영된다(그렇지 않으면 화면상 선택값이 저장 전으로
+      // 되돌아간 것처럼 보인다 — 실제 DB 값은 정상 저장되어 있음).
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
       toast({ title: '성공', description: '실적 작업자 매핑이 저장되었습니다.' });
     } catch (err: any) {
       toast({ title: '오류', description: err?.message ?? String(err), variant: 'destructive' });

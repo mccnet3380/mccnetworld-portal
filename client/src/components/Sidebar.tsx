@@ -36,8 +36,11 @@ const navigation = [
   { name: '서식지', href: '/downloads', icon: Download },
   // MCC_SETTLEMENT_RESULT_COMPACT_UI_AND_SELECT_DELETE_1: 정산 관리 화면 미사용으로 메뉴 숨김 (복원 시 아래 줄 주석 해제)
   // { name: '정산 관리', href: '/settlements', icon: Calculator },
-  // MCC_PERFORMANCE_SITE_INTEGRATION_1: 실적 메뉴(비관리자도 조회 가능한 2개)
-  { name: '실적관리', href: '/performance', icon: BarChart3 },
+  // MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1: '실적관리'(/performance, 전체
+  // 근무자 실적)는 이 공통 navigation에서 제거했다 — 관리자 전용 메뉴로 별도
+  // performanceManagementNavItem으로 분리해서 isAdmin일 때만 currentNavigation 맨 앞에
+  // 붙인다(아래 참고). 일반 worker/딜러는 여기 남아있는 목록에 실적관리가 없으므로
+  // 자동으로 노출되지 않는다.
   // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 개인 실적 — 로그인 계정에 연결된
   // 실적 작업자 기준 본인 실적만 표시. sales_manager는 이 기능 대상이 아니라 아래
   // isSalesManager 필터에서 제외한다(요구사항). dealer는 dealerAllowedMenus로 제외.
@@ -62,6 +65,10 @@ const adminNavigation = [
   { name: '관리자', href: '/admin-panel', icon: Settings },
   { name: '영업 조직', href: '/sales-team-management', icon: Users },
 ];
+
+// MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1: 실적관리(전체 근무자 실적)는
+// 관리자만 볼 수 있다 — 일반 navigation에는 넣지 않고 isAdmin일 때만 앞에 붙인다.
+const performanceManagementNavItem = { name: '실적관리', href: '/performance', icon: BarChart3 };
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -104,8 +111,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     baseNavigation = navigation;
   }
   
-  // 관리자만 관리자 패널 접근 가능
-  const currentNavigation = isAdmin ? [...baseNavigation, ...adminNavigation] : baseNavigation;
+  // 관리자만 관리자 패널 접근 가능. 실적관리(전체 근무자 실적)도 관리자만 — 맨 앞에 붙인다.
+  const currentNavigation = isAdmin
+    ? [performanceManagementNavItem, ...baseNavigation, ...adminNavigation]
+    : baseNavigation;
 
   return (
     <>

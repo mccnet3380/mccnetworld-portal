@@ -132,8 +132,16 @@ function AppRoutes() {
       )}
       */}
 
-      {/* MCC_PERFORMANCE_SITE_INTEGRATION_1: 실적관리/전사 공지용 당일실적 — admin/worker 등 내부 사용자 조회 가능 */}
-      <Route path="/performance" component={PerformanceManagement} />
+      {/* [MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1] 실적관리(/performance, 전체
+          근무자 실적 + 월별 인원·목표)는 관리자 전용으로 변경 — 일반 worker는 다른 근무자의
+          실적/목표/매핑을 볼 수 없어야 한다(요구사항). Sidebar에서도 이미 숨김 처리했지만,
+          여기서도 admin이 아니면 라우트 자체를 등록하지 않아 직접 URL 접근도 NotFound로
+          막는다. 실제 데이터 보호는 server/routes/performance.ts의 requireInternalSession +
+          비관리자 응답 redaction(dataset.workers/workerMatrix 제거)이 진짜 게이트다. */}
+      {user?.userType === 'admin' && (
+        <Route path="/performance" component={PerformanceManagement} />
+      )}
+      {/* MCC_PERFORMANCE_SITE_INTEGRATION_1: 전사 공지용 당일실적 — admin/worker 등 내부 사용자 조회 가능 */}
       <Route path="/performance/daily" component={DailyPerformanceBoard} />
 
       {/* [MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1] 개인 실적: admin/내부 WORKER만.
