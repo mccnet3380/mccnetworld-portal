@@ -108,9 +108,17 @@ function AppRoutes() {
     );
   }
 
+  // [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] 기본 landing을
+  // ADMIN은 /performance, 내부 WORKER는 /performance/me로 변경(요구사항). /performance/me
+  // 라우트 조건(아래)과 동일한 기준(admin 또는 dealerId/dealerRegistrationId가 없는
+  // user)을 그대로 재사용해서, 이 조건에 해당하지 않는 예외적인 경우는 기존과 동일하게
+  // /dashboard로 보낸다(/dashboard 라우트 자체는 삭제하지 않았으므로 항상 안전한 폴백).
+  const isInternalWorker = user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId;
+  const landingPath = user?.userType === 'admin' ? '/performance' : isInternalWorker ? '/performance/me' : '/dashboard';
+
   return (
     <Switch>
-      <Route path="/" component={() => <Redirect to="/dashboard" />} />
+      <Route path="/" component={() => <Redirect to={landingPath} />} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/submit-application" component={SubmitApplication} />
       <Route path="/submit" component={SubmitApplication} />

@@ -102,7 +102,7 @@ router.get("/api/personal-performance/me", requirePersonalPerformanceSession, as
     // (computeActivationPerformanceForDates 내부, 오늘 실적 계산 방식 자체는 무변경).
     const rangeDates = resolveRangeDates(range, today);
     const rangePerDay = await computeActivationPerformanceForDates(rangeDates, today, cache);
-    const rangeAgg = aggregateForWorker(rangePerDay, performanceWorkerName);
+    const rangeAgg = aggregateForWorker(rangePerDay, performanceWorkerName, home);
     const teamAverage = teamAverageForHome(rangePerDay, home);
 
     // 이번 달 누적(목표 비교용) — range와 무관하게 항상 "이번 달 1일~오늘" 기준.
@@ -110,7 +110,7 @@ router.get("/api/personal-performance/me", requirePersonalPerformanceSession, as
     // "월 누적 ÷ 오늘 officialTotal" 같은 기간 혼합 금지(LOCK 원칙).
     const monthDates = resolveRangeDates("month", today);
     const monthPerDay = range === "month" ? rangePerDay : await computeActivationPerformanceForDates(monthDates, today, cache);
-    const monthAgg = aggregateForWorker(monthPerDay, performanceWorkerName);
+    const monthAgg = aggregateForWorker(monthPerDay, performanceWorkerName, home);
 
     const year = today.getFullYear();
     const month = today.getMonth() + 1;

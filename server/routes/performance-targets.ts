@@ -209,4 +209,36 @@ router.patch("/api/admin/users/:id/employment", requireAdminSession, async (req,
   }
 });
 
+// [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] 로그인 ID(username) 변경.
+// 새 계정을 만들지 않고 같은 userId의 username만 바꾼다 — performanceWorkerName/hireDate/
+// terminationDate/targets/과거 실적은 전부 userId 기준으로 연결되어 있어 그대로 유지된다.
+// 중복 체크는 기존 계정 생성 시 사용되는 것과 동일한 규칙(getUserByUsername, users 테이블
+// 기준)을 재사용한다 — 새 검증 규칙을 만들지 않는다.
+router.patch("/api/admin/users/:id/username", requireAdminSession, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "잘못된 사용자 ID입니다." });
+
+  const raw = req.body?.username;
+  if (typeof raw !== "string" || raw.trim().length < 3) {
+    return res.status(400).json({ error: "로그인 ID는 최소 3자 이상이어야 합니다." });
+  }
+  const username = raw.trim();
+
+  try {
+    const conflict = await getStorage().getUserByUsername(username);
+    if (conflict && conflict.id !== id) {
+      return res.status(409).json({ error: "이미 사용 중인 아이디입니다." });
+    }
+
+    const updated = await getStorage().updateUsername(id, username);
+    if (!updated) return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    res.json({ id: updated.id, name: updated.name, username: updated.username });
+  } catch (err: any) {
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "이미 사용 중인 아이디입니다." });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

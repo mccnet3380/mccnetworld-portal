@@ -398,6 +398,87 @@ function TerminateWorkerDialog({
   );
 }
 
+// [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] 로그인 ID 변경 —
+// 새 계정 생성이 아니라 같은 userId의 username만 바꾼다. performanceWorkerName/hireDate/
+// terminationDate/targets/과거 실적은 전부 userId 기준으로 연결되어 있어 그대로 유지된다
+// (재매핑/재등록/데이터 이전 없음).
+function ChangeUsernameDialog({
+  open,
+  onOpenChange,
+  worker,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  worker: TargetWorkerRow | null;
+  onSaved: () => void;
+}) {
+  const apiRequest = useApiRequest();
+  const { toast } = useToast();
+  const [username, setUsername] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open && worker) setUsername(worker.username);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, worker?.userId]);
+
+  if (!open || !worker) return null;
+
+  const submit = async () => {
+    const next = username.trim();
+    if (next.length < 3) {
+      toast({ title: "오류", description: "로그인 ID는 최소 3자 이상이어야 합니다.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiRequest(`/api/admin/users/${worker.userId}/username`, {
+        method: "PATCH",
+        body: JSON.stringify({ username: next }),
+      });
+      toast({ title: "성공", description: `${worker.name}님의 로그인 ID가 "${next}"(으)로 변경되었습니다.` });
+      onOpenChange(false);
+      onSaved();
+    } catch (err: any) {
+      toast({ title: "오류", description: err?.message ?? String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rmb-modal-backdrop" onClick={() => onOpenChange(false)}>
+      <div className="rmb-card rmb-modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>로그인 ID 변경 — {worker.name}</h3>
+        <div className="rmb-note">
+          동일한 계정입니다(사용자 번호/실적 작업자 매핑/입사일·퇴사일/목표/과거 실적 그대로 유지). 로그인 아이디만
+          변경됩니다.
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <label>
+            새 로그인 ID
+            <input
+              style={{ width: "100%" }}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="최소 3자 이상"
+            />
+          </label>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button className="rmb-btn" onClick={() => onOpenChange(false)}>
+            취소
+          </button>
+          <button className="rmb-btn primary" disabled={saving} onClick={submit}>
+            {saving ? "변경 중..." : "변경"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ResultManagementBoard({ dataset }: Props) {
   const [tab, setTab] = useState<TabId>("status");
   const [showExample, setShowExample] = useState(false);
@@ -407,6 +488,7 @@ export function ResultManagementBoard({ dataset }: Props) {
   const monthlyTargets = useMonthlyTargets(dataset.date);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [terminateTarget, setTerminateTarget] = useState<TargetWorkerRow | null>(null);
+  const [usernameTarget, setUsernameTarget] = useState<TargetWorkerRow | null>(null);
 
   // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 실적현황 roster 병합 — "사람의
   // 존재 여부"는 근무자 관리(조회일 재직자) 기준, "실적 숫자"는 기존 LOCK 계산 결과
@@ -707,6 +789,7 @@ export function ResultManagementBoard({ dataset }: Props) {
               <thead>
                 <tr>
                   <th>근무자</th>
+                  <th>로그인 ID</th>
                   <th>실적 작업자</th>
                   <th>소속</th>
                   <th>입사일</th>
@@ -718,7 +801,7 @@ export function ResultManagementBoard({ dataset }: Props) {
               <tbody>
                 {allWorkers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="rmb-empty">
+                    <td colSpan={8} className="rmb-empty">
                       등록된 내부 근무자 계정이 없습니다. [근무자 등록]으로 추가하세요.
                     </td>
                   </tr>
@@ -728,6 +811,7 @@ export function ResultManagementBoard({ dataset }: Props) {
                     return (
                       <tr key={w.userId}>
                         <td className="left">{w.name}</td>
+                        <td>{w.username}</td>
                         <td>{w.performanceWorkerName ?? "(매핑 없음)"}</td>
                         <td>{w.homeNetwork ?? "-"}</td>
                         <td>{w.hireDate ?? "-"}</td>
@@ -736,13 +820,18 @@ export function ResultManagementBoard({ dataset }: Props) {
                           <b>{employed ? "재직" : "퇴사"}</b>
                         </td>
                         <td>
-                          {employed ? (
-                            <button className="rmb-btn" onClick={() => setTerminateTarget(w)}>
-                              퇴사 처리
+                          <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
+                            <button className="rmb-btn" onClick={() => setUsernameTarget(w)}>
+                              아이디 변경
                             </button>
-                          ) : (
-                            "과거 실적 보존"
-                          )}
+                            {employed ? (
+                              <button className="rmb-btn" onClick={() => setTerminateTarget(w)}>
+                                퇴사 처리
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 12, color: "#667085", alignSelf: "center" }}>과거 실적 보존</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -759,6 +848,12 @@ export function ResultManagementBoard({ dataset }: Props) {
         open={!!terminateTarget}
         onOpenChange={(v) => !v && setTerminateTarget(null)}
         worker={terminateTarget}
+        onSaved={monthlyTargets.reload}
+      />
+      <ChangeUsernameDialog
+        open={!!usernameTarget}
+        onOpenChange={(v) => !v && setUsernameTarget(null)}
+        worker={usernameTarget}
         onSaved={monthlyTargets.reload}
       />
     </div>

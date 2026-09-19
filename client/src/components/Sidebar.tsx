@@ -2,7 +2,6 @@ import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import {
-  LayoutDashboard,
   FileText,
   Download,
   BarChart3,
@@ -25,8 +24,10 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
 
+// [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] "대시보드" 메뉴를
+// navigation 목록에서 제거해 Sidebar에서만 숨긴다 — Dashboard 컴포넌트/라우트/API는
+// 전혀 삭제하지 않았다(App.tsx의 "/dashboard" 라우트는 그대로 유지, 직접 URL 접근 가능).
 const navigation = [
-  { name: '대시보드', href: '/dashboard', icon: LayoutDashboard },
   { name: '접수 관리', href: '/documents', icon: FileText },
   { name: '업무 진행', href: '/work-requests', icon: Clock },
   { name: '개통 완료', href: '/completed', icon: CheckCircle },

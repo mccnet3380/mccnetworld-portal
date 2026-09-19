@@ -18,7 +18,7 @@
 import { fetchSheetValuesById } from "./google-sheets-client";
 import { resolveActiveSpreadsheet } from "./spreadsheet-resolver";
 import { classifyReq, workerHomeNetwork } from "./performance-classify";
-import { summarizeNetworkTotals, summarizeWorkerNetworkMatrix, type ClassifiedRow, type WorkerNetworkRow } from "./performance-calc";
+import { summarizeNetworkTotals, summarizeWorkerNetworkMatrix, type ClassifiedRow, type WorkerNetworkRow, type NetworkTotals } from "./performance-calc";
 import { computeWorkerPerformance, type WorkerPerformanceRow } from "./worker-performance";
 
 const LEDGER_SHEET = "■당일완료";
@@ -171,6 +171,13 @@ function classifyForDate(entry: LedgerCacheEntry, date: Date, sheetLabel: string
 export interface DayWorkerPerformance {
   date: string; // YYYY-MM-DD
   workers: WorkerPerformanceRow[];
+  // [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] 그날의 망별 공식
+  // 총수량(NetworkTotals, LOCK된 summarizeNetworkTotals() 그대로) — 특정 근무자가 그날
+  // 처리 건이 있었는지와 무관하게 존재하는 값이다. aggregateForWorker()가 "동일 기간
+  // homeNetwork 공식 총수량"을 그 근무자의 그날 처리 유무와 상관없이 정확히 합산하려면
+  // day.workers(그날 처리한 사람만 들어있는 배열)만으로는 부족하다 — 그래서 별도로 들고
+  // 있는다. LOCK 계산 함수 자체는 호출하지 않고 이미 계산된 값을 그대로 보관만 한다.
+  totals: NetworkTotals;
 }
 
 /**
@@ -188,7 +195,7 @@ export async function computeWorkerPerformanceForDates(
     const totals = summarizeNetworkTotals(rows);
     const matrix = summarizeWorkerNetworkMatrix(rows);
     const workers = computeWorkerPerformance(matrix, totals);
-    out.push({ date: ymd(date), workers });
+    out.push({ date: ymd(date), workers, totals });
   }
   return out;
 }
@@ -212,7 +219,7 @@ export async function computeActivationPerformanceForDates(
     const totals = summarizeNetworkTotals(rows);
     const matrix = summarizeWorkerNetworkMatrix(rows);
     const workers = computeWorkerPerformance(matrix, totals);
-    out.push({ date: ymd(date), workers });
+    out.push({ date: ymd(date), workers, totals });
   }
   return out;
 }
@@ -404,18 +411,34 @@ export interface AggregatedWorkerPerformance {
   contributionRate: number | null;
 }
 
+// [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] root cause:
+// 이전 로직은 `mine`이 없는 날(그날 처리 건이 0건인 날 — 휴가/휴무/당직 미근무 등, 재직
+// 상태와는 무관함)을 통째로 continue해서 그날의 분자(0이 맞음)뿐 아니라 분모
+// (officialTotal)까지 함께 건너뛰었다. "동일 기간 homeNetwork 공식 총수량"은 그 근무자의
+// 그날 처리 유무와 무관하게 존재하는 값이라, 조회 기간 안의 날짜라면 처리 건이 없는 날도
+// 분모에는 반드시 포함되어야 한다 — 실제로 이 누락이 분모를 작게 만들어 기여도가 실제보다
+// 부풀려지는 결과(예: 실제 31.8%가 34.0%로 표시)로 이어졌다(DEV 실측으로 확인).
+// home은 호출부에서 이미 workerHomeNetwork(performanceWorkerName)로 구한 값을 그대로
+// 넘겨받는다 — 조회 기간 전체에서 이 근무자가 단 하루도 등장하지 않아도(예: 이번 달
+// 전체 휴직) 분모를 정확히 계산할 수 있어야 하기 때문에 day.workers에서 역산하지 않는다.
 /** perDay 결과에서 특정 performanceWorkerName의 기간 합계를 뽑는다(LOCK 공식은 이미 일별로 적용됨 — 여기선 합산만). */
-export function aggregateForWorker(perDay: DayWorkerPerformance[], performanceWorkerName: string): AggregatedWorkerPerformance {
+export function aggregateForWorker(
+  perDay: DayWorkerPerformance[],
+  performanceWorkerName: string,
+  home: ReturnType<typeof workerHomeNetwork>,
+): AggregatedWorkerPerformance {
   let self = 0, supportSK = 0, supportKT = 0, supportLG = 0, supportTOSS = 0, officialTotal = 0;
+  const hasOfficialTotal = home === "SK" || home === "KT" || home === "LG";
   for (const day of perDay) {
     const mine = day.workers.find((w) => w.worker === performanceWorkerName);
-    if (!mine) continue;
-    self += mine.homeCount;
-    supportSK += mine.supportSK;
-    supportKT += mine.supportKT;
-    supportLG += mine.supportLG;
-    supportTOSS += mine.supportTOSS;
-    if (mine.homeNetworkOfficialTotal) officialTotal += mine.homeNetworkOfficialTotal;
+    if (mine) {
+      self += mine.homeCount;
+      supportSK += mine.supportSK;
+      supportKT += mine.supportKT;
+      supportLG += mine.supportLG;
+      supportTOSS += mine.supportTOSS;
+    }
+    if (hasOfficialTotal) officialTotal += day.totals[home as "SK" | "KT" | "LG"];
   }
   const supportTotal = supportSK + supportKT + supportLG + supportTOSS;
   const recognized = self + supportTotal;

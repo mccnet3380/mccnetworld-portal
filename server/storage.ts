@@ -168,6 +168,10 @@ export interface IStorage {
   // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: worker mapping/월별 목표
   updateUserPerformanceWorkerName(id: number, performanceWorkerName: string | null): Promise<any>;
   updateUserEmployment(id: number, fields: { hireDate?: string | null; terminationDate?: string | null }): Promise<any>;
+  // MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1: 로그인 ID(=username)만
+  // 독립적으로 변경한다 — userId/performanceWorkerName/hireDate/terminationDate/targets/
+  // 과거 실적 연결은 전부 userId 기준이라 이 변경으로 전혀 영향받지 않는다.
+  updateUsername(id: number, username: string): Promise<any>;
   listInternalWorkersWithMapping(): Promise<any[]>;
   getPerformanceTarget(userId: number, year: number, month: number): Promise<any>;
   upsertPerformanceTarget(userId: number, year: number, month: number, fields: { targetContributionRate?: number; changeTargetRate?: number }): Promise<any>;
@@ -753,6 +757,16 @@ export class PostgreSQLStorage implements IStorage {
         return existing[0] ?? null;
       }
       const result = await db.update(users).set(patch).where(eq(users.id, id)).returning();
+      return result[0] ?? null;
+    });
+  }
+
+  // [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] 로그인 ID 변경 — 새
+  // 계정 생성이 아니라 같은 users row의 username 컬럼만 갱신한다. 세션은 userId 기준으로
+  // 발급/조회되므로(createSession/getSession) 이 변경이 다른 활성 세션에 영향을 주지 않는다.
+  async updateUsername(id: number, username: string) {
+    return this.withDatabase(async (db) => {
+      const result = await db.update(users).set({ username }).where(eq(users.id, id)).returning();
       return result[0] ?? null;
     });
   }
