@@ -249,7 +249,11 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
         <h2 className="text-sm font-bold text-gray-500 tracking-wide">변경 업무</h2>
 
         <div className="grid gap-4 md:grid-cols-[1.2fr_.8fr]">
-          <Card className="border-0 text-white" style={{ background: "linear-gradient(135deg,#3d2a70 0%,#5c3fae 62%,#7e5bef 100%)" }}>
+          {/* [MCC_ACTIVATION_CHANGE_KPI_SOURCE_AUDIT_AND_VISUAL_FINAL_FIX_1] 개통(파란색 계열)과
+              명확히 구분되도록 변경 업무 Hero는 초록/에메랄드 계열로 통일한다 — 카드 배경뿐
+              아니라 ring accent/내부 원 색상까지 일관되게 초록 계열로 맞춘다(개통은 청록
+              accent(#75e1c2)+파란 내부 원을 그대로 유지, LOCK). */}
+          <Card className="border-0 text-white" style={{ background: "linear-gradient(135deg,#0b4a35 0%,#12805a 62%,#22b57d 100%)" }}>
             <CardContent className="py-5 flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-bold opacity-75 mb-2">이번 달 변경 현재 기여도</div>
@@ -267,9 +271,9 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
               </div>
               <div
                 className="h-[110px] w-[110px] rounded-full grid place-items-center flex-shrink-0"
-                style={{ background: `conic-gradient(#75e1c2 0 ${changeRingPct}%, rgba(255,255,255,.18) ${changeRingPct}% 100%)` }}
+                style={{ background: `conic-gradient(#ffd166 0 ${changeRingPct}%, rgba(255,255,255,.18) ${changeRingPct}% 100%)` }}
               >
-                <div className="h-[80px] w-[80px] rounded-full grid place-items-center text-lg font-extrabold" style={{ background: "#5c3fae" }}>
+                <div className="h-[80px] w-[80px] rounded-full grid place-items-center text-lg font-extrabold" style={{ background: "#12805a" }}>
                   {changeTarget?.changeTargetRate != null ? `${changeRingPct.toFixed(0)}%` : "-"}
                 </div>
               </div>
@@ -281,7 +285,7 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
               <CardTitle className="text-sm">변경 팀 평균과 비교 ({rangeLabel})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <CompareBar label="내 변경 처리량" value={chg.total} max={Math.max(chg.total, chg.teamAverage ?? 0, 1)} color="#7e5bef" />
+              <CompareBar label="내 변경 처리량" value={chg.total} max={Math.max(chg.total, chg.teamAverage ?? 0, 1)} color="#22b57d" />
               <CompareBar label={`${data.user.homeNetwork}팀 평균`} value={chg.teamAverage} max={Math.max(chg.total, chg.teamAverage ?? 0, 1)} color="#a9b5c6" />
               <p className="text-xs text-muted-foreground pt-1">
                 * 팀 평균은 같은 기간 실적이 등록된 같은 망({data.user.homeNetwork}) 근무자 기준입니다. 휴무/근태는 반영하지 않습니다.
@@ -328,7 +332,7 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full inline-block" style={{ background: "#286de7" }} /> 개통 인정 처리량</div>
-            <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full inline-block" style={{ background: "#7e5bef" }} /> 변경 처리량</div>
+            <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full inline-block" style={{ background: "#22b57d" }} /> 변경 처리량</div>
             <p className="text-xs text-muted-foreground pt-1">오늘은 ■당일완료, 그 이전 날짜는 개통처리부 기준입니다.</p>
           </CardContent>
         </Card>
@@ -475,9 +479,9 @@ function TrendChart({ trend }: { trend: { date: string; activationSource: string
           <line x1="0" y1="145" x2={width} y2="145" stroke="#e8edf4" strokeWidth={1} />
           {actArea && <path d={actArea} fill="url(#personalPerfArea)" />}
           {actLine && <path d={actLine} fill="none" stroke="#286de7" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />}
-          {chgLine && <path d={chgLine} fill="none" stroke="#7e5bef" strokeWidth={2.5} strokeDasharray="5,4" strokeLinecap="round" strokeLinejoin="round" />}
+          {chgLine && <path d={chgLine} fill="none" stroke="#22b57d" strokeWidth={2.5} strokeDasharray="5,4" strokeLinecap="round" strokeLinejoin="round" />}
           {lastAct && <circle cx={lastAct.x} cy={lastAct.y} r={5} fill="#fff" stroke="#286de7" strokeWidth={3} />}
-          {lastChg && <circle cx={lastChg.x} cy={lastChg.y} r={4} fill="#fff" stroke="#7e5bef" strokeWidth={2.5} />}
+          {lastChg && <circle cx={lastChg.x} cy={lastChg.y} r={4} fill="#fff" stroke="#22b57d" strokeWidth={2.5} />}
         </svg>
       </div>
       <div className="flex justify-between text-[11px] text-muted-foreground px-1">
