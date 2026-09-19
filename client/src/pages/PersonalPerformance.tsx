@@ -41,6 +41,8 @@ interface ChangeBlock {
   self: number;
   support: { SK: number; KT: number; LG: number; TOSS: number; total: number };
   teamAverage: number | null;
+  homeNetworkOfficialTotal: number | null;
+  contributionRate: number | null;
 }
 
 interface PersonalPerformanceResponse {
@@ -60,8 +62,16 @@ interface PersonalPerformanceResponse {
     message?: string;
   };
   change?: ChangeBlock;
-  changeMonth?: { total: number; self: number };
-  changeTarget?: { year: number; month: number; changeTargetRate: number | null; note?: string; message?: string };
+  changeMonth?: { total: number; self: number; homeNetworkOfficialTotal: number | null; contributionRate: number | null };
+  changeTarget?: {
+    year: number;
+    month: number;
+    changeTargetRate: number | null;
+    achievementRate?: number | null;
+    diffPoints?: number | null;
+    note?: string;
+    message?: string;
+  };
   trend?: { date: string; activationSource: string; activationRecognized: number; changeTotal: number }[];
   recent?: { date: string; workType: "개통" | "변경"; channel: string; type: string; count: number }[];
 }
@@ -161,6 +171,7 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
   const target = data.activationTarget;
   const changeTarget = data.changeTarget;
   const ringPct = target?.achievementRate != null ? Math.max(0, Math.min(100, target.achievementRate)) : 0;
+  const changeRingPct = changeTarget?.achievementRate != null ? Math.max(0, Math.min(100, changeTarget.achievementRate)) : 0;
   const rangeLabel = data.range?.type === "today" ? "오늘" : data.range?.type === "week" ? "이번 주" : "이번 달";
 
   return (
@@ -236,22 +247,35 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
       {/* ── 변경 업무 ────────────────────────────────────────────────── */}
       <section className="space-y-4">
         <h2 className="text-sm font-bold text-gray-500 tracking-wide">변경 업무</h2>
+
         <div className="grid gap-4 md:grid-cols-[1.2fr_.8fr]">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">{rangeLabel} 변경 처리량</CardTitle>
-              <CardDescription>■변경완료(00700 포함) 기준. 개통 처리량과 합산되지 않습니다.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-extrabold text-gray-900">{chg.total}건</div>
-              <div className="text-sm text-muted-foreground mt-1">본인 {chg.self}건 · 지원 {chg.support.total}건</div>
-              <div className="text-xs mt-3 text-muted-foreground">
-                {changeTarget?.changeTargetRate != null
-                  ? `이번 달 변경 목표: ${fmtPct(changeTarget.changeTargetRate)} — ${changeTarget.note ?? ""}`
-                  : "이번 달 변경 목표 미설정"}
+          <Card className="border-0 text-white" style={{ background: "linear-gradient(135deg,#3d2a70 0%,#5c3fae 62%,#7e5bef 100%)" }}>
+            <CardContent className="py-5 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold opacity-75 mb-2">이번 달 변경 현재 기여도</div>
+                <div className="text-3xl font-extrabold">
+                  {fmtPct(data.changeMonth?.contributionRate)}
+                  <span className="text-sm font-semibold opacity-80 ml-2">
+                    {changeTarget?.changeTargetRate != null ? `목표 ${fmtPct(changeTarget.changeTargetRate)}` : "목표 미설정"}
+                  </span>
+                </div>
+                <div className="text-xs mt-2 opacity-90">
+                  {changeTarget?.changeTargetRate != null
+                    ? `목표 대비 달성 ${fmtPct(changeTarget.achievementRate)} · 목표와 차이 ${fmtPtDiff(changeTarget.diffPoints)}`
+                    : "이번 달 변경 목표가 아직 설정되지 않았습니다."}
+                </div>
+              </div>
+              <div
+                className="h-[110px] w-[110px] rounded-full grid place-items-center flex-shrink-0"
+                style={{ background: `conic-gradient(#75e1c2 0 ${changeRingPct}%, rgba(255,255,255,.18) ${changeRingPct}% 100%)` }}
+              >
+                <div className="h-[80px] w-[80px] rounded-full grid place-items-center text-lg font-extrabold" style={{ background: "#5c3fae" }}>
+                  {changeTarget?.changeTargetRate != null ? `${changeRingPct.toFixed(0)}%` : "-"}
+                </div>
               </div>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">변경 팀 평균과 비교 ({rangeLabel})</CardTitle>
@@ -259,9 +283,34 @@ function PersonalPerformanceView({ data }: { data: PersonalPerformanceResponse }
             <CardContent className="space-y-3">
               <CompareBar label="내 변경 처리량" value={chg.total} max={Math.max(chg.total, chg.teamAverage ?? 0, 1)} color="#7e5bef" />
               <CompareBar label={`${data.user.homeNetwork}팀 평균`} value={chg.teamAverage} max={Math.max(chg.total, chg.teamAverage ?? 0, 1)} color="#a9b5c6" />
+              <p className="text-xs text-muted-foreground pt-1">
+                * 팀 평균은 같은 기간 실적이 등록된 같은 망({data.user.homeNetwork}) 근무자 기준입니다. 휴무/근태는 반영하지 않습니다.
+              </p>
             </CardContent>
           </Card>
         </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MetricCard label={`${rangeLabel} 변경 인정 처리량`} value={`${chg.total}건`} />
+          <MetricCard label="본인 처리" value={`${chg.self}건`} />
+          <MetricCard label="지원 처리" value={`${chg.support.total}건`} sub={chg.support.total === 0 ? "현재 지원업무 없음" : undefined} />
+          <MetricCard label={`${data.user.homeNetwork}망 변경 총실적`} value={chg.homeNetworkOfficialTotal != null ? `${chg.homeNetworkOfficialTotal}건` : "-"} sub={`${data.user.homeNetwork}망 기준(■변경완료+00700)`} />
+        </div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">변경 처리 구성 ({rangeLabel})</CardTitle>
+            <CardDescription>■변경완료(00700 포함) 기준. 개통 처리량과 합산되지 않습니다.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ChannelBar label={`${data.user.homeNetwork} 본인 처리`} value={chg.self} max={Math.max(chg.total, 1)} color="#e9579c" />
+            {(["SK", "KT", "LG", "TOSS"] as const)
+              .filter((net) => net !== data.user.homeNetwork)
+              .map((net) => (
+                <ChannelBar key={net} label={`${net} 지원 처리`} value={chg.support[net]} max={Math.max(chg.total, 1)} color={net === "KT" ? "#2c74e8" : net === "SK" ? "#ef7f47" : "#7e5bef"} />
+              ))}
+          </CardContent>
+        </Card>
       </section>
 
       <section className="grid gap-4 md:grid-cols-[1.4fr_.8fr]">

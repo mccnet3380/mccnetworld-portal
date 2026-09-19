@@ -127,15 +127,28 @@ router.get("/api/personal-performance/me", requirePersonalPerformanceSession, as
     }
 
     // ── 변경 업무(기타업무) ────────────────────────────────────────────────
-    // [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] source=■변경완료+
-    // 00700결합(기존 otherDuty 페어링). 개통 처리량과 절대 합산하지 않는다. 기여도/목표율
-    // 공식은 기존 코드/HTML 어디에서도 확인되지 않아 계산하지 않는다(HOLD) — 처리량만 제공.
+    // [MCC_CHANGE_WORK_CONTRIBUTION_RATE_ENGINE_1] source=■변경완료+00700결합(기존
+    // otherDuty 페어링, 무변경). 개통 처리량과 절대 합산하지 않는다(독립 KPI). 기여도
+    // 공식은 이제 개통과 동일한 원칙(recognized÷officialTotal×100, 휴무일도 denominator
+    // 포함, 지원업무는 numerator만 증가)으로 계산한다 — aggregateForWorker()와 동일한
+    // 패턴을 aggregateChangeForWorker()에 그대로 적용(HOLD 해제).
     const changeRangePerDay = await computeChangeWorkForDates(rangeDates, cache);
-    const changeRangeAgg = aggregateChangeForWorker(changeRangePerDay, performanceWorkerName);
+    const changeRangeAgg = aggregateChangeForWorker(changeRangePerDay, performanceWorkerName, home);
     const changeTeamAverage = teamAverageChangeForHome(changeRangePerDay, home);
 
     const changeMonthPerDay = range === "month" ? changeRangePerDay : await computeChangeWorkForDates(monthDates, cache);
-    const changeMonthAgg = aggregateChangeForWorker(changeMonthPerDay, performanceWorkerName);
+    const changeMonthAgg = aggregateChangeForWorker(changeMonthPerDay, performanceWorkerName, home);
+    const changeMonthContributionRate = changeMonthAgg.contributionRate;
+
+    // [MCC_CHANGE_WORK_CONTRIBUTION_RATE_ENGINE_1] change_target_rate = "기타/변경 업무
+    // 기여도 목표(%)"로 의미를 확정한다(DB 필드명은 그대로 재사용, 새 필드 추가 없음).
+    // 개통 목표(activationTarget)와 완전히 동일한 계산 원칙: 월 누적 기여도 ÷ 목표 × 100.
+    let changeAchievementRate: number | null = null;
+    let changeDiffPoints: number | null = null;
+    if (changeTargetRate !== null && changeMonthContributionRate !== null && changeTargetRate > 0) {
+      changeAchievementRate = (changeMonthContributionRate / changeTargetRate) * 100;
+      changeDiffPoints = changeMonthContributionRate - changeTargetRate;
+    }
 
     // 최근 7일 추이 — range와 무관하게 항상 7일(오늘 포함), 같은 캐시 재사용. 개통/변경을
     // 날짜별로 구분해서 제공한다(그래프용 가짜 값 없음, 전부 실제 계산 결과).
@@ -203,17 +216,20 @@ router.get("/api/personal-performance/me", requirePersonalPerformanceSession, as
         self: changeRangeAgg.self,
         support: { SK: changeRangeAgg.supportSK, KT: changeRangeAgg.supportKT, LG: changeRangeAgg.supportLG, TOSS: changeRangeAgg.supportTOSS, total: changeRangeAgg.supportTotal },
         teamAverage: changeTeamAverage,
+        // [MCC_CHANGE_WORK_CONTRIBUTION_RATE_ENGINE_1] additive 확장 — 기존 필드(total/
+        // self/support/teamAverage)는 그대로 유지.
+        homeNetworkOfficialTotal: changeRangeAgg.officialTotal || null,
+        contributionRate: changeRangeAgg.contributionRate,
       },
       changeMonth: {
         total: changeMonthAgg.total,
         self: changeMonthAgg.self,
+        homeNetworkOfficialTotal: changeMonthAgg.officialTotal || null,
+        contributionRate: changeMonthContributionRate,
       },
-      // [HOLD] 변경 업무의 기여도/목표 달성률 계산 공식은 기존 코드/HTML 어디에서도
-      // 확인되지 않았다 — 개통 목표율 공식을 그대로 복사하지 않기 위해 달성률/기여도는
-      // 계산하지 않고 관리자가 저장한 목표값만 그대로 전달한다.
       changeTarget:
         changeTargetRate !== null
-          ? { year, month, changeTargetRate, note: "달성률 계산 공식이 아직 확정되지 않아 목표값만 표시합니다." }
+          ? { year, month, changeTargetRate, achievementRate: changeAchievementRate, diffPoints: changeDiffPoints }
           : { year, month, changeTargetRate: null, message: "이번 달 변경 목표 미설정" },
       trend,
       recent: recent.slice(0, 10),

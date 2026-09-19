@@ -204,6 +204,13 @@ export async function computeActivationPerformanceForDates(
 export interface DayChangeWorkerPerformance {
   date: string;
   workers: WorkerNetworkRow[];
+  // [MCC_CHANGE_WORK_CONTRIBUTION_RATE_ENGINE_1] 그날의 망별 변경 업무 공식 총수량
+  // (NetworkTotals, ■변경완료+00700결합 두 시트를 합친 rows에서 summarizeNetworkTotals()로
+  // 계산 — LOCK된 함수 그대로 재사용, 새 계산식 아님). activation의 DayWorkerPerformance.totals
+  // 와 동일한 이유로 필요하다: 근무자가 그날 처리 건이 없어도 그날의 소속망 총수량은
+  // 존재하므로, day.workers(그날 처리한 사람만 들어있는 배열)만으로는 denominator를
+  // 정확히 합산할 수 없다.
+  totals: NetworkTotals;
 }
 
 // [MCC_PERSONAL_PERFORMANCE_MULTI_KPI_HISTORICAL_ENGINE_FIX_4] 변경 업무(기타업무) 기간
@@ -212,12 +219,12 @@ export interface DayChangeWorkerPerformance {
 // ■변경완료는 오늘 건도 이미 그 시트 안에 존재함을 실제 데이터로 확인했으므로(개통
 // 업무처럼 "오늘=별도 시트" 경계가 없다), 날짜와 무관하게 항상 이 2개 시트만 본다.
 //
-// 중요: computeWorkerPerformance()(officialTotal/기여도% 계산, LOCK)는 절대 호출하지
-// 않는다 — 변경 업무의 "기여도/목표율" 공식은 기존 코드/HTML 어디에도 없음을 조사로
-// 확인했다(개통 업무처럼 소속망 공식 총실적에 대한 비율 개념 자체가 어디서도 계산되지
-// 않았음). 그 공식을 임의로 만들지 않고(개통 공식을 그대로 복사하는 것도 금지) 본업/지원
-// 처리량(raw count)만 제공한다 — summarizeWorkerNetworkMatrix()의 순수 구조적 분류
-// (작업자의 소속망 대비 어느 망에서 처리했는지)만 재사용한다.
+// [MCC_CHANGE_WORK_CONTRIBUTION_RATE_ENGINE_1] computeWorkerPerformance()(개통 전용,
+// homeCount/officialTotal/performanceRate 필드 명칭까지 개통에 특화됨, LOCK)는 여전히
+// 호출하지 않는다 — 변경 업무 fields shape가 다르다. 대신 이미 계산해서 갖고 있던
+// summarizeNetworkTotals(rows)를 함께 반환해서, 기여도 계산은 이 파일의
+// aggregateChangeForWorker()가 activation과 동일한 원칙(휴무일도 denominator 포함,
+// 지원업무는 numerator에만 반영)으로 직접 수행한다.
 export async function computeChangeWorkForDates(
   dates: Date[],
   cache: LedgerCache = createLedgerCache(),
@@ -235,8 +242,9 @@ export async function computeChangeWorkForDates(
       rowsPerSheet.push(classifyForDate(entry, date, sheetName));
     }
     const rows = rowsPerSheet.flat();
+    const totals = summarizeNetworkTotals(rows);
     const workers = summarizeWorkerNetworkMatrix(rows);
-    out.push({ date: ymd(date), workers });
+    out.push({ date: ymd(date), workers, totals });
   }
   return out;
 }
@@ -249,28 +257,44 @@ export interface AggregatedChangeWorkPerformance {
   supportTOSS: number;
   supportTotal: number;
   total: number; // self + supportTotal — "인정 처리량"이라는 개통 용어와 구분하기 위해 total로 표기
+  // [MCC_CHANGE_WORK_CONTRIBUTION_RATE_ENGINE_1] 신규 필드(additive) — 기존 self/support*/
+  // total은 그대로 유지, 기존 화면/필드를 깨지 않는다.
+  officialTotal: number; // 소속망 공식 변경업무 총수량 합계(조회 기간 전체 날짜 합산, 처리 유무 무관)
+  contributionRate: number | null; // total(=recognized) ÷ officialTotal × 100, officialTotal=0이면 null
 }
 
-/** perDay 결과에서 특정 performanceWorkerName의 기간 변경 업무 합계를 뽑는다. 기여도/목표율은 계산하지 않는다(공식 미확인, HOLD). */
+// [MCC_CHANGE_WORK_CONTRIBUTION_RATE_ENGINE_1] aggregateForWorker()(개통, LOCK 유지)와
+// 완전히 동일한 원칙을 변경 업무에 적용한다: (1) 지원업무는 numerator에만 포함되고
+// denominator는 절대 늘리지 않는다, (2) 개인 처리 건이 0인 날(휴무 등)도 그날의 소속망
+// 공식 총수량은 denominator에 반드시 포함한다(day.workers에 없어도 day.totals는 존재).
+// home은 activation과 동일하게 호출부에서 workerHomeNetwork()로 미리 구해 전달받는다 —
+// 조회 기간 전체에서 이 근무자가 단 하루도 등장하지 않아도 분모를 정확히 계산하기 위함.
+/** perDay 결과에서 특정 performanceWorkerName의 기간 변경 업무 합계 + 기여도를 계산한다. */
 export function aggregateChangeForWorker(
   perDay: DayChangeWorkerPerformance[],
   performanceWorkerName: string,
+  home: ReturnType<typeof workerHomeNetwork>,
 ): AggregatedChangeWorkPerformance {
-  let self = 0, supportSK = 0, supportKT = 0, supportLG = 0, supportTOSS = 0;
+  let self = 0, supportSK = 0, supportKT = 0, supportLG = 0, supportTOSS = 0, officialTotal = 0;
+  const hasOfficialTotal = home === "SK" || home === "KT" || home === "LG";
   for (const day of perDay) {
     const mine = day.workers.find((w) => w.worker === performanceWorkerName);
-    if (!mine) continue;
-    const home = mine.home;
-    if (home === "SK") self += mine.SK; else supportSK += mine.SK;
-    if (home === "KT") self += mine.KT; else supportKT += mine.KT;
-    if (home === "LG") self += mine.LG; else supportLG += mine.LG;
-    // workerHomeNetwork()는 절대 "TOSS"를 반환하지 않으므로(SK/KT/LG/유선/본사/기타만
-    // 가능) TOSS 실적은 항상 지원 처리로 집계된다 — LOCK된 computeWorkerPerformance()의
-    // 동일한 처리와 일치.
-    supportTOSS += mine.TOSS;
+    if (mine) {
+      const mineHome = mine.home;
+      if (mineHome === "SK") self += mine.SK; else supportSK += mine.SK;
+      if (mineHome === "KT") self += mine.KT; else supportKT += mine.KT;
+      if (mineHome === "LG") self += mine.LG; else supportLG += mine.LG;
+      // workerHomeNetwork()는 절대 "TOSS"를 반환하지 않으므로(SK/KT/LG/유선/본사/기타만
+      // 가능) TOSS 실적은 항상 지원 처리로 집계된다 — LOCK된 computeWorkerPerformance()의
+      // 동일한 처리와 일치.
+      supportTOSS += mine.TOSS;
+    }
+    if (hasOfficialTotal) officialTotal += day.totals[home as "SK" | "KT" | "LG"];
   }
   const supportTotal = supportSK + supportKT + supportLG + supportTOSS;
-  return { self, supportSK, supportKT, supportLG, supportTOSS, supportTotal, total: self + supportTotal };
+  const total = self + supportTotal;
+  const contributionRate = officialTotal > 0 ? (total / officialTotal) * 100 : null;
+  return { self, supportSK, supportKT, supportLG, supportTOSS, supportTotal, total, officialTotal, contributionRate };
 }
 
 /** perDay 결과에서 같은 homeNetwork 작업자들의 기간 변경 업무 합계 평균(팀 비교, 본인 포함). */
