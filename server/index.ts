@@ -9,12 +9,14 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { setupVite, serveStatic, log } from "./vite";
 import router from "./routes";
+import remoteLabRoutes from "./routes/remote-lab";
 import performanceAdminRoutes from "./routes/performance-admin";
 import performanceRoutes from "./routes/performance";
 import lgAuditRoutes from "./routes/lg-audit";
 import ktAuditRoutes from "./routes/kt-audit";
 import personalPerformanceRoutes from "./routes/personal-performance";
 import performanceTargetsRoutes from "./routes/performance-targets";
+import trainingRoutes from "./routes/training";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -222,6 +224,9 @@ if (process.env.APP_ENV === 'development') {
 // ─────────────────────────────
 app.use("/api/auth", authRouter);
 
+// LG 자동개통 Remote Lab (관리자 화면 + PC Agent heartbeat)
+app.use(remoteLabRoutes);
+
 // 실적 관리 - 현재 연결된 Google Sheets 스프레드시트 상태 조회 (관리자 전용)
 app.use(performanceAdminRoutes);
 
@@ -239,6 +244,9 @@ app.use(personalPerformanceRoutes);
 
 // 개인 실적 관리자 화면(worker mapping/월별 목표) — admin 전용
 app.use(performanceTargetsRoutes);
+
+// 교육자료(사내 교육센터) — 열람: admin/sales_manager/내부 worker(dealer 제외), 관리: admin 전용
+app.use(trainingRoutes);
 
 app.use(router);
 

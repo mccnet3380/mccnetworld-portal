@@ -19,7 +19,8 @@ import {
   Megaphone,
   ClipboardCheck,
   FileSearch,
-  TrendingUp
+  TrendingUp,
+  GraduationCap
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
@@ -64,6 +65,11 @@ const navigation = [
   // KT_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1: KT 검수 — LG 검수와 동일한 위상의
   // 내부 작업자용 업무 기능. LG 검수 바로 아래 배치, dealer는 dealerAllowedMenus로 계속 제외.
   { name: 'KT 검수', href: '/kt-audit', icon: FileSearch },
+  // MCC_TRAINING_CENTER_CHANNEL_SEPARATION_AND_ADMIN_EDITOR_1: 교육자료 — 중립과 완전히
+  // 독립된 사내 교육센터. LG/KT 검수와 동일한 위상(admin/sales_manager/내부 worker,
+  // dealer는 dealerAllowedMenus로 계속 제외)이라 바로 아래 배치. 실제 권한 게이트는
+  // server/routes/training.ts의 requireTrainingViewer/requireTrainingAdmin.
+  { name: '교육자료', href: '/training', icon: GraduationCap },
 ];
 
 const adminNavigation = [

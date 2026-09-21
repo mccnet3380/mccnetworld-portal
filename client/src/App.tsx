@@ -18,12 +18,15 @@ import { OtherApplication } from '@/pages/OtherApplication';
 import { Downloads } from '@/pages/Downloads';
 import { AdminPanel } from '@/pages/AdminPanel';
 import { Settlements } from '@/pages/Settlements';
+import { RemoteLab } from '@/pages/RemoteLab';
 import { PerformanceManagement } from '@/pages/PerformanceManagement';
 import { PersonalPerformance } from '@/pages/PersonalPerformance';
 import { DailyPerformanceBoard } from '@/pages/DailyPerformanceBoard';
 import { PerformanceClosing } from '@/pages/PerformanceClosing';
 import { LgActivationAudit } from '@/pages/LgActivationAudit';
 import { KtActivationAudit } from '@/pages/KtActivationAudit';
+import { TrainingCenter } from '@/pages/TrainingCenter';
+import { TrainingArticleDetail } from '@/pages/TrainingArticleDetail';
 
 // 판매점 관련 페이지
 import { DealerRegistration } from '@/pages/DealerRegistration';
@@ -88,6 +91,10 @@ function AppRoutes() {
         <Route path="/lg-audit" component={LgActivationAudit} />
         {/* [KT_ACTIVATION_AUDIT_MCC_SITE_IMPLEMENTATION_1] 영업과장도 KT 검수 접근 허용 — LG와 동일 이유 */}
         <Route path="/kt-audit" component={KtActivationAudit} />
+        {/* [MCC_TRAINING_CENTER_CHANNEL_SEPARATION_AND_ADMIN_EDITOR_1] 영업과장도 교육자료
+            접근 허용 — LG/KT 검수와 동일한 "내부 직원" 위상으로 취급(Sidebar/백엔드와 일관). */}
+        <Route path="/training" component={TrainingCenter} />
+        <Route path="/training/:id" component={TrainingArticleDetail} />
         <Route component={() => <Redirect to="/sales-manager-dashboard" />} />
       </Switch>
     );
@@ -140,6 +147,9 @@ function AppRoutes() {
       )}
       */}
 
+      {/* Remote Lab: 일반 worker는 자기 장비만, admin은 전체 장비를 봅니다. */}
+      <Route path="/remote-lab" component={RemoteLab} />
+
       {/* [MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1] 실적관리(/performance, 전체
           근무자 실적 + 월별 인원·목표)는 관리자 전용으로 변경 — 일반 worker는 다른 근무자의
           실적/목표/매핑을 볼 수 없어야 한다(요구사항). Sidebar에서도 이미 숨김 처리했지만,
@@ -187,6 +197,18 @@ function AppRoutes() {
         user?.userType === 'sales_manager' ||
         (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
         <Route path="/kt-audit" component={KtActivationAudit} />
+      )}
+
+      {/* [MCC_TRAINING_CENTER_CHANNEL_SEPARATION_AND_ADMIN_EDITOR_1] 교육자료: LG/KT 검수와
+          동일한 권한 조건(admin/sales_manager/내부 WORKER, dealer 차단). 실제 게이트는
+          server/routes/training.ts의 requireTrainingViewer/requireTrainingAdmin. */}
+      {(user?.userType === 'admin' ||
+        user?.userType === 'sales_manager' ||
+        (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
+        <>
+          <Route path="/training" component={TrainingCenter} />
+          <Route path="/training/:id" component={TrainingArticleDetail} />
+        </>
       )}
 
       {user?.userType === 'admin' && (

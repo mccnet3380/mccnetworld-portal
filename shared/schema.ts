@@ -1285,3 +1285,45 @@ export type AuthSession = {
   createdAt: string;
   expiresAt?: Date;
 };
+
+//===============================================
+// MCC_TRAINING_CENTER_CHANNEL_SEPARATION_AND_ADMIN_EDITOR_1
+// 교육자료(사내 교육센터) 테이블. 기존 테이블/로직과 완전히 독립.
+//===============================================
+
+// category: 'ALL' | 'SK' | 'KT' | 'LG' | 'OTHER'
+// status: 'DRAFT' | 'PUBLISHED'
+export const trainingArticles = pgTable("training_articles", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 200 }).notNull(),
+  summary: varchar("summary", { length: 500 }),
+  category: varchar("category", { length: 10 }).notNull(),
+  content: text("content").notNull(),
+  status: varchar("status", { length: 10 }).notNull().default("DRAFT"),
+  isPinned: boolean("is_pinned").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdBy: integer("created_by"),
+  updatedBy: integer("updated_by"),
+  deletedAt: timestamp("deleted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// attachmentType: 'IMAGE' | 'VIDEO' | 'PDF' | 'FILE'
+export const trainingAttachments = pgTable("training_attachments", {
+  id: serial("id").primaryKey(),
+  articleId: integer("article_id").notNull().references(() => trainingArticles.id, { onDelete: "cascade" }),
+  originalName: varchar("original_name", { length: 255 }).notNull(),
+  storedName: varchar("stored_name", { length: 255 }).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  fileSize: integer("file_size").notNull(),
+  filePath: varchar("file_path", { length: 500 }).notNull(),
+  attachmentType: varchar("attachment_type", { length: 10 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type TrainingArticle = typeof trainingArticles.$inferSelect;
+export type InsertTrainingArticle = typeof trainingArticles.$inferInsert;
+export type TrainingAttachment = typeof trainingAttachments.$inferSelect;
+export type InsertTrainingAttachment = typeof trainingAttachments.$inferInsert;
