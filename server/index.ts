@@ -17,6 +17,7 @@ import personalPerformanceRoutes from "./routes/personal-performance";
 import performanceTargetsRoutes from "./routes/performance-targets";
 import trainingRoutes from "./routes/training";
 import sheetViewerRoutes from "./routes/sheet-viewer";
+import settlementSheetsImportRoutes from "./routes/settlement-sheets-import";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -247,6 +248,9 @@ app.use(trainingRoutes);
 
 // 개통현황 선택 조회(월별 Spreadsheet 시트 뷰어, READ ONLY) — admin/sales_manager/내부 worker(dealer 제외)
 app.use(sheetViewerRoutes);
+
+// 정산 결과 관리 — Google Sheets(개통처리부) 정산 import Preview/Import — admin 전용
+app.use(settlementSheetsImportRoutes);
 
 app.use(router);
 

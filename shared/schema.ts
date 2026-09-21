@@ -481,11 +481,21 @@ export const activationRecords = pgTable("activation_records", {
   createdBy: integer("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // MCC_SETTLEMENT_GOOGLE_SHEETS_ACTIVATION_IMPORT_IMPLEMENTATION_1: Google Sheets(개통처리부)
+  // import 전용 필드. 기존 xlsx업로드 행은 전부 null — 기존 데이터/로직 무영향(additive).
+  sourceSpreadsheetId: varchar("source_spreadsheet_id", { length: 100 }),
+  sourceSheetName: varchar("source_sheet_name", { length: 100 }),
+  sourceMonth: varchar("source_month", { length: 7 }), // YYYY-MM
+  // 중복 방지 key(§12 감사 근거) — subscriptionNumber 있으면 그 기준, 없으면
+  // contactCode+activationDate+customerName+activationNumber 조합. null이면 "중복검사 불가"로
+  // 별도 취급(무조건 통과/스킵 금지). unique index가 동시 실행 이중 insert도 방지한다(§35).
+  dedupeKey: varchar("dedupe_key", { length: 300 }),
 }, (table) => [
   index("activation_records_activation_datetime_idx").on(table.activationDatetime),
   index("activation_records_dealer_datetime_idx").on(table.dealerRegistrationId, table.activationDatetime),
   index("activation_records_contact_code_idx").on(table.contactCode),
   index("activation_records_document_id_idx").on(table.documentId),
+  uniqueIndex("activation_records_dedupe_key_uidx").on(table.dedupeKey),
 ]);
 
 // 정산 결과 테이블

@@ -14,6 +14,7 @@ import { ChatWebSocketServer } from './websocket';
 import { getDatabase, checkPostgreSQLHealth } from "./db";
 import { splitPolicyExcelFromBuffer } from './lib/mcc-policy-split';
 import { exportPolicyUploadReadyFromSplit } from './lib/mcc-policy-export-ready';
+import { normalizeCustomerType, normalizePlanNameForMatching } from './lib/activation-normalize';
 import { sql, eq, and, gte, lte } from "drizzle-orm";
 
 // 중복 제출 방지를 위한 최근 제출 요청 추적
@@ -4689,13 +4690,14 @@ router.get('/api/admin/policies/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// datetime-local 입력("2026-08-24T15:00")을 naive UTC로 파싱
-// reception_datetime과 동일한 naive KST 관행으로 저장되도록 Z suffix를 붙여 UTC 강제 해석
+// 날짜/일시 문자열을 UTC midnight으로 파싱 (날짜 기준 정책 매칭용)
+// datetime-local("2026-08-24T15:00") 또는 date-only("2026-09-01") 모두 처리
 function parsePolicyDatetime(s: string): Date {
   if (s.includes('T')) {
-    return new Date(s.slice(0, 16) + ':00.000Z');
+    return new Date(s.slice(0, 10) + 'T00:00:00.000Z');
   }
-  return new Date(s); // date-only: JS가 UTC midnight으로 파싱
+  // date-only "YYYY-MM-DD" → UTC midnight (일관된 날짜 기준 저장)
+  return new Date(s.slice(0, 10) + 'T00:00:00.000Z');
 }
 
 // 3. POST /api/admin/policies — 정책 차수 생성
@@ -5612,20 +5614,10 @@ router.post('/api/admin/policies/:id/files', requireAdmin, async (req, res) => {
 // STEP 5D-2: 개통완료 엑셀 업로드 API
 // ============================================================
 
-const normalizeCustomerType = (v: string | null | undefined): string => {
-  const s = String(v ?? '').trim().toLowerCase();
-  if (['1', '신규', '신', 'new'].includes(s)) return '1';
-  if (['2', '번이', '번호이동', 'mnp', '이동'].includes(s)) return '2';
-  return String(v ?? '').trim();
-};
-
-// 요금제명 비교 정규화: 맨 앞 접두어(텔), 엠), 스카이) 등) 제거 후 공백 정리
-const normalizePlanNameForMatching = (v: unknown): string =>
-  String(v ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/^[가-힣A-Za-z0-9]+\)\s*/, '')
-    .trim();
+// normalizeCustomerType / normalizePlanNameForMatching: MCC_SETTLEMENT_GOOGLE_SHEETS_
+// ACTIVATION_IMPORT_IMPLEMENTATION_1에서 server/lib/activation-normalize.ts로 이동(로직
+// 무변경, import만 — 파일 상단 import 참고). Google Sheets import 경로도 동일 규칙을
+// 쓰기 위해 공용 모듈로 옮겼다.
 
 // POST /api/admin/activations/upload
 router.post('/api/admin/activations/upload', requireAdmin, upload.single('file'), async (req, res) => {

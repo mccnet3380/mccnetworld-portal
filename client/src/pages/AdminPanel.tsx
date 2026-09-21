@@ -25,6 +25,7 @@ import { createUserSchema, createWorkerSchema, updateDocumentStatusSchema, creat
 import type { User, Document, ServicePlan, Carrier, AdditionalService, SettlementUnitPrice, Dealer } from '../../../shared/sqlite-schema';
 import { apiRequest } from '@/lib/queryClient';
 import { McodeMasterUploadPanel } from '@/components/admin/mcode/McodeMasterUploadPanel';
+import { GoogleSheetsImportModal } from '@/components/admin/settlement/GoogleSheetsImportModal';
 import { 
   Building2, 
   Users, 
@@ -10191,6 +10192,9 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   <CardDescription>개통 데이터와 정책 단가를 매칭한 정산 결과를 조회·수정·확정합니다.</CardDescription>
                 </div>
                 <div className="flex gap-2 flex-wrap">
+                  <GoogleSheetsImportModal
+                    onImportSuccess={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] })}
+                  />
                   <input
                     ref={siActivationUploadRef}
                     type="file"
