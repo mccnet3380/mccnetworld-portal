@@ -16,6 +16,7 @@ import ktAuditRoutes from "./routes/kt-audit";
 import personalPerformanceRoutes from "./routes/personal-performance";
 import performanceTargetsRoutes from "./routes/performance-targets";
 import trainingRoutes from "./routes/training";
+import sheetViewerRoutes from "./routes/sheet-viewer";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -243,6 +244,9 @@ app.use(performanceTargetsRoutes);
 
 // 교육자료(사내 교육센터) — 열람: admin/sales_manager/내부 worker(dealer 제외), 관리: admin 전용
 app.use(trainingRoutes);
+
+// 개통현황 선택 조회(월별 Spreadsheet 시트 뷰어, READ ONLY) — admin/sales_manager/내부 worker(dealer 제외)
+app.use(sheetViewerRoutes);
 
 app.use(router);
 

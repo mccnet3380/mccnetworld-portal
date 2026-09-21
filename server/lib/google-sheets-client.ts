@@ -239,3 +239,56 @@ export async function listSpreadsheetSheetNames(): Promise<string[]> {
     .map((s) => s.properties?.title)
     .filter((title): title is string => !!title);
 }
+
+/**
+ * 작업명: MCC_MONTHLY_SPREADSHEET_SELECTIVE_SHEET_VIEWER_1
+ *
+ * 지정한 spreadsheetId(이미 resolveActiveSpreadsheet()로 resolve된 값)에 실제로
+ * 존재하는 시트(탭) 전체의 metadata(제목/숨김여부/행·열 개수)를 조회한다. 값(셀 데이터)은
+ * 읽지 않는다 — fields를 properties로 제한해 quota 부담을 최소화한다. 시트 이름을
+ * 하드코딩하지 않는 범용 조회 기능(개통현황 선택 조회)의 기반 함수다. 기존
+ * listSpreadsheetSheetNames()(env 고정 spreadsheetId, title만 반환)는 무수정 — 이 함수는
+ * fetchSheetValuesById()와 같은 방식으로 spreadsheetId를 인자로 받는 별도 함수로 추가한다.
+ */
+export interface SpreadsheetSheetMeta {
+  title: string;
+  sheetId: number;
+  index: number;
+  hidden: boolean;
+  rowCount: number;
+  columnCount: number;
+}
+
+export async function listSpreadsheetSheetsById(spreadsheetId: string): Promise<SpreadsheetSheetMeta[]> {
+  const token = await getAccessToken();
+  const url =
+    `${SHEETS_API_BASE}/${spreadsheetId}` +
+    `?fields=${encodeURIComponent("sheets.properties(sheetId,title,index,hidden,gridProperties)")}`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    const err = new Error(`[GoogleSheets] 시트 목록 조회 실패 (status=${res.status}): ${body.slice(0, 500)}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  const json = (await res.json()) as {
+    sheets?: { properties?: { sheetId?: number; title?: string; index?: number; hidden?: boolean; gridProperties?: { rowCount?: number; columnCount?: number } } }[];
+  };
+
+  return (json.sheets || [])
+    .map((s) => s.properties)
+    .filter((p): p is NonNullable<typeof p> => !!p?.title)
+    .map((p) => ({
+      title: p.title!,
+      sheetId: p.sheetId ?? 0,
+      index: p.index ?? 0,
+      hidden: p.hidden === true,
+      rowCount: p.gridProperties?.rowCount ?? 0,
+      columnCount: p.gridProperties?.columnCount ?? 0,
+    }));
+}

@@ -26,6 +26,7 @@ import { LgActivationAudit } from '@/pages/LgActivationAudit';
 import { KtActivationAudit } from '@/pages/KtActivationAudit';
 import { TrainingCenter } from '@/pages/TrainingCenter';
 import { TrainingArticleDetail } from '@/pages/TrainingArticleDetail';
+import { SheetViewer } from '@/pages/SheetViewer';
 
 // 판매점 관련 페이지
 import { DealerRegistration } from '@/pages/DealerRegistration';
@@ -94,6 +95,9 @@ function AppRoutes() {
             접근 허용 — LG/KT 검수와 동일한 "내부 직원" 위상으로 취급(Sidebar/백엔드와 일관). */}
         <Route path="/training" component={TrainingCenter} />
         <Route path="/training/:id" component={TrainingArticleDetail} />
+        {/* [MCC_MONTHLY_SPREADSHEET_SELECTIVE_SHEET_VIEWER_1] 영업과장도 개통현황 조회 접근
+            허용 — LG/KT 검수·교육자료와 동일한 "내부 직원" 위상으로 취급. */}
+        <Route path="/sheet-viewer" component={SheetViewer} />
         <Route component={() => <Redirect to="/sales-manager-dashboard" />} />
       </Switch>
     );
@@ -205,6 +209,15 @@ function AppRoutes() {
           <Route path="/training" component={TrainingCenter} />
           <Route path="/training/:id" component={TrainingArticleDetail} />
         </>
+      )}
+
+      {/* [MCC_MONTHLY_SPREADSHEET_SELECTIVE_SHEET_VIEWER_1] 개통현황 조회: LG/KT 검수·교육자료와
+          동일한 권한 조건(admin/sales_manager/내부 WORKER, dealer 차단). 실제 게이트는
+          server/routes/sheet-viewer.ts의 requireSheetViewerAccess. */}
+      {(user?.userType === 'admin' ||
+        user?.userType === 'sales_manager' ||
+        (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
+        <Route path="/sheet-viewer" component={SheetViewer} />
       )}
 
       {user?.userType === 'admin' && (

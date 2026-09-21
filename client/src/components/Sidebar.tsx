@@ -20,7 +20,8 @@ import {
   ClipboardCheck,
   FileSearch,
   TrendingUp,
-  GraduationCap
+  GraduationCap,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
@@ -70,6 +71,11 @@ const navigation = [
   // dealer는 dealerAllowedMenus로 계속 제외)이라 바로 아래 배치. 실제 권한 게이트는
   // server/routes/training.ts의 requireTrainingViewer/requireTrainingAdmin.
   { name: '교육자료', href: '/training', icon: GraduationCap },
+  // MCC_MONTHLY_SPREADSHEET_SELECTIVE_SHEET_VIEWER_1: 개통현황 조회 — 월별 ★개통현황
+  // Spreadsheet에서 원하는 시트만 골라보는 READ ONLY 뷰어. LG/KT 검수·교육자료와 동일한
+  // 위상(admin/sales_manager/내부 worker, dealer는 dealerAllowedMenus로 계속 제외)이라
+  // 바로 아래 배치. 실제 권한 게이트는 server/routes/sheet-viewer.ts의 requireSheetViewerAccess.
+  { name: '개통현황 조회', href: '/sheet-viewer', icon: FileSpreadsheet },
 ];
 
 const adminNavigation = [
