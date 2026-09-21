@@ -9,7 +9,6 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { setupVite, serveStatic, log } from "./vite";
 import router from "./routes";
-import remoteLabRoutes from "./routes/remote-lab";
 import performanceAdminRoutes from "./routes/performance-admin";
 import performanceRoutes from "./routes/performance";
 import lgAuditRoutes from "./routes/lg-audit";
@@ -223,9 +222,6 @@ if (process.env.APP_ENV === 'development') {
 // API 라우트 (vite보다 항상 먼저)
 // ─────────────────────────────
 app.use("/api/auth", authRouter);
-
-// LG 자동개통 Remote Lab (관리자 화면 + PC Agent heartbeat)
-app.use(remoteLabRoutes);
 
 // 실적 관리 - 현재 연결된 Google Sheets 스프레드시트 상태 조회 (관리자 전용)
 app.use(performanceAdminRoutes);

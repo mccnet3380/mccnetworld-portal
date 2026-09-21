@@ -18,7 +18,6 @@ import { OtherApplication } from '@/pages/OtherApplication';
 import { Downloads } from '@/pages/Downloads';
 import { AdminPanel } from '@/pages/AdminPanel';
 import { Settlements } from '@/pages/Settlements';
-import { RemoteLab } from '@/pages/RemoteLab';
 import { PerformanceManagement } from '@/pages/PerformanceManagement';
 import { PersonalPerformance } from '@/pages/PersonalPerformance';
 import { DailyPerformanceBoard } from '@/pages/DailyPerformanceBoard';
@@ -146,9 +145,6 @@ function AppRoutes() {
         <Route path="/settlements" component={Settlements} />
       )}
       */}
-
-      {/* Remote Lab: 일반 worker는 자기 장비만, admin은 전체 장비를 봅니다. */}
-      <Route path="/remote-lab" component={RemoteLab} />
 
       {/* [MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1] 실적관리(/performance, 전체
           근무자 실적 + 월별 인원·목표)는 관리자 전용으로 변경 — 일반 worker는 다른 근무자의
