@@ -22,9 +22,15 @@
 // CONTACT_CODE_MISSING 하나만 사용한다(코드/접점코드 단독 결측 사례 0건 — 개통처리부/
 // ■당일완료 재조사로 반례 없음 재확인 완료). CODE_MISSING은 만들지 않는다.
 //
-// 매미(MEMI) 연동은 현재 전혀 구현되어 있지 않다(server/client 전체 재검색 확인) — 단말
-// 대상 건은 항상 MEMI_DATA_UNAVAILABLE로만 표시한다. MEMI_DEVICE_NOT_FOUND는 실제 매미
-// 대사 엔진이 붙기 전까지 절대 계산하지 않는다(§18 원칙).
+// [MCC_MEMI_REALTIME_DEVICE_RECONCILIATION_DEV_1] 매미 실연동은 server/lib/memi-client.ts가
+// 담당한다(로그인/xlsDown/Excel 파싱/일련번호 normalization, 이 파일에서 재구현하지 않음).
+// 이 파일은 그 결과(MemiSyncResult)를 받아 단말 대상 행에만 적용한다:
+// - memi 조회 자체가 실패/미설정(credential 없음 등)이면 MEMI_DATA_UNAVAILABLE(기존과 동일)
+// - memi 조회는 성공했는데 이 시트의 일련번호가 매미 자료에 없으면 MEMI_DEVICE_NOT_FOUND(ERROR)
+// - 매미에서 확인되면 이슈를 만들지 않고 memiStatus='MATCHED' + memiModel(정보용, 매칭 실패
+//   판정에 쓰지 않음 — §10)만 채운다.
+// MEMI_DATA_UNAVAILABLE을 MEMI_DEVICE_NOT_FOUND로 절대 계산하지 않는다(§11/§18 원칙 — memi
+// 조회 성공 여부로 완전히 분기).
 //
 // 본사진행 예외(§14, 실측 확정): 작업자="본사"인 행은 ACTIVATION_NUMBER_MISSING 검수에서만
 // 제외한다(가입번호 100% 빈값 상관관계 확인, 반례 없음). 다른 검수 항목까지 제외하지 않는다.
@@ -33,6 +39,7 @@
 
 import { fetchLedgerCached, type LedgerCache } from "./personal-performance";
 import { matchesDate } from "./performance-calc";
+import { getMemiDailyReconciliation, normalizeSerial, type MemiSyncResult } from "./memi-client";
 
 export const AUDIT_SOURCE_SHEETS = {
   today: "■당일완료",
@@ -75,6 +82,10 @@ export interface AuditedActivationRow {
   foreignerGrade: string;
   model: string;
   serial: string;
+  /** 단말 대상 행에만 채워짐. 단말이 아니면 undefined(§10 — 매미 정보를 억지로 끼워넣지 않음) */
+  memiStatus?: "MATCHED" | "NOT_FOUND" | "DATA_UNAVAILABLE";
+  /** 매미 쪽 모델명(정보용 — MCC_MODEL과 다르다는 이유만으로 ERROR 처리하지 않음, §10) */
+  memiModel?: string;
   status: RowAuditStatus;
   issues: AuditIssue[];
 }
@@ -86,6 +97,8 @@ export interface ActivationAuditResult {
   summary: { pass: number; error: number; dataUnavailable: number };
   byCode: Partial<Record<AuditCode, number>>;
   rows: AuditedActivationRow[];
+  /** §13 UI 상태 표시용 — credential/세션 등 민감정보 없음 */
+  memiSync: { status: "ok" | "unavailable"; syncedAt: string | null; rowCount: number; error?: string };
 }
 
 interface ColumnIndexes {
@@ -151,7 +164,7 @@ const ISSUE_LABEL: Record<AuditCode, string> = {
   DEVICE_MODEL_MISSING: "단말 모델명 누락",
   DEVICE_SERIAL_MISSING: "단말 일련번호 누락",
   MEMI_DEVICE_NOT_FOUND: "매미 금일 자료에서 확인되지 않음",
-  MEMI_DATA_UNAVAILABLE: "매미 미연동 — 확인 불가",
+  MEMI_DATA_UNAVAILABLE: "매미 조회 불가",
 };
 
 function issue(code: AuditCode, severity: AuditSeverity): AuditIssue {
@@ -173,10 +186,15 @@ function issue(code: AuditCode, severity: AuditSeverity): AuditIssue {
  * - 외국인등급: 고객유형에 "외국인"이 포함된 행에만 적용(기존 activation-row-mapper.ts의
  *   nationalityType 판정 규칙과 동일하게 .includes('외국인') 사용 — 새 판정 발명 아님).
  * - 단말 모델/일련번호: 요청점이 "단말)"로 시작하는 행에만 적용(§16 실측 패턴).
- * - 매미: 단말 대상 행은 실연동이 없으므로 항상 MEMI_DATA_UNAVAILABLE만 추가한다.
+ * - 매미: 단말 대상 행만 memiSync 결과로 대사한다(memi-client.ts 참고, 이 함수는 순수하게
+ *   조회된 결과만 반영 — 네트워크 호출은 computeActivationAudit()에서 미리 1회만 수행).
  * - 개통번호/가입번호 "형식" 오류는 검사하지 않는다(채널별 확정 규칙이 없음 — §11/§13).
  */
-function auditRow(row: string[], cols: ColumnIndexes): { fields: Omit<AuditedActivationRow, "status" | "issues">; issues: AuditIssue[] } {
+function auditRow(
+  row: string[],
+  cols: ColumnIndexes,
+  memiSync: MemiSyncResult,
+): { fields: Omit<AuditedActivationRow, "status" | "issues">; issues: AuditIssue[] } {
   const worker = cell(row, cols.worker);
   const requestPoint = cell(row, cols.requestPoint);
   const contactCode = cell(row, cols.contactCode);
@@ -209,11 +227,28 @@ function auditRow(row: string[], cols: ColumnIndexes): { fields: Omit<AuditedAct
   }
 
   const isDeviceTarget = requestPoint.startsWith("단말)");
+  let memiStatus: AuditedActivationRow["memiStatus"];
+  let memiModel: string | undefined;
   if (isDeviceTarget) {
     if (cols.model >= 0 && !model) issues.push(issue("DEVICE_MODEL_MISSING", "ERROR"));
     if (cols.serial >= 0 && !serial) issues.push(issue("DEVICE_SERIAL_MISSING", "ERROR"));
-    // 매미 실연동 전이므로 실제 대사는 하지 않고 "확인 불가"만 표시한다(§18/§19).
-    issues.push(issue("MEMI_DATA_UNAVAILABLE", "DATA_UNAVAILABLE"));
+
+    if (memiSync.status !== "ok") {
+      memiStatus = "DATA_UNAVAILABLE";
+      issues.push(issue("MEMI_DATA_UNAVAILABLE", "DATA_UNAVAILABLE"));
+    } else if (!serial) {
+      // MCC 쪽 일련번호 자체가 없으면 대사할 키가 없다 — 이미 DEVICE_SERIAL_MISSING으로
+      // 잡혔으므로 매미 상태는 판정하지 않는다(정보 없음, 중복 issue 생성 안 함).
+    } else {
+      const matched = memiSync.bySerial.get(normalizeSerial(serial));
+      if (matched) {
+        memiStatus = "MATCHED";
+        memiModel = matched.model;
+      } else {
+        memiStatus = "NOT_FOUND";
+        issues.push(issue("MEMI_DEVICE_NOT_FOUND", "ERROR"));
+      }
+    }
   }
 
   return {
@@ -231,6 +266,8 @@ function auditRow(row: string[], cols: ColumnIndexes): { fields: Omit<AuditedAct
       foreignerGrade,
       model,
       serial,
+      memiStatus,
+      memiModel,
     },
     issues,
   };
@@ -252,8 +289,15 @@ function isToday(date: Date): boolean {
  * 하나만 선택해서 읽는다(두 시트를 합산하지 않음 — 실측상 날짜 기준으로 배타적).
  */
 export async function computeActivationAudit(date: Date, cache: LedgerCache): Promise<ActivationAuditResult> {
+  const dateYmd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const sourceSheet = isToday(date) ? AUDIT_SOURCE_SHEETS.today : AUDIT_SOURCE_SHEETS.historical;
-  const entry = await fetchLedgerCached(date, cache, sourceSheet);
+
+  // [MCC_MEMI_REALTIME_DEVICE_RECONCILIATION_DEV_1] 매미 조회는 행마다가 아니라 이 요청당
+  // 딱 1번만 수행한다(§12/§14 — 로그인/xlsDown 반복 방지, memi-client.ts 내부 cache 재사용).
+  const [entry, memiSync] = await Promise.all([
+    fetchLedgerCached(date, cache, sourceSheet),
+    getMemiDailyReconciliation(dateYmd),
+  ]);
   const cols = resolveColumns(entry.header);
 
   const rows: AuditedActivationRow[] = [];
@@ -264,7 +308,7 @@ export async function computeActivationAudit(date: Date, cache: LedgerCache): Pr
 
   for (const r of entry.rows) {
     if (!matchesDate(r[cols.date], date)) continue;
-    const { fields, issues } = auditRow(r, cols);
+    const { fields, issues } = auditRow(r, cols, memiSync);
     const status = rowStatus(issues);
     if (status === "PASS") pass++;
     else if (status === "ERROR") error++;
@@ -276,11 +320,12 @@ export async function computeActivationAudit(date: Date, cache: LedgerCache): Pr
   }
 
   return {
-    date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+    date: dateYmd,
     sourceSheet,
     total: rows.length,
     summary: { pass, error, dataUnavailable },
     byCode,
     rows,
+    memiSync: { status: memiSync.status, syncedAt: memiSync.syncedAt, rowCount: memiSync.rowCount, error: memiSync.error },
   };
 }

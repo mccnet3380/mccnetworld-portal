@@ -58,8 +58,17 @@ interface AuditedActivationRow {
   foreignerGrade: string;
   model: string;
   serial: string;
+  memiStatus?: "MATCHED" | "NOT_FOUND" | "DATA_UNAVAILABLE";
+  memiModel?: string;
   status: RowAuditStatus;
   issues: AuditIssue[];
+}
+
+interface MemiSyncStatus {
+  status: "ok" | "unavailable";
+  syncedAt: string | null;
+  rowCount: number;
+  error?: string;
 }
 
 interface ActivationAuditResult {
@@ -69,6 +78,7 @@ interface ActivationAuditResult {
   summary: { pass: number; error: number; dataUnavailable: number };
   byCode: Partial<Record<AuditCode, number>>;
   rows: AuditedActivationRow[];
+  memiSync: MemiSyncStatus;
 }
 
 const AUDIT_CODE_ORDER: AuditCode[] = [
@@ -91,8 +101,8 @@ const AUDIT_CODE_LABEL: Record<AuditCode, string> = {
   FOREIGNER_GRADE_MISSING: "외국인등급",
   DEVICE_MODEL_MISSING: "단말 모델명",
   DEVICE_SERIAL_MISSING: "단말 일련번호",
-  MEMI_DEVICE_NOT_FOUND: "매미 미확인",
-  MEMI_DATA_UNAVAILABLE: "매미 확인불가",
+  MEMI_DEVICE_NOT_FOUND: "매미 자료 없음",
+  MEMI_DATA_UNAVAILABLE: "매미 조회불가",
 };
 
 type StatusFilter = "all" | "problem" | "pass" | "unavailable";
@@ -173,6 +183,7 @@ export function SheetViewer() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("problem");
   const [codeFilter, setCodeFilter] = useState<AuditCode | null>(null);
   const [workerFilter, setWorkerFilter] = useState<string>("ALL");
+  const [memiRefreshing, setMemiRefreshing] = useState(false);
 
   async function loadAudit(date: string) {
     setAuditLoading(true);
@@ -192,6 +203,23 @@ export function SheetViewer() {
     loadAudit(auditDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditDate]);
+
+  // [MCC_MEMI_REALTIME_DEVICE_RECONCILIATION_DEV_1] 보조 수동 새로고침(§14) — 기본 흐름은
+  // 자동이므로 이 버튼은 캐시가 stale해 보일 때만 쓰는 보조 기능이다.
+  async function handleMemiRefresh() {
+    setMemiRefreshing(true);
+    try {
+      await apiRequest(`/api/activation-audit/memi-refresh`, {
+        method: "POST",
+        body: JSON.stringify({ date: auditDate }),
+      });
+      await loadAudit(auditDate);
+    } catch (e: any) {
+      toast({ title: "매미 새로고침 실패", description: e.message, variant: "destructive" });
+    } finally {
+      setMemiRefreshing(false);
+    }
+  }
 
   const auditWorkers = useMemo(() => {
     if (!auditData) return [];
@@ -357,9 +385,32 @@ export function SheetViewer() {
 
             {!auditLoading && !auditError && auditData && (
               <>
-                <p className="text-xs text-muted-foreground">
-                  데이터 원본: {auditData.sourceSheet} · {auditData.date} 기준
-                </p>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-xs text-muted-foreground">
+                    데이터 원본: {auditData.sourceSheet} · {auditData.date} 기준
+                  </p>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2 py-1 rounded border",
+                        auditData.memiSync.status === "ok"
+                          ? "border-green-300 bg-green-50 text-green-700"
+                          : "border-amber-300 bg-amber-50 text-amber-700",
+                      )}
+                    >
+                      매미 {auditData.memiSync.status === "ok" ? "정상" : "조회불가"}
+                      {auditData.memiSync.status === "ok" && auditData.memiSync.syncedAt && (
+                        <> · 마지막 동기화 {new Date(auditData.memiSync.syncedAt).toLocaleString("ko-KR")}</>
+                      )}
+                      {auditData.memiSync.status === "unavailable" && auditData.memiSync.error && (
+                        <span className="text-muted-foreground"> ({auditData.memiSync.error.slice(0, 60)})</span>
+                      )}
+                    </span>
+                    <Button size="sm" variant="outline" className="h-7 px-2" onClick={handleMemiRefresh} disabled={memiRefreshing}>
+                      {memiRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : "매미 새로고침"}
+                    </Button>
+                  </div>
+                </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
@@ -460,9 +511,13 @@ export function SheetViewer() {
                           <td className="px-2 py-1 whitespace-nowrap">{r.model || (r.requestPoint.startsWith("단말)") ? "[누락]" : "-")}</td>
                           <td className="px-2 py-1 whitespace-nowrap">
                             {r.serial || (r.requestPoint.startsWith("단말)") ? "[누락]" : "-")}
-                            {r.issues.some((iss) => iss.code === "MEMI_DATA_UNAVAILABLE") && (
-                              <span className="ml-1 text-amber-600">[매미 미확인]</span>
+                            {r.memiStatus === "MATCHED" && (
+                              <span className="ml-1 text-green-700" title={r.memiModel ? `매미 모델명: ${r.memiModel}` : undefined}>
+                                [매미 확인]
+                              </span>
                             )}
+                            {r.memiStatus === "NOT_FOUND" && <span className="ml-1 text-red-600 font-semibold">[매미 자료 없음]</span>}
+                            {r.memiStatus === "DATA_UNAVAILABLE" && <span className="ml-1 text-amber-600">[매미 조회불가]</span>}
                           </td>
                           <td className="px-2 py-1 whitespace-nowrap">
                             {r.status === "PASS" && <span className="text-green-700">PASS</span>}

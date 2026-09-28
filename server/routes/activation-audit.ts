@@ -20,6 +20,7 @@ import { Router } from "express";
 import { getStorage } from "../storage";
 import { createLedgerCache } from "../lib/personal-performance";
 import { computeActivationAudit } from "../lib/activation-audit";
+import { invalidateMemiCache } from "../lib/memi-client";
 
 const router = Router();
 
@@ -126,10 +127,31 @@ router.get("/api/activation-audit/me", requireOwnActivationAuditAccess, async (r
       summary: { error, dataUnavailable, pass: myRows.length - error - dataUnavailable },
       byCode,
       rows: myRows,
+      memiSync: result.memiSync,
     });
   } catch (err: any) {
     console.error("[activation-audit] me 계산 실패:", err?.message ?? err);
     res.status(500).json({ error: "본인 업무 누락 검수 데이터를 불러오지 못했습니다." });
+  }
+});
+
+/**
+ * [MCC_MEMI_REALTIME_DEVICE_RECONCILIATION_DEV_1] 관리자/중간관리자용 수동 [매미 새로고침] 보조
+ * 기능(§14) — 기본 업무 흐름은 자동(요청 시 cache 없으면 자동 fetch)이며, 이 엔드포인트는
+ * cache가 stale하다고 판단될 때 강제로 다시 받아오는 보조 수단일 뿐이다. /summary와 동일한
+ * 권한(admin/내부 middle_manager)만 허용 — 일반 WORKER는 호출할 수 없다.
+ */
+router.post("/api/activation-audit/memi-refresh", requireActivationAuditAccess, async (req, res) => {
+  const date = req.body?.date === undefined ? new Date() : parseDateParam(req.body.date);
+  if (!date) return res.status(400).json({ error: "date는 YYYY-MM-DD 형식이어야 합니다." });
+  const dateYmd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  invalidateMemiCache(dateYmd);
+  try {
+    const cache = createLedgerCache();
+    const result = await computeActivationAudit(date, cache);
+    res.json({ memiSync: result.memiSync });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? String(err) });
   }
 });
 
