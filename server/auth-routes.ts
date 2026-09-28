@@ -76,13 +76,23 @@ authRouter.post('/login', async (req, res) => {
       );
       console.log('User session created:', sessionId, 'Type:', userResult.userType);
       
+      // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] userRole을 로그인 응답에도
+      // 포함한다 — /api/auth/me(checkAuth)는 이미 userRole: user.role을 내려주고 있었는데
+      // 이 /login 응답에는 빠져 있어서, 로그인 직후(새로고침 전) Sidebar/App.tsx의
+      // middle_manager 판정(user?.userRole === 'middle_manager')이 매 로그인마다 한 번은
+      // 틀리게 평가되는 실제 문제를 브라우저 테스트로 발견했다. dealerId/dealerRegistrationId는
+      // 위에서 이미 dealer 여부 확인에 쓰였으니 응답에도 그대로 포함해 기존 no-refresh 관련
+      // 판정(App.tsx의 dealerId 체크 등)과 동일하게 맞춘다.
       const response: AuthResponse = {
         success: true,
         user: {
           id: userResult.id,
           name: userResult.name || username,
           username: username,
-          userType: userResult.userType || 'user'
+          userType: userResult.userType || 'user',
+          dealerId: userResult.dealerId,
+          dealerRegistrationId: userResult.dealerRegistrationId,
+          userRole: userResult.role
         },
         sessionId
       };

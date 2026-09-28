@@ -17,6 +17,7 @@ import personalPerformanceRoutes from "./routes/personal-performance";
 import performanceTargetsRoutes from "./routes/performance-targets";
 import trainingRoutes from "./routes/training";
 import sheetViewerRoutes from "./routes/sheet-viewer";
+import activationAuditRoutes from "./routes/activation-audit";
 import settlementSheetsImportRoutes from "./routes/settlement-sheets-import";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
@@ -246,8 +247,16 @@ app.use(performanceTargetsRoutes);
 // 교육자료(사내 교육센터) — 열람: admin/sales_manager/내부 worker(dealer 제외), 관리: admin 전용
 app.use(trainingRoutes);
 
-// 개통현황 선택 조회(월별 Spreadsheet 시트 뷰어, READ ONLY) — admin/sales_manager/내부 worker(dealer 제외)
+// 개통현황 선택 조회(월별 Spreadsheet 시트 뷰어, READ ONLY)
+// [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] admin/sales_manager/내부 worker
+// 공통 허용이던 기존 권한을 admin/내부 middle_manager(role='middle_manager')로 좁혔다 —
+// 일반 WORKER·sales_manager는 더 이상 개통현황 조회에 접근할 수 없다(server/routes/sheet-viewer.ts
+// requireSheetViewerAccess 참고).
 app.use(sheetViewerRoutes);
+
+// 개통 후 자동검수(개통현황 조회 화면에 통합) — admin/내부 middle_manager 전용(/summary),
+// 본인 검수(/me)는 내부 WORKER·middle_manager 공통. READ ONLY.
+app.use(activationAuditRoutes);
 
 // 정산 결과 관리 — Google Sheets(개통처리부) 정산 import Preview/Import — admin 전용
 app.use(settlementSheetsImportRoutes);

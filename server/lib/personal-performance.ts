@@ -65,7 +65,9 @@ export function ymd(date: Date): string {
   return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
 }
 
-interface LedgerCacheEntry {
+// [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] export만 추가(동작 무변경) —
+// activation-audit.ts가 fetchLedgerCached()의 반환 타입을 그대로 재사용한다.
+export interface LedgerCacheEntry {
   header: string[];
   rows: string[][];
 }
@@ -101,7 +103,10 @@ const sharedLedgerCache = new Map<string, SharedLedgerCacheEntry>();
 // 개인 실적 계산에 쓰이는 경로)는 인자를 그대로 생략해서 호출하므로 동작이 전혀 바뀌지
 // 않는다. discoverWorkerNamesForDates()만 다른 sheetName으로 이 함수를 재호출한다.
 // 캐시 키에 sheetName을 포함시켜 시트별로 독립적으로 캐시된다.
-async function fetchLedgerCached(date: Date, cache: LedgerCache, sheetName: string = LEDGER_SHEET): Promise<LedgerCacheEntry> {
+// [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] export만 추가(동작 무변경) —
+// 개통현황 조회 자동검수 엔진(server/lib/activation-audit.ts)이 개통처리부/■당일완료를
+// 읽을 때 이 프로세스 공유 캐시를 그대로 재사용한다. 새 캐시 구조를 중복으로 만들지 않는다.
+export async function fetchLedgerCached(date: Date, cache: LedgerCache, sheetName: string = LEDGER_SHEET): Promise<LedgerCacheEntry> {
   const resolved = await resolveActiveSpreadsheet(date);
   const key = `${resolved.id}::${sheetName}`;
 

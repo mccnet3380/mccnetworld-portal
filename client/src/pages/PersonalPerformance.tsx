@@ -158,10 +158,163 @@ export function PersonalPerformance() {
         )}
 
         {!loading && !error && data && data.mapped && data.activation && (
-          <PersonalPerformanceView data={data} />
+          <>
+            <PersonalPerformanceView data={data} />
+            <MyActivationAuditPanel />
+          </>
         )}
       </div>
     </Layout>
+  );
+}
+
+// [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] "내 업무 누락 검수" — 본인이
+// 처리한 건 중 오류/누락만 표시한다. 전체 직원 데이터를 받아 frontend에서 거르지 않는다 —
+// /api/activation-audit/me가 서버에서 로그인 사용자의 performanceWorkerName 기준으로만
+// 필터링해서 내려준다(§9 원칙).
+type MyAuditCode =
+  | "ACTIVATION_PHONE_MISSING"
+  | "CONTACT_CODE_MISSING"
+  | "PLAN_MISSING"
+  | "ACTIVATION_NUMBER_MISSING"
+  | "FOREIGNER_GRADE_MISSING"
+  | "DEVICE_MODEL_MISSING"
+  | "DEVICE_SERIAL_MISSING"
+  | "MEMI_DEVICE_NOT_FOUND"
+  | "MEMI_DATA_UNAVAILABLE";
+
+const MY_AUDIT_CODE_LABEL: Record<MyAuditCode, string> = {
+  ACTIVATION_PHONE_MISSING: "개통번호",
+  ACTIVATION_NUMBER_MISSING: "가입번호",
+  CONTACT_CODE_MISSING: "접점코드",
+  PLAN_MISSING: "요금제",
+  FOREIGNER_GRADE_MISSING: "외국인등급",
+  DEVICE_MODEL_MISSING: "단말 모델명",
+  DEVICE_SERIAL_MISSING: "단말 일련번호",
+  MEMI_DEVICE_NOT_FOUND: "매미 미확인",
+  MEMI_DATA_UNAVAILABLE: "매미 확인불가",
+};
+
+interface MyAuditRow {
+  activationDate: string;
+  requestPoint: string;
+  customerName: string;
+  activationNumber: string;
+  contactCode: string;
+  planName: string;
+  subscriptionNumber: string;
+  foreignerGrade: string;
+  model: string;
+  serial: string;
+  status: "PASS" | "ERROR" | "DATA_UNAVAILABLE";
+  issues: { code: MyAuditCode; severity: "ERROR" | "DATA_UNAVAILABLE"; label: string }[];
+}
+
+interface MyAuditResponse {
+  mapped: boolean;
+  message?: string;
+  date?: string;
+  total?: number;
+  summary?: { pass: number; error: number; dataUnavailable: number };
+  byCode?: Partial<Record<MyAuditCode, number>>;
+  rows?: MyAuditRow[];
+}
+
+function MyActivationAuditPanel() {
+  const apiRequest = useApiRequest();
+  const [data, setData] = useState<MyAuditResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showDetail, setShowDetail] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiRequest(`/api/activation-audit/me`)
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch((e: any) => {
+        if (!cancelled) setError(e?.message ?? String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading || error || !data || !data.mapped) return null;
+
+  const problemRows = (data.rows ?? []).filter((r) => r.status !== "PASS");
+  const errorCount = data.summary?.error ?? 0;
+  const dataUnavailableCount = data.summary?.dataUnavailable ?? 0;
+  const problemTotal = errorCount + dataUnavailableCount;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">내 업무 누락 검수 ({data.date})</CardTitle>
+        <CardDescription>
+          오늘 내가 처리한 개통 건 중 오류·누락만 표시합니다. 다른 작업자의 데이터는 표시되지 않습니다.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {problemTotal === 0 ? (
+          <p className="text-sm text-green-700 font-medium">오늘 처리한 건 중 누락/오류가 없습니다.</p>
+        ) : (
+          <>
+            <button
+              onClick={() => setShowDetail((v) => !v)}
+              className="text-sm font-semibold text-red-700 hover:underline"
+            >
+              내 업무 누락 {problemTotal}건 {showDetail ? "숨기기" : "자세히 보기"}
+            </button>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(data.byCode ?? {}).map(([code, count]) => (
+                <span key={code} className="text-xs bg-red-50 text-red-700 border border-red-200 px-2 py-1 rounded">
+                  {MY_AUDIT_CODE_LABEL[code as MyAuditCode] ?? code} {count}
+                </span>
+              ))}
+            </div>
+            {showDetail && (
+              <div className="overflow-auto border rounded-md">
+                <table className="text-xs min-w-full">
+                  <thead className="bg-muted">
+                    <tr>
+                      {["개통일", "요청점", "고객명", "개통번호", "검수상태", "오류사유"].map((h) => (
+                        <th key={h} className="px-2 py-1.5 text-left font-medium whitespace-nowrap border-b">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {problemRows.map((r, i) => (
+                      <tr key={i} className="border-b">
+                        <td className="px-2 py-1 whitespace-nowrap">{r.activationDate}</td>
+                        <td className="px-2 py-1 whitespace-nowrap">{r.requestPoint}</td>
+                        <td className="px-2 py-1 whitespace-nowrap">{r.customerName}</td>
+                        <td className="px-2 py-1 whitespace-nowrap">{r.activationNumber || "-"}</td>
+                        <td className="px-2 py-1 whitespace-nowrap">
+                          {r.status === "ERROR" ? <span className="text-red-600 font-semibold">ERROR</span> : <span className="text-amber-600">확인필요</span>}
+                        </td>
+                        <td className="px-2 py-1">
+                          <ul className="list-disc list-inside space-y-0.5">
+                            {r.issues.map((iss, ii) => (
+                              <li key={ii} className={iss.severity === "ERROR" ? "text-red-600" : "text-amber-600"}>{iss.label}</li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

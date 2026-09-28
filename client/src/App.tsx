@@ -95,9 +95,10 @@ function AppRoutes() {
             접근 허용 — LG/KT 검수와 동일한 "내부 직원" 위상으로 취급(Sidebar/백엔드와 일관). */}
         <Route path="/training" component={TrainingCenter} />
         <Route path="/training/:id" component={TrainingArticleDetail} />
-        {/* [MCC_MONTHLY_SPREADSHEET_SELECTIVE_SHEET_VIEWER_1] 영업과장도 개통현황 조회 접근
-            허용 — LG/KT 검수·교육자료와 동일한 "내부 직원" 위상으로 취급. */}
-        <Route path="/sheet-viewer" component={SheetViewer} />
+        {/* [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 개통현황 조회가 개통 후
+            자동검수 센터로 확장되면서 sales_manager 접근을 제거했다(감사 지시 §7 — 중간관리자
+            검수 권한은 sales_manager 전체에 자동 부여하지 않는다). 서버 권한도 동일하게
+            좁혔다(server/routes/sheet-viewer.ts requireSheetViewerAccess). */}
         <Route component={() => <Redirect to="/sales-manager-dashboard" />} />
       </Switch>
     );
@@ -211,12 +212,13 @@ function AppRoutes() {
         </>
       )}
 
-      {/* [MCC_MONTHLY_SPREADSHEET_SELECTIVE_SHEET_VIEWER_1] 개통현황 조회: LG/KT 검수·교육자료와
-          동일한 권한 조건(admin/sales_manager/내부 WORKER, dealer 차단). 실제 게이트는
-          server/routes/sheet-viewer.ts의 requireSheetViewerAccess. */}
+      {/* [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 개통현황 조회가 개통 후
+          자동검수 센터로 확장되면서 권한을 좁혔다: admin 또는 내부 middle_manager
+          (userRole==='middle_manager')만. 일반 WORKER·sales_manager·dealer는 차단.
+          실제 게이트는 server/routes/sheet-viewer.ts의 requireSheetViewerAccess(서버에서도
+          동일하게 강제, 사이드바 숨김만으로 끝내지 않음). */}
       {(user?.userType === 'admin' ||
-        user?.userType === 'sales_manager' ||
-        (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
+        (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId && user?.userRole === 'middle_manager')) && (
         <Route path="/sheet-viewer" component={SheetViewer} />
       )}
 

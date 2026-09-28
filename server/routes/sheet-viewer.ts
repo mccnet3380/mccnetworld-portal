@@ -6,11 +6,16 @@
 // 특정 시트 이름을 하드코딩하지 않는다 — 실제 존재하는 시트 목록은 항상 Google Sheets
 // metadata(listSpreadsheetSheetsById)에서 그때그때 가져온다.
 //
-// 권한: admin / sales_manager / (dealerId·dealerRegistrationId가 없는) 내부 user만 허용
-// — server/routes/lg-audit.ts의 requireLgAuditAccess, server/routes/training.ts의
-// requireTrainingViewer와 완전히 동일한 패턴이다. 딜러도 DB상 userType='user'로 저장되므로
-// session.userType만으로는 내부 워커를 판정할 수 없다 — getUserById로 재조회해서
-// dealerId/dealerRegistrationId 부재를 직접 확인한다.
+// 권한: [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 이 화면이 개통 후 자동검수
+// 센터로 확장되면서 권한을 좁혔다(기존: admin/sales_manager/내부 worker 전원 허용 →
+// 변경: admin 또는 내부 middle_manager만 허용). 일반 WORKER와 sales_manager는 더 이상
+// 접근할 수 없다 — sales_manager는 이 신규 검수 권한 대상이 아니고(감사 지시 §7),
+// sales_manager 세션의 userId는 users.id가 아니라 salesManagers.id를 가리켜 getUserById로
+// role을 조회하는 것 자체가 의미가 없다(기존 server/lib/personal-performance.ts 주석과
+// 동일한 이유). 딜러도 DB상 userType='user'로 저장되므로 session.userType만으로는 내부
+// 직원을 판정할 수 없다 — getUserById로 재조회해서 dealerId/dealerRegistrationId 부재와
+// role='middle_manager'를 직접 확인한다. LG검수/KT검수/교육자료는 이번 작업 범위가
+// 아니므로 기존 권한(admin/sales_manager/내부 worker) 그대로 무변경.
 //
 // resolveActiveSpreadsheet()/fetchSheetValuesById()(둘 다 LOCK, import만) 재사용 —
 // 이 파일은 새 계산/매칭 로직을 만들지 않는다. 정산/실적 계산과 무관한 순수 조회 기능.
@@ -35,14 +40,14 @@ async function requireSheetViewerAccess(req: any, res: any, next: any) {
     return res.status(401).json({ error: "유효하지 않은 세션입니다." });
   }
 
-  if (session.userType === "admin" || session.userType === "sales_manager") {
+  if (session.userType === "admin") {
     req.session = session;
     return next();
   }
 
   if (session.userType === "user") {
     const user = await getStorage().getUserById(session.userId);
-    if (user && !user.dealerId && !user.dealerRegistrationId) {
+    if (user && !user.dealerId && !user.dealerRegistrationId && user.role === "middle_manager") {
       req.session = session;
       return next();
     }

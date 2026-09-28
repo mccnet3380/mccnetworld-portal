@@ -5,6 +5,12 @@
 // 월별 ★개통현황 Spreadsheet에서 사용자가 원하는 시트만 골라 조회하는 READ ONLY 화면.
 // 시트 이름은 코드에 하드코딩하지 않는다 — /api/sheet-viewer/sheets가 반환하는 실제
 // metadata 목록을 그대로 체크박스로 렌더링한다. 정산/실적 계산과 무관한 순수 조회 기능.
+//
+// [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 위 원본 조회 기능은 그대로 두고,
+// 화면 상단에 "개통 후 자동검수" 섹션을 추가한다. 검수는 /api/activation-audit/summary만
+// 호출한다(개통처리부+■당일완료 2개 시트만 사용 — server/lib/activation-audit.ts 참고).
+// 이 섹션은 admin/내부 middle_manager만 접근하는 화면이므로(App.tsx/Sidebar.tsx에서
+// 이미 게이트) 별도 권한 분기 없이 렌더링한다 — 서버도 동일 권한을 강제한다.
 
 import { useEffect, useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";
@@ -16,7 +22,85 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApiRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { FileSpreadsheet, Search, Loader2, Bookmark, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { FileSpreadsheet, Search, Loader2, Bookmark, Trash2, ShieldAlert, ShieldCheck, HelpCircle } from "lucide-react";
+
+type AuditCode =
+  | "ACTIVATION_PHONE_MISSING"
+  | "CONTACT_CODE_MISSING"
+  | "PLAN_MISSING"
+  | "ACTIVATION_NUMBER_MISSING"
+  | "FOREIGNER_GRADE_MISSING"
+  | "DEVICE_MODEL_MISSING"
+  | "DEVICE_SERIAL_MISSING"
+  | "MEMI_DEVICE_NOT_FOUND"
+  | "MEMI_DATA_UNAVAILABLE";
+
+type RowAuditStatus = "PASS" | "ERROR" | "DATA_UNAVAILABLE";
+
+interface AuditIssue {
+  code: AuditCode;
+  severity: "ERROR" | "DATA_UNAVAILABLE";
+  label: string;
+}
+
+interface AuditedActivationRow {
+  worker: string;
+  activationDate: string;
+  requestPoint: string;
+  customerName: string;
+  activationNumber: string;
+  code: string;
+  contactCode: string;
+  planName: string;
+  subscriptionNumber: string;
+  customerType: string;
+  foreignerGrade: string;
+  model: string;
+  serial: string;
+  status: RowAuditStatus;
+  issues: AuditIssue[];
+}
+
+interface ActivationAuditResult {
+  date: string;
+  sourceSheet: string;
+  total: number;
+  summary: { pass: number; error: number; dataUnavailable: number };
+  byCode: Partial<Record<AuditCode, number>>;
+  rows: AuditedActivationRow[];
+}
+
+const AUDIT_CODE_ORDER: AuditCode[] = [
+  "ACTIVATION_PHONE_MISSING",
+  "ACTIVATION_NUMBER_MISSING",
+  "CONTACT_CODE_MISSING",
+  "PLAN_MISSING",
+  "FOREIGNER_GRADE_MISSING",
+  "DEVICE_MODEL_MISSING",
+  "DEVICE_SERIAL_MISSING",
+  "MEMI_DEVICE_NOT_FOUND",
+  "MEMI_DATA_UNAVAILABLE",
+];
+
+const AUDIT_CODE_LABEL: Record<AuditCode, string> = {
+  ACTIVATION_PHONE_MISSING: "개통번호",
+  ACTIVATION_NUMBER_MISSING: "가입번호",
+  CONTACT_CODE_MISSING: "접점코드",
+  PLAN_MISSING: "요금제",
+  FOREIGNER_GRADE_MISSING: "외국인등급",
+  DEVICE_MODEL_MISSING: "단말 모델명",
+  DEVICE_SERIAL_MISSING: "단말 일련번호",
+  MEMI_DEVICE_NOT_FOUND: "매미 미확인",
+  MEMI_DATA_UNAVAILABLE: "매미 확인불가",
+};
+
+type StatusFilter = "all" | "problem" | "pass" | "unavailable";
+
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const ROWS_PER_PAGE = 100;
 const SAVED_VIEWS_KEY = "mcc-sheet-viewer-views";
@@ -80,6 +164,61 @@ export function SheetViewer() {
 
   const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews());
   const [newViewName, setNewViewName] = useState("");
+
+  // ── [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 자동검수 상태 ──────────
+  const [auditDate, setAuditDate] = useState<string>(() => todayStr());
+  const [auditData, setAuditData] = useState<ActivationAuditResult | null>(null);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditError, setAuditError] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("problem");
+  const [codeFilter, setCodeFilter] = useState<AuditCode | null>(null);
+  const [workerFilter, setWorkerFilter] = useState<string>("ALL");
+
+  async function loadAudit(date: string) {
+    setAuditLoading(true);
+    setAuditError("");
+    try {
+      const res = await apiRequest(`/api/activation-audit/summary?date=${date}`);
+      setAuditData(res);
+    } catch (e: any) {
+      setAuditData(null);
+      setAuditError(e.message || "검수 데이터를 불러오지 못했습니다.");
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAudit(auditDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditDate]);
+
+  const auditWorkers = useMemo(() => {
+    if (!auditData) return [];
+    const names = new Set(auditData.rows.map((r) => r.worker).filter(Boolean));
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "ko"));
+  }, [auditData]);
+
+  const filteredAuditRows = useMemo(() => {
+    if (!auditData) return [];
+    return auditData.rows.filter((r) => {
+      if (workerFilter !== "ALL" && r.worker !== workerFilter) return false;
+      if (codeFilter && !r.issues.some((i) => i.code === codeFilter)) return false;
+      if (statusFilter === "problem" && r.status === "PASS") return false;
+      if (statusFilter === "pass" && r.status !== "PASS") return false;
+      if (statusFilter === "unavailable" && r.status !== "DATA_UNAVAILABLE") return false;
+      return true;
+    });
+  }, [auditData, statusFilter, codeFilter, workerFilter]);
+
+  function selectStatus(f: StatusFilter) {
+    setStatusFilter(f);
+    setCodeFilter(null);
+  }
+  function selectCode(code: AuditCode) {
+    setCodeFilter((prev) => (prev === code ? null : code));
+    setStatusFilter("all");
+  }
 
   async function loadSheets() {
     setSheetsLoading(true);
@@ -192,6 +331,169 @@ export function SheetViewer() {
         <p className="text-sm text-muted-foreground -mt-4">
           월별 개통현황 Spreadsheet에서 원하는 시트만 선택해서 원본 그대로 확인합니다. 조회 전용이며 원본은 변경되지 않습니다.
         </p>
+
+        {/* [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 개통 후 자동검수 섹션.
+            개통처리부+■당일완료 2개 시트만 사용(다른 시트는 이 계산에 전혀 관여하지 않음). */}
+        <Card>
+          <CardContent className="py-4 space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                <h2 className="text-base font-semibold">개통 후 자동검수</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">검수 날짜</span>
+                <Input
+                  type="date"
+                  className="w-40 h-9"
+                  value={auditDate}
+                  onChange={(e) => setAuditDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {auditLoading && <p className="text-sm text-muted-foreground">검수 데이터를 불러오는 중...</p>}
+            {auditError && <p className="text-sm text-red-600 font-semibold">{auditError}</p>}
+
+            {!auditLoading && !auditError && auditData && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  데이터 원본: {auditData.sourceSheet} · {auditData.date} 기준
+                </p>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => selectStatus("all")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-sm border",
+                      statusFilter === "all" && !codeFilter ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted",
+                    )}
+                  >
+                    전체 대상 {auditData.total}
+                  </button>
+                  <button
+                    onClick={() => selectStatus("pass")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-sm border flex items-center gap-1",
+                      statusFilter === "pass" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted",
+                    )}
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" /> 정상 {auditData.summary.pass}
+                  </button>
+                  <button
+                    onClick={() => selectStatus("problem")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-sm border flex items-center gap-1",
+                      statusFilter === "problem" && !codeFilter ? "bg-red-600 text-white border-red-600" : "border-red-300 text-red-700 hover:bg-red-50",
+                    )}
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5" /> 오류·누락 {auditData.summary.error}
+                  </button>
+                  <button
+                    onClick={() => selectStatus("unavailable")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-sm border flex items-center gap-1",
+                      statusFilter === "unavailable" ? "bg-amber-500 text-white border-amber-500" : "border-amber-300 text-amber-700 hover:bg-amber-50",
+                    )}
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" /> 확인필요 {auditData.summary.dataUnavailable}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {AUDIT_CODE_ORDER.filter((c) => (auditData.byCode[c] ?? 0) > 0).map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => selectCode(c)}
+                      className={cn(
+                        "px-2.5 py-1 rounded text-xs border",
+                        codeFilter === c ? "bg-foreground text-background border-foreground" : "bg-muted hover:bg-muted/70",
+                      )}
+                    >
+                      {AUDIT_CODE_LABEL[c]} {auditData.byCode[c]}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium">작업자</span>
+                  <Select value={workerFilter} onValueChange={setWorkerFilter}>
+                    <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">전체 작업자</SelectItem>
+                      {auditWorkers.map((w) => (
+                        <SelectItem key={w} value={w}>{w}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-xs text-muted-foreground">
+                    표시 중 {filteredAuditRows.length.toLocaleString()}건
+                  </span>
+                </div>
+
+                <div className="overflow-auto border rounded-md max-h-[55vh]">
+                  <table className="text-xs min-w-full">
+                    <thead className="bg-muted sticky top-0">
+                      <tr>
+                        {["작업자", "개통일", "요청점", "고객명", "개통번호", "코드", "접점코드", "요금제", "가입번호", "외국인등급", "모델명", "일련번호", "검수상태", "오류사유"].map((h) => (
+                          <th key={h} className="px-2 py-1.5 text-left font-medium whitespace-nowrap border-b">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAuditRows.map((r, i) => (
+                        <tr key={i} className={cn("border-b hover:bg-muted/50", r.status === "ERROR" && "bg-red-50")}>
+                          <td className="px-2 py-1 whitespace-nowrap">{r.worker}</td>
+                          <td className="px-2 py-1 whitespace-nowrap">{r.activationDate}</td>
+                          <td className="px-2 py-1 whitespace-nowrap">{r.requestPoint}</td>
+                          <td className="px-2 py-1 whitespace-nowrap">{r.customerName}</td>
+                          <td className={cn("px-2 py-1 whitespace-nowrap", !r.activationNumber && "text-red-600 font-semibold")}>{r.activationNumber || "[누락]"}</td>
+                          <td className="px-2 py-1 whitespace-nowrap">{r.code}</td>
+                          <td className={cn("px-2 py-1 whitespace-nowrap", !r.contactCode && "text-red-600 font-semibold")}>{r.contactCode || "[누락]"}</td>
+                          <td className={cn("px-2 py-1 whitespace-nowrap", !r.planName && "text-red-600 font-semibold")}>{r.planName || "[누락]"}</td>
+                          <td className={cn("px-2 py-1 whitespace-nowrap", !r.subscriptionNumber && r.worker !== "본사" && "text-red-600 font-semibold")}>
+                            {r.subscriptionNumber || (r.worker === "본사" ? "-" : "[누락]")}
+                          </td>
+                          <td className={cn("px-2 py-1 whitespace-nowrap", r.customerType.includes("외국인") && !r.foreignerGrade && "text-red-600 font-semibold")}>
+                            {r.foreignerGrade || (r.customerType.includes("외국인") ? "[누락]" : "-")}
+                          </td>
+                          <td className="px-2 py-1 whitespace-nowrap">{r.model || (r.requestPoint.startsWith("단말)") ? "[누락]" : "-")}</td>
+                          <td className="px-2 py-1 whitespace-nowrap">
+                            {r.serial || (r.requestPoint.startsWith("단말)") ? "[누락]" : "-")}
+                            {r.issues.some((iss) => iss.code === "MEMI_DATA_UNAVAILABLE") && (
+                              <span className="ml-1 text-amber-600">[매미 미확인]</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1 whitespace-nowrap">
+                            {r.status === "PASS" && <span className="text-green-700">PASS</span>}
+                            {r.status === "ERROR" && <span className="text-red-600 font-semibold">ERROR {r.issues.filter((iss) => iss.severity === "ERROR").length}</span>}
+                            {r.status === "DATA_UNAVAILABLE" && <span className="text-amber-600">확인필요</span>}
+                          </td>
+                          <td className="px-2 py-1">
+                            {r.issues.length === 0 ? (
+                              "-"
+                            ) : (
+                              <ul className="list-disc list-inside space-y-0.5">
+                                {r.issues.map((iss, ii) => (
+                                  <li key={ii} className={iss.severity === "ERROR" ? "text-red-600" : "text-amber-600"}>
+                                    {iss.label}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredAuditRows.length === 0 && (
+                        <tr><td colSpan={14} className="px-2 py-6 text-center text-muted-foreground">해당 조건의 건이 없습니다.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardContent className="py-4 space-y-4">

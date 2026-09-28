@@ -71,10 +71,11 @@ const navigation = [
   // dealer는 dealerAllowedMenus로 계속 제외)이라 바로 아래 배치. 실제 권한 게이트는
   // server/routes/training.ts의 requireTrainingViewer/requireTrainingAdmin.
   { name: '교육자료', href: '/training', icon: GraduationCap },
-  // MCC_MONTHLY_SPREADSHEET_SELECTIVE_SHEET_VIEWER_1: 개통현황 조회 — 월별 ★개통현황
-  // Spreadsheet에서 원하는 시트만 골라보는 READ ONLY 뷰어. LG/KT 검수·교육자료와 동일한
-  // 위상(admin/sales_manager/내부 worker, dealer는 dealerAllowedMenus로 계속 제외)이라
-  // 바로 아래 배치. 실제 권한 게이트는 server/routes/sheet-viewer.ts의 requireSheetViewerAccess.
+  // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 개통현황 조회가 개통 후
+  // 자동검수 센터로 확장되면서 권한을 admin/내부 middle_manager로 좁혔다(기존: admin/
+  // sales_manager/내부 worker 전원). 아래 role별 filter에서 sales_manager/일반 WORKER는
+  // 이 항목을 제외하고, middle_manager(role='middle_manager')만 남긴다. 실제 게이트는
+  // server/routes/sheet-viewer.ts의 requireSheetViewerAccess.
   { name: '개통현황 조회', href: '/sheet-viewer', icon: FileSpreadsheet },
 ];
 
@@ -101,10 +102,13 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const isSalesManager = user?.userType === 'sales_manager';
   const isWorker = user?.userType === 'user' && user?.userRole === 'dealer_worker';
   const isDealer = user?.dealerId !== undefined && user?.dealerId !== null && !isWorker;
-  
+  // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] '개통현황 조회'가 개통 후
+  // 자동검수 센터로 확장되면서, 이 메뉴만 admin/내부 middle_manager 전용으로 좁혔다.
+  const isMiddleManager = user?.userType === 'user' && user?.userRole === 'middle_manager';
+
   // 딜러용 메뉴 (접수 관리, 업무 진행, 서식지만)
   const dealerAllowedMenus = ['접수 관리', '업무 진행', '서식지'];
-  
+
   // 메뉴 필터링
   let baseNavigation = navigation;
   if (isAdmin) {
@@ -114,8 +118,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     // 영업과장은 읽기 전용 메뉴만 (정산 관리 제외)
     // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: 개인 실적은 내부 개통 근무자
     // 실적용 기능이라 sales_manager 대상이 아니다(요구사항) — 기본 노출 제외.
+    // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 개통현황 조회도 이번에
+    // sales_manager 대상에서 제외했다(§7 — 중간관리자 검수 권한 자동 부여 금지).
     baseNavigation = navigation.filter(item =>
-      item.name !== '정산 관리' && item.name !== '개인 실적'
+      item.name !== '정산 관리' && item.name !== '개인 실적' && item.name !== '개통현황 조회'
     );
   } else if (isWorker) {
     // 근무자는 전체 메뉴 접근 가능
@@ -123,9 +129,15 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   } else if (isDealer) {
     // 판매점(딜러)은 제한된 메뉴만 접근
     baseNavigation = navigation.filter(item => dealerAllowedMenus.includes(item.name));
-  } else {
-    // 기타 사용자는 전체 메뉴 접근 가능
+  } else if (isMiddleManager) {
+    // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 중간관리자: 일반 근무 메뉴 +
+    // 개통현황 조회(전체 검수) 모두 노출. 관리자 전용 메뉴(adminNavigation)는 아래에서
+    // isAdmin일 때만 붙으므로 자동으로 제외된다.
     baseNavigation = navigation;
+  } else {
+    // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 일반 WORKER(중간관리자 아님):
+    // 개통현황 조회 메뉴 노출 안 함(서버도 동일하게 차단 — sheet-viewer.ts 참고).
+    baseNavigation = navigation.filter(item => item.name !== '개통현황 조회');
   }
   
   // 관리자만 관리자 패널 접근 가능. 실적관리(전체 근무자 실적)도 관리자만 — 맨 앞에 붙인다.
