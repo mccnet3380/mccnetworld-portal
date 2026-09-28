@@ -15,15 +15,43 @@
 // ─────────────────────────────────────────────────────────
 //
 import * as XLSX from "xlsx";
+import iconv from "iconv-lite";
+
+// [MCC_MEMI_REALTIME_DEVICE_RECONCILIATION_DEV_RESUME_2] 실제 매미 서버 대상 실측(credential
+// 적용 후 진행) 결과, 로그인/xlsDown 응답이 전부 charset=EUC-KR로 내려온다(서버의
+// Content-Type 헤더로 명시 확인). Node fetch의 res.text()는 UTF-8로만 디코딩하므로 그대로
+// 쓰면 한글이 깨지고, 하필 깨진 바이트가 실패 판정 정규식(`alert(`)과 우연히 일치해
+// "로그인 되었습니다"(성공) 메시지를 실패로 오판하는 실제 버그가 있었다 — 이 파일 전체에서
+// 응답 본문은 반드시 이 함수로 디코딩한다.
+//
+// [DEV_RESUME_2 실측 — 2차 버그] xlsDown 응답의 HTTP Content-Type 헤더에는 charset이
+// 아예 없다(예: "application/vnd.ms-excel"만, 로그인 응답과 달리 charset 파라미터 없음).
+// 이 상태에서 기본값을 utf-8로 두면 EUC-KR 바이트를 잘못 디코딩해서 "일련번호"/"모델명"
+// 같은 헤더 문자열이 깨져 findHeaderIndex()가 못 찾는 실제 버그가 있었다 — 실서버 응답으로
+// 확인. 이 사이트(imemi.co.kr) 전체가 EUC-KR을 쓰는 것을 로그인 응답(明시적 charset=EUC-KR)
+// 으로 이미 확인했으므로, HTTP 헤더에 charset이 없을 때는 UTF-8이 아니라 EUC-KR을
+// 기본값으로 쓴다(범용 유틸이 아니라 이 모듈 전용 함수라 안전하다).
+function decodeBody(buf: Buffer, contentType: string | null): string {
+  const m = /charset=([^;]+)/i.exec(contentType ?? "");
+  const charset = (m?.[1] ?? "euc-kr").trim().toLowerCase();
+  if (charset === "utf-8" || charset === "utf8") return buf.toString("utf-8");
+  try {
+    return iconv.decode(buf, charset);
+  } catch {
+    return buf.toString("utf-8");
+  }
+}
 
 // HTTP(HTTPS 아님) 사용 — 인증서 이름 불일치가 실측 확인되어 임의로 HTTPS 전환하지 않는다.
 const MEMI_BASE = "http://ad2.imemi.co.kr";
 const MEMI_LOGIN_URL = `${MEMI_BASE}/Login/LoginDo?`;
-const MEMI_XLSDOWN_URL = `${MEMI_BASE}/Sell/Sell/xlsDown`;
+const MEMI_XLSDOWN_PATH = `/Sell/Sell/xlsDown`;
 
-// 로그인 실패 시 HTTP 200이어도 alert(...)가 반환되는 것이 실측됐다(§3/§5) — 200만으로
-// 성공 판정하지 않는다.
-const LOGIN_FAILURE_PATTERN = /alert\(\s*['"]/;
+// [DEV_RESUME_2] 실제 로그인 성공 응답 실측: alert("(주)엠씨씨코리아님 로그인 되었습니다").
+// 실패 응답도 alert(...)를 쓰므로(§3/§5 실측 그대로) "alert() 존재 여부"가 아니라 "성공
+// 문구 포함 여부"로 판정해야 한다 — 실패를 성공으로 오판하는 것보다 훨씬 안전한 방향이다
+// (성공 문구가 없으면 무조건 실패 처리).
+const LOGIN_SUCCESS_PATTERN = /로그인\s*되었습니다/;
 
 // 세션 재사용 TTL(추정치) — 매미가 실제로 몇 분/시간 세션을 유지하는지 실측되지 않았으므로
 // 보수적으로 짧게 잡는다. xlsDown이 로그인 페이지(HTML)를 반환하면 즉시 세션 만료로 보고
@@ -99,10 +127,11 @@ function mergeCookies(existing: string, setCookieHeaders: string[]): string {
 }
 
 /**
- * 매미 로그인. 실측 필드(§3): MemberID/MemberPW/chk_id/mAddr.
- * chk_id/mAddr의 정확한 기대값은 실제 로그인 폼 캡처로 재확인되지 않았다 — 아이디저장
- * 체크박스/접속기기 식별용 보조 필드로 추정되는 값을 안전한 기본값으로 보낸다(둘 다 로그인
- * 필수 여부가 확인되지 않았으므로, 실패 시 credential 문제와 구분해 로그로만 남긴다).
+ * 매미 로그인. 필드: MemberID/MemberPW/chk_id/mAddr.
+ * [DEV_RESUME_2 실측 완료] chk_id/mAddr는 빈 문자열로 실제 로그인이 성공하는 것을 확인했다
+ * (실측 응답: alert("(주)엠씨씨코리아님 로그인 되었습니다") + PHPSESSID/mm_sid_cookie/
+ * mm_nid_cookie 쿠키 3종 발급 — 실제 브라우저 로그인 폼은 /aLogin으로 제출되고 이 값들을
+ * 아예 보내지 않지만, /Login/LoginDo?로 직접 보내는 이 방식도 실측상 정상 동작한다).
  */
 async function login(): Promise<string> {
   const creds = getCredentials();
@@ -132,16 +161,19 @@ async function login(): Promise<string> {
   const setCookies = parseSetCookie(res.headers);
   const cookieHeader = mergeCookies("", setCookies);
 
-  // 3xx 리다이렉트 응답 body는 비어 있을 수 있으므로 body 검사보다 먼저 쿠키 유무를 본다.
   let text = "";
   try {
-    text = await res.text();
+    const buf = Buffer.from(await res.arrayBuffer());
+    text = decodeBody(buf, res.headers.get("content-type"));
   } catch {
     // 바이너리/빈 응답 — 무시
   }
 
-  if (LOGIN_FAILURE_PATTERN.test(text)) {
-    throw new MemiUnavailableError(`매미 로그인 실패(알림 응답 감지): ${text.slice(0, 200)}`);
+  // [DEV_RESUME_2 실측] 실제 alert 메시지 예: "존재하지 않는 회원입니다"(실패, 이전 라운드
+  // 추정), "(주)엠씨씨코리아님 로그인 되었습니다"(성공, 이번에 실제 확인). 성공 문구가 없으면
+  // 무조건 실패로 처리한다 — 메시지 내용은 로그에만 남기고 credential 값 자체는 포함하지 않는다.
+  if (!LOGIN_SUCCESS_PATTERN.test(text)) {
+    throw new MemiUnavailableError(`매미 로그인 실패(성공 문구 없음): ${text.slice(0, 200)}`);
   }
   if (!cookieHeader) {
     throw new MemiUnavailableError("매미 로그인 실패: 세션 쿠키가 발급되지 않았습니다.");
@@ -160,41 +192,84 @@ async function getSession(forceRelogin = false): Promise<string> {
 }
 
 interface XlsDownResult {
-  buffer: Buffer;
-}
-
-const XLSX_ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04]); // .xlsx (zip)
-const XLS_OLE_SIGNATURE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xcd, 0xfe, 0xe1, 0xa0]); // legacy .xls
-
-function looksLikeExcelBinary(buf: Buffer): boolean {
-  if (buf.length < 4) return false;
-  if (buf.subarray(0, 4).equals(XLSX_ZIP_SIGNATURE)) return true;
-  if (buf.length >= 8 && buf.subarray(0, 8).equals(XLS_OLE_SIGNATURE)) return true;
-  return false;
+  /** [DEV_RESUME_2 실측] 매미 xlsDown은 실제 바이너리 xls/xlsx가 아니라 "엑셀에서 열리도록
+   * Content-Type만 application/vnd.ms-excel로 위장한 HTML table"을 내려준다(실제 브라우저의
+   * [엑셀저장] 버튼 클릭을 캡처해 확인함, 흔한 레거시 PHP 방식). 그래서 바이너리 signature
+   * (ZIP/OLE) 검사가 아니라 디코딩된 HTML 텍스트 자체를 파싱 단계로 넘긴다. */
+  html: string;
 }
 
 /**
- * 금일 개통자료 xlsDown. 실측 필드(§3, 과거 캡처 — 그대로 하드코딩하지 않고 최소 필요
- * 필드만 재현): ListType=SELL, OpnSvcCheck=S, SearchDayChk=on, SearchSDay, SearchEDay,
- * Cpage=1. Audit Engine이 조회하는 날짜와 동일한 날짜만 요청한다(§6 — 월 전체 다운로드 후
- * 클라이언트 필터링 금지).
- *
- * 응답 검증(§7): Content-Type/Content-Disposition만으로 성공 판정하지 않고, 실제 바이너리
- * signature(xlsx=ZIP PK.., 구형 xls=OLE) 확인 + XLSX.read() 실제 파싱 성공까지 확인한다.
- * 로그인 페이지/오류 HTML이 200으로 와도 이 검사에서 걸러진다.
+ * 금일 개통자료 xlsDown. [DEV_RESUME_2 실측 완료] 실제 브라우저의 [엑셀저장] 버튼 클릭을
+ * Playwright로 캡처해서 확정한 요청이다 — 과거 캡처(§3, ListType/OpnSvcCheck/SearchDayChk/
+ * SearchSDay/SearchEDay/Cpage 6개 필드)는 불완전해서 실제로는 0건이 반환됐었다(원인:
+ * winUser 쿼리 파라미터 누락 — 이 값 없이는 매미가 "어느 계정의 판매 데이터"를 조회할지
+ * 알 수 없다). 아래는 실제 요청을 그대로 재현한 것이다.
  */
 async function xlsDown(dateYmd: string, cookieHeader: string): Promise<XlsDownResult> {
+  const creds = getCredentials();
+  if (!creds) throw new MemiUnavailableError("MEMI_CREDENTIAL_REQUIRED");
+
+  const query = new URLSearchParams({
+    winUser: creds.id,
+    OpnSvcCheck: "S",
+    idxA: "4",
+    idxB: "10",
+    idxE: "0",
+    urlC: "/Sell/Sell/list.html",
+    uw: "",
+    SearchOption: "1",
+    SearchDayChk: "Y",
+    SearchDayChk2: "",
+    SearchSDay: dateYmd,
+    SearchEDay: dateYmd,
+    SearchMulti: "",
+  });
+
   const form = new FormData();
-  form.set("ListType", "SELL");
-  form.set("OpnSvcCheck", "S");
-  form.set("SearchDayChk", "on");
-  form.set("SearchSDay", dateYmd);
-  form.set("SearchEDay", dateYmd);
-  form.set("Cpage", "1");
+  const formFields: Record<string, string> = {
+    no: "",
+    ListType: "SELL",
+    ListMType: "",
+    SearchPhnMaker: "",
+    OpnSvcCheck: "S",
+    OpnSvcAgcy: "",
+    SearchModelType: "none",
+    SearchAddrGroup: "none",
+    SearchType1: "none",
+    SearchDayChk: "on",
+    SearchDayChk2: "",
+    SearchSDay: dateYmd,
+    SearchEDay: dateYmd,
+    TelComValue: "--통신사--",
+    TelCom: "",
+    PhnMaker: "",
+    PhnMakerValue: "",
+    Gds1Value: "--공급자--",
+    Gds1: "",
+    Gds2Value: "--공급받는자--",
+    Gds2: "",
+    InGdsAgcyValue: "--개통처--",
+    InGdsAgcy: "",
+    SellAgcyValue: "--판매처--",
+    SellAgcy: "",
+    SellerValue: "--판매자--",
+    Seller: "",
+    ModelValue: "--단말기--",
+    Model: "",
+    MColorValue: "--색상--",
+    MColor: "",
+    MnumberValue: "--복수검색--",
+    Mnumber: "",
+    SellType2: "",
+    SearchStr: "",
+    Cpage: "1",
+  };
+  for (const [k, v] of Object.entries(formFields)) form.set(k, v);
 
   let res: Response;
   try {
-    res = await fetch(MEMI_XLSDOWN_URL, {
+    res = await fetch(`${MEMI_BASE}${MEMI_XLSDOWN_PATH}?${query.toString()}`, {
       method: "POST",
       headers: { Cookie: cookieHeader },
       body: form,
@@ -208,21 +283,28 @@ async function xlsDown(dateYmd: string, cookieHeader: string): Promise<XlsDownRe
   }
 
   const contentType = res.headers.get("content-type") || "";
-  const arrayBuf = await res.arrayBuffer();
-  const buf = Buffer.from(arrayBuf);
+  const contentDisposition = res.headers.get("content-disposition") || "";
+  const buf = Buffer.from(await res.arrayBuffer());
+  const html = decodeBody(buf, contentType);
 
-  // 로그인 페이지/오류 HTML이 200으로 오는 경우 감지(§7/§8 세션 만료 판정 근거) — 호출부가
-  // 이 신호로 재로그인 1회 재시도를 판단한다.
-  const looksHtml = contentType.includes("text/html") || (!looksLikeExcelBinary(buf) && buf.subarray(0, 200).toString("utf-8").trimStart().startsWith("<"));
-  if (looksHtml) {
-    throw new SessionExpiredError("매미 xlsDown이 Excel이 아닌 HTML을 반환했습니다(세션 만료 추정).");
+  // 세션 만료 시 매미는 로그인 폼 HTML을 돌려준다(§7/§8 판정 근거) — 로그인 입력창이
+  // 있으면 세션 만료로 보고 호출부가 1회 재로그인+재시도하게 한다.
+  if (/name=["']?MemberID["']?/i.test(html) || /alert\(\s*['"]/.test(html)) {
+    throw new SessionExpiredError("매미 xlsDown이 로그인/오류 화면을 반환했습니다(세션 만료 추정).");
   }
 
-  if (!looksLikeExcelBinary(buf)) {
-    throw new MemiUnavailableError(`매미 xlsDown 응답이 Excel 파일 signature와 일치하지 않습니다(content-type=${contentType}).`);
+  // 정상 응답은 실제 바이너리가 아니라 HTML table이지만(§7 주석 참고), Content-Type/
+  // Content-Disposition은 여전히 유효성 판정 근거로 쓴다 — 진짜 Excel도, 진짜 오류 응답도
+  // 아닌 애매한 응답(예: 완전히 빈 200)을 걸러낸다.
+  const looksLikeValidResponse =
+    contentType.includes("application/vnd.ms-excel") && contentDisposition.includes("attachment") && /<table/i.test(html);
+  if (!looksLikeValidResponse) {
+    throw new MemiUnavailableError(
+      `매미 xlsDown 응답이 예상 형식과 다릅니다(content-type=${contentType}, content-disposition=${contentDisposition}).`,
+    );
   }
 
-  return { buffer: buf };
+  return { html };
 }
 
 class SessionExpiredError extends Error {}
@@ -257,9 +339,16 @@ export interface MemiParsedSheet {
   devices: MemiDeviceRow[];
 }
 
-// §8: header 기반 parsing 우선, index 하드코딩 금지. 실제 매미 header 명칭이 실측되지
-// 않았으므로(credential 없어 실행 불가) 합리적인 후보군으로 resolve하고, 못 찾으면
-// 파싱 실패(=MEMI_DATA_UNAVAILABLE)로 명확히 처리한다 — 추측으로 임의 index를 쓰지 않는다.
+// §8: header 기반 parsing 우선, index 하드코딩 금지. [DEV_RESUME_2 실측 완료] 실제 매미
+// Excel의 정확한 헤더명은 "일련번호"/"모델명"으로 확인됐다(전체 53개 헤더: No/통신사/타입/
+// 개통일/약정/개월/유형/개월/MNP/보상등급/모델명/일련번호/색상/개통처/소속점/판매처/고객명/
+// 이동번호/입고유형/입고가/출고가/적용단가정보/판매자/usim/usim일련번호/usim모델명/
+// 음성요금제/데이타요금제/부가서비스/결합/서류번호/미비서류/완료/반납모델명/반납일련번호/
+// 반납색상/완료/고객구분/관리번호/생년월일/고객연락번호/요금청구주소/이메일/양도인명/
+// 양도인관리번호/양도인연락번호/TU가입-요금제/TU가입-cas번호/TU가입-가입비/번들일련번호/
+// 번들모델명/번들색상/메모/처리자/입고일). 기존에 1순위 후보로 넣어둔 "일련번호"/"모델명"이
+// 정확히 일치해서 별도 수정 없이 그대로 맞는다 — 나머지 후보는 다른 계정/화면 구성에서
+// 헤더명이 달라질 가능성에 대비한 안전망으로 유지한다.
 const SERIAL_HEADER_CANDIDATES = ["일련번호", "시리얼", "시리얼번호", "SERIAL", "S/N", "단말일련번호"];
 const MODEL_HEADER_CANDIDATES = ["모델명", "모델", "단말모델", "MODEL"];
 
@@ -293,12 +382,18 @@ export function normalizeSerial(raw: unknown): string {
   return v.toUpperCase();
 }
 
-function parseExcelBuffer(buf: Buffer): MemiParsedSheet {
+/**
+ * [DEV_RESUME_2 실측] xlsDown 응답은 실제 바이너리 xls/xlsx가 아니라 HTML table이다(위
+ * xlsDown() 주석 참고). SheetJS의 XLSX.read()는 문자열로 넘기면 HTML table도 자동
+ * 인식해서 파싱한다(buffer/binary 모드가 아니라 반드시 type:"string" 사용 — 실측으로
+ * 확인: buffer 모드는 실패하고 string 모드는 정상적으로 워크북을 만든다).
+ */
+function parseExcelHtml(html: string): MemiParsedSheet {
   let workbook: any;
   try {
-    workbook = XLSX.read(buf, { type: "buffer" });
+    workbook = XLSX.read(html, { type: "string" });
   } catch (err: any) {
-    throw new MemiUnavailableError(`매미 Excel 파싱 실패: ${err?.message ?? err}`);
+    throw new MemiUnavailableError(`매미 Excel(HTML table) 파싱 실패: ${err?.message ?? err}`);
   }
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new MemiUnavailableError("매미 Excel에 시트가 없습니다.");
@@ -368,8 +463,8 @@ export async function getMemiDailyReconciliation(dateYmd: string, opts?: { force
   }
 
   try {
-    const { buffer } = await xlsDownWithAuth(dateYmd);
-    const parsed = parseExcelBuffer(buffer);
+    const { html } = await xlsDownWithAuth(dateYmd);
+    const parsed = parseExcelHtml(html);
     const bySerial = new Map<string, MemiDeviceRow>();
     for (const d of parsed.devices) {
       if (d.normalizedSerial) bySerial.set(d.normalizedSerial, d);
