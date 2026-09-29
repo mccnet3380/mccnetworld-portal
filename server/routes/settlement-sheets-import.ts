@@ -27,6 +27,7 @@ import { resolveActiveSpreadsheet } from "../lib/spreadsheet-resolver";
 import { fetchSheetValuesById } from "../lib/google-sheets-client";
 import { mapSheetRowToActivationInput, computeActivationDedupeKey } from "../lib/activation-row-mapper";
 import { matchActivationDealer, createDealerMatchCache } from "../lib/activation-dealer-matcher";
+import { createSettlementItemsForNewActivations, type NewActivationSettlementDeps } from "../lib/settlement-policy-match";
 
 const router = Router();
 
@@ -273,6 +274,7 @@ router.post("/api/admin/settlement/google-sheets/import", requireSettlementAdmin
     }
 
     let created = 0;
+    const createdActivations: (typeof activationRecords.$inferSelect)[] = [];
     if (insertRows.length > 0) {
       const db = await getDatabase();
       await db.transaction(async (tx: any) => {
@@ -281,13 +283,34 @@ router.post("/api/admin/settlement/google-sheets/import", requireSettlementAdmin
             .insert(activationRecords)
             .values(values)
             .onConflictDoNothing({ target: activationRecords.dedupeKey })
-            .returning({ id: activationRecords.id });
-          if (inserted.length > 0) created++;
+            .returning();
+          if (inserted.length > 0) {
+            created++;
+            createdActivations.push(inserted[0]);
+          }
         }
       });
     }
 
-    console.log(`[settlement-sheets-import:import] ${sourceMonth} sheet="${SOURCE_SHEET_NAME}" created=${created} dupExisting=${result.duplicateExisting} dupBatch=${result.duplicateWithinBatch} missing=${result.missingRequired}`);
+    // 신규 activation_records만 대상으로 settlement_item 자동 생성 + 정책 매칭
+    // (MCC_SETTLEMENT_IMPORT_AUTO_CREATE_AND_POLICY_MATCH_PIPELINE_1) — activation insert
+    // 트랜잭션과 분리: 일부 activation의 settlement 생성이 실패해도 이미 커밋된 activation/
+    // settlement 데이터는 손상되지 않는다. 기존 [자동 매칭 실행] 버튼이 이 단계의 수동 복구
+    // 경로로 그대로 남아있다(§8).
+    const deps: NewActivationSettlementDeps = {
+      getActivePolicyVersions: async () => (await getStorage().getPolicyVersions()).filter((p: any) => p.isActive),
+      getPvRows: async (pvId: number) => (await getStorage().getPolicyRowsByVersionId(pvId)).filter((r: any) => r.isActive !== false),
+      hasExistingSettlementItem: async (activationId: number) => !!(await getStorage().getSettlementItemByActivationId(activationId)),
+      calculateSettlementAdjustments: (activation: any, pvId: number) => getStorage().calculateSettlementAdjustments(activation, pvId),
+      calculateHiddenAmount: (activation: any) => getStorage().calculateHiddenAmount(activation),
+      createSettlementItem: (data: any) => getStorage().createSettlementItem(data),
+    };
+    const settlementResult = await createSettlementItemsForNewActivations(createdActivations, deps);
+    if (settlementResult.errors.length > 0) {
+      console.error(`[settlement-sheets-import:import] settlement auto-create errors:`, settlementResult.errors);
+    }
+
+    console.log(`[settlement-sheets-import:import] ${sourceMonth} sheet="${SOURCE_SHEET_NAME}" created=${created} dupExisting=${result.duplicateExisting} dupBatch=${result.duplicateWithinBatch} missing=${result.missingRequired} settlementCreated=${settlementResult.created} autoMatch=${settlementResult.autoMatch} reviewRequired=${settlementResult.reviewRequired} policyNotFound=${settlementResult.policyNotFound} settlementSkipped=${settlementResult.skipped}`);
     res.json({
       spreadsheetName: result.spreadsheetName,
       sourceSheet: SOURCE_SHEET_NAME,
@@ -297,6 +320,14 @@ router.post("/api/admin/settlement/google-sheets/import", requireSettlementAdmin
       errorSkipped: result.missingRequired + result.errors.length,
       dedupeUnknownCount: result.dedupeUnknownCount,
       errors: result.errors,
+      settlement: {
+        created: settlementResult.created,
+        autoMatch: settlementResult.autoMatch,
+        reviewRequired: settlementResult.reviewRequired,
+        policyNotFound: settlementResult.policyNotFound,
+        skipped: settlementResult.skipped,
+        errors: settlementResult.errors,
+      },
     });
   } catch (err: any) {
     console.error("[settlement-sheets-import:import] error:", err.message);

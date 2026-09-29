@@ -83,6 +83,133 @@ export interface ResolvedPolicyMatch {
   matchedRow: any | null;
 }
 
+export interface NewActivationSettlementDeps {
+  /** /match와 동일: 활성 정책 차수 전체(effectiveFrom 정렬은 호출측 getPolicyVersions()가 보장) */
+  getActivePolicyVersions: () => Promise<PolicyVersionLike[]>;
+  getPvRows: (policyVersionId: number) => Promise<any[]>;
+  /** activation_id 기준 기존 settlement_item 존재 여부 — 있으면 SKIP(§7 LOCK) */
+  hasExistingSettlementItem: (activationId: number) => Promise<boolean>;
+  calculateSettlementAdjustments: (activation: any, policyVersionId: number) => Promise<{ addAmount: number; deductAmount: number }>;
+  calculateHiddenAmount: (activation: any) => Promise<number>;
+  createSettlementItem: (data: any) => Promise<any>;
+}
+
+export interface NewActivationSettlementResult {
+  created: number;
+  skipped: number;
+  autoMatch: number;
+  reviewRequired: number;
+  policyNotFound: number;
+  errors: string[];
+}
+
+/**
+ * 작업명: MCC_SETTLEMENT_IMPORT_AUTO_CREATE_AND_POLICY_MATCH_PIPELINE_1
+ *
+ * "신규로 생성된 activation_records"만 대상으로 settlement_item을 생성한다.
+ * /match 라우트(server/routes.ts)의 per-activation 루프 본문(정책 선택 → MATCH_PASSES →
+ * dealerRegistrationId 없으면 강등 → addAmount/deductAmount/hiddenAmount 계산 →
+ * createSettlementItem)과 동일한 순서/판정을 재사용한다 — /match 라우트 자체는 회귀 위험
+ * 회피를 위해 건드리지 않고 그대로 둔다(§8 LOCK).
+ *
+ * 불변식: activation_id에 이미 settlement_item이 있으면 SKIP, 없을 때만 CREATE.
+ * 기존 row는 절대 UPDATE하지 않는다.
+ */
+export async function createSettlementItemsForNewActivations(
+  activations: any[],
+  deps: NewActivationSettlementDeps,
+): Promise<NewActivationSettlementResult> {
+  const result: NewActivationSettlementResult = {
+    created: 0, skipped: 0, autoMatch: 0, reviewRequired: 0, policyNotFound: 0, errors: [],
+  };
+  if (activations.length === 0) return result;
+
+  const activePvs = await deps.getActivePolicyVersions();
+  const findPvAt = buildFindPvAt(activePvs);
+  const pvRowCache = new Map<number, any[]>();
+  const getPvRowsCached = async (pvId: number): Promise<any[]> => {
+    if (!pvRowCache.has(pvId)) pvRowCache.set(pvId, await deps.getPvRows(pvId));
+    return pvRowCache.get(pvId)!;
+  };
+
+  for (const activation of activations) {
+    try {
+      const exists = await deps.hasExistingSettlementItem(activation.id);
+      if (exists) {
+        result.skipped++;
+        continue;
+      }
+
+      const refDatetime = activation.receptionDatetime ?? activation.activationDatetime;
+      const pv = refDatetime ? findPvAt(new Date(refDatetime)) : null;
+      const activeRows = pv ? await getPvRowsCached(pv.id) : [];
+
+      let matchedRow: any = null;
+      let matchStatus: "AUTO_MATCH" | "REVIEW_REQUIRED" | "POLICY_NOT_FOUND" = "POLICY_NOT_FOUND";
+
+      for (const { exclude, isAuto } of SETTLEMENT_MATCH_PASSES) {
+        const exactFound = activeRows.find((r: any) => matchPolicyRow(activation, r, exclude) === "exact");
+        if (exactFound) {
+          matchedRow = exactFound;
+          matchStatus = isAuto ? "AUTO_MATCH" : "REVIEW_REQUIRED";
+          break;
+        }
+        const wildcardFound = activeRows.find((r: any) => matchPolicyRow(activation, r, exclude) === "wildcard");
+        if (wildcardFound) {
+          matchedRow = wildcardFound;
+          matchStatus = "REVIEW_REQUIRED";
+          break;
+        }
+      }
+
+      if (matchStatus === "AUTO_MATCH" && !activation.dealerRegistrationId) {
+        matchStatus = "REVIEW_REQUIRED";
+      }
+
+      let adjAddAmount: string | null = null;
+      let adjDeductAmount: string | null = null;
+      if (matchedRow && pv?.id) {
+        try {
+          const adj = await deps.calculateSettlementAdjustments(activation, pv.id);
+          if (adj.addAmount > 0) adjAddAmount = String(adj.addAmount);
+          if (adj.deductAmount > 0) adjDeductAmount = String(adj.deductAmount);
+        } catch (_) {}
+      }
+
+      let adjHiddenAmount: string | null = null;
+      try {
+        const hidden = await deps.calculateHiddenAmount(activation);
+        if (hidden !== 0) adjHiddenAmount = String(hidden);
+      } catch (_) {}
+
+      await deps.createSettlementItem({
+        activationId: activation.id,
+        policyVersionId: matchedRow ? (pv?.id ?? null) : null,
+        policyRowId: matchedRow ? matchedRow.id : null,
+        dealerRegistrationId: activation.dealerRegistrationId ?? null,
+        dealerName: activation.dealerName ?? null,
+        rebateAmount: matchedRow ? String(matchedRow.rebateAmount) : null,
+        adjustedAmount: null,
+        addAmount: adjAddAmount,
+        deductAmount: adjDeductAmount,
+        hiddenAmount: adjHiddenAmount,
+        matchStatus,
+        status: "미정산",
+        policySnapshotJson: matchedRow ?? null,
+      });
+
+      result.created++;
+      if (matchStatus === "AUTO_MATCH") result.autoMatch++;
+      else if (matchStatus === "REVIEW_REQUIRED") result.reviewRequired++;
+      else result.policyNotFound++;
+    } catch (err: any) {
+      result.errors.push(`activation_id ${activation.id}: ${String(err?.message ?? "").substring(0, 80)}`);
+    }
+  }
+
+  return result;
+}
+
 /**
  * 한 건의 activation을 현재 활성 정책 기준으로 재평가한다. /match의 per-activation 루프
  * 본문(정책 선택 → MATCH_PASSES → dealerRegistrationId 없으면 강등)과 동일한 순서/판정을

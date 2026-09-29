@@ -28,6 +28,15 @@ interface PreviewResult {
   errors: { row: number; reason: string }[];
 }
 
+interface ImportSettlementResult {
+  created: number;
+  autoMatch: number;
+  reviewRequired: number;
+  policyNotFound: number;
+  skipped: number;
+  errors: string[];
+}
+
 interface ImportResult {
   spreadsheetName: string;
   sourceSheet: string;
@@ -37,6 +46,7 @@ interface ImportResult {
   errorSkipped: number;
   dedupeUnknownCount: number;
   errors: { row: number; reason: string }[];
+  settlement?: ImportSettlementResult;
 }
 
 interface Props {
@@ -90,7 +100,13 @@ export function GoogleSheetsImportModal({ onImportSuccess }: Props) {
         body: JSON.stringify({ year, month }),
       });
       setImportResult(res);
-      toast({ title: "Import 완료", description: `신규 ${res.created}건, 중복 제외 ${res.duplicateSkipped}건, 오류 제외 ${res.errorSkipped}건` });
+      const s = res.settlement;
+      toast({
+        title: "Import 완료",
+        description: s
+          ? `신규 개통 ${res.created}건 · 정산 결과 생성 ${s.created}건 (자동매칭 ${s.autoMatch} / 검토필요 ${s.reviewRequired} / 정책없음 ${s.policyNotFound})`
+          : `신규 ${res.created}건, 중복 제외 ${res.duplicateSkipped}건, 오류 제외 ${res.errorSkipped}건`,
+      });
       onImportSuccess();
     } catch (e: any) {
       toast({ title: "Import 실패", description: e.message, variant: "destructive" });
@@ -175,11 +191,24 @@ export function GoogleSheetsImportModal({ onImportSuccess }: Props) {
               <div className="space-y-2 border rounded-md p-3 bg-blue-50 border-blue-200">
                 <div className="text-sm font-semibold text-blue-800">Import 완료</div>
                 <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                  <div><div className="text-lg font-bold text-green-700">{importResult.created}</div><div className="text-[11px] text-gray-500">신규 생성</div></div>
+                  <div><div className="text-lg font-bold text-green-700">{importResult.created}</div><div className="text-[11px] text-gray-500">신규 개통</div></div>
                   <div><div className="text-lg font-bold text-yellow-700">{importResult.duplicateSkipped}</div><div className="text-[11px] text-gray-500">중복 제외</div></div>
                   <div><div className="text-lg font-bold text-red-700">{importResult.errorSkipped}</div><div className="text-[11px] text-gray-500">오류 제외</div></div>
                 </div>
-                <p className="text-xs text-gray-500">정산 결과 관리 목록이 갱신되었습니다. 판매점/정책 매칭은 기존 "자동 매칭 실행" 버튼을 눌러 진행하세요.</p>
+                {importResult.settlement && (
+                  <div className="grid grid-cols-4 gap-2 text-center text-sm border-t pt-2">
+                    <div><div className="text-lg font-bold text-blue-700">{importResult.settlement.created}</div><div className="text-[11px] text-gray-500">정산 결과 생성</div></div>
+                    <div><div className="text-base font-bold text-green-700">{importResult.settlement.autoMatch}</div><div className="text-[11px] text-gray-500">자동매칭</div></div>
+                    <div><div className="text-base font-bold text-orange-600">{importResult.settlement.reviewRequired}</div><div className="text-[11px] text-gray-500">검토필요</div></div>
+                    <div><div className="text-base font-bold text-gray-600">{importResult.settlement.policyNotFound}</div><div className="text-[11px] text-gray-500">정책없음</div></div>
+                  </div>
+                )}
+                {importResult.settlement && importResult.settlement.errors.length > 0 && (
+                  <div className="max-h-28 overflow-auto text-xs border rounded bg-white p-2 space-y-0.5 text-red-600">
+                    {importResult.settlement.errors.map((e, i) => <div key={i}>{e}</div>)}
+                  </div>
+                )}
+                <p className="text-xs text-gray-500">정산 결과 관리 목록이 갱신되었습니다. 정책 매칭이 반영되지 않은 건이 있다면 기존 "자동 매칭 실행" 버튼으로 수동 복구할 수 있습니다.</p>
                 <Button variant="outline" className="w-full" onClick={() => setOpen(false)}>닫기</Button>
               </div>
             )}
