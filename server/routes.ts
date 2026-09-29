@@ -15,7 +15,8 @@ import { getDatabase, checkPostgreSQLHealth } from "./db";
 import { splitPolicyExcelFromBuffer } from './lib/mcc-policy-split';
 import { exportPolicyUploadReadyFromSplit } from './lib/mcc-policy-export-ready';
 import { normalizeCustomerType, normalizePlanNameForMatching } from './lib/activation-normalize';
-import { sql, eq, and, gte, lte } from "drizzle-orm";
+import { resolvePolicyMatchForActivation, type ResolvedPolicyMatch } from './lib/settlement-policy-match';
+import { sql, eq, and, gte, lte, lt, inArray } from "drizzle-orm";
 
 // 중복 제출 방지를 위한 최근 제출 요청 추적
 interface SubmissionRecord {
@@ -4790,6 +4791,7 @@ router.get('/api/admin/policies/:id/delete-preview', requireAdmin, async (req, r
       effectiveTo: version.effectiveTo,
       policyRowsCount: preview?.policyRowsCount ?? 0,
       settlementItemsCount: preview?.settlementItemsCount ?? 0,
+      protectedCompletedCount: preview?.protectedCompletedCount ?? 0,
     });
   } catch (error: any) {
     console.error('getPolicyVersionDeletePreview error:', error);
@@ -6393,6 +6395,187 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
+// [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] §5~§9
+// STALE 정책 매칭 재평가(REVALIDATE-STALE) — 기존 /match(신규 activation 전용)·
+// /rematch(POLICY_NOT_FOUND 전용)와 완전히 별개인 세 번째 기능이다. 두 기존 라우트의
+// 의미/동작은 이번 작업에서 전혀 바꾸지 않는다(§5 지시 그대로 — 코드 자체도 무수정).
+//
+// 대상: match_status IN ('AUTO_MATCH','REVIEW_REQUIRED') AND status <> '정산완료'
+//       AND locked_at IS NULL AND adjusted_amount IS NULL (§6 — 확정/수동조정 건 원천 제외).
+// 판정: server/lib/settlement-policy-match.ts의 resolvePolicyMatchForActivation()
+//       (findPvAt/matchRow과 동일 규칙, 복제본 아님 — §7).
+// 결과 비교: 새로 계산한 (policyVersionId, policyRowId, matchStatus)이 기존과 동일하면
+//       UPDATE 자체를 하지 않는다 → 같은 기간을 두 번 실행해도 두 번째는 0건(idempotent, §7/§21).
+// ============================================================
+
+async function computeStaleRevalidation(activationDateFrom?: Date, activationDateToExclusive?: Date) {
+  const db = await getDatabase();
+  const { settlementItems: siTable, activationRecords: arTable } = await import('../shared/schema');
+
+  const dateConditions: any[] = [];
+  if (activationDateFrom) dateConditions.push(gte(arTable.activationDatetime, activationDateFrom));
+  if (activationDateToExclusive) dateConditions.push(lt(arTable.activationDatetime, activationDateToExclusive));
+
+  // 범위 내 AUTO_MATCH/REVIEW_REQUIRED 전체(보호 대상 포함) — protected 카운트 산출용
+  const rawScope: any[] = await db.select({
+    id: siTable.id,
+    matchStatus: siTable.matchStatus,
+    status: siTable.status,
+    lockedAt: siTable.lockedAt,
+    adjustedAmount: siTable.adjustedAmount,
+    policyVersionId: siTable.policyVersionId,
+    policyRowId: siTable.policyRowId,
+    forcePolicyVersionId: siTable.forcePolicyVersionId,
+    channel: arTable.channel,
+    planName: arTable.planName,
+    customerType: arTable.customerType,
+    nationalityType: arTable.nationalityType,
+    bundleType: arTable.bundleType,
+    addService: arTable.addService,
+    regFeeType: arTable.regFeeType,
+    simCount: arTable.simCount,
+    dealerRegistrationId: arTable.dealerRegistrationId,
+    receptionDatetime: arTable.receptionDatetime,
+    activationDatetime: arTable.activationDatetime,
+  }).from(siTable)
+    .innerJoin(arTable, eq(siTable.activationId, arTable.id))
+    .where(and(inArray(siTable.matchStatus, ['AUTO_MATCH', 'REVIEW_REQUIRED']), ...dateConditions));
+
+  const protectedCompleted = rawScope.filter((r) => r.status === '정산완료' || r.lockedAt != null);
+  const protectedAdjusted = rawScope.filter((r) => !(r.status === '정산완료' || r.lockedAt != null) && r.adjustedAmount != null);
+  const candidates = rawScope.filter((r) => !(r.status === '정산완료' || r.lockedAt != null) && r.adjustedAmount == null);
+
+  const allActivePvs: any[] = (await getStorage().getPolicyVersions()).filter((p: any) => p.isActive);
+  const pvRowCache = new Map<number, any[]>();
+  const getPvRows = async (pvId: number): Promise<any[]> => {
+    if (!pvRowCache.has(pvId)) {
+      const rows = await getStorage().getPolicyRowsByVersionId(pvId);
+      pvRowCache.set(pvId, rows.filter((r: any) => r.isActive !== false));
+    }
+    return pvRowCache.get(pvId)!;
+  };
+
+  type StaleRow = {
+    id: number;
+    oldPolicyVersionId: number | null;
+    oldPolicyRowId: number | null;
+    oldMatchStatus: string;
+    forcePolicyVersionId: number | null;
+    resolved: ResolvedPolicyMatch;
+  };
+  const stale: StaleRow[] = [];
+  let unchangedCount = 0;
+
+  for (const row of candidates) {
+    const resolved = await resolvePolicyMatchForActivation(row, allActivePvs, getPvRows);
+    const same =
+      resolved.policyVersionId === row.policyVersionId &&
+      resolved.policyRowId === row.policyRowId &&
+      resolved.matchStatus === row.matchStatus;
+    if (same) {
+      unchangedCount++;
+      continue;
+    }
+    stale.push({
+      id: row.id,
+      oldPolicyVersionId: row.policyVersionId,
+      oldPolicyRowId: row.policyRowId,
+      oldMatchStatus: row.matchStatus,
+      forcePolicyVersionId: row.forcePolicyVersionId,
+      resolved,
+    });
+  }
+
+  const toPolicyNotFoundCount = stale.filter((s) => s.resolved.matchStatus === 'POLICY_NOT_FOUND').length;
+  const toAutoMatchCount = stale.filter((s) => s.resolved.matchStatus === 'AUTO_MATCH').length;
+  const toReviewRequiredCount = stale.filter((s) => s.resolved.matchStatus === 'REVIEW_REQUIRED').length;
+
+  return {
+    candidateCount: candidates.length,
+    staleCount: stale.length,
+    unchangedCount,
+    toPolicyNotFoundCount,
+    toAutoMatchCount,
+    toReviewRequiredCount,
+    protectedCompletedCount: protectedCompleted.length,
+    protectedAdjustedCount: protectedAdjusted.length,
+    stale,
+  };
+}
+
+// GET /api/admin/settlement/revalidate-stale/preview — DRY RUN, DB 변경 없음(§10)
+router.get('/api/admin/settlement/revalidate-stale/preview', requireAdmin, async (req: any, res) => {
+  try {
+    const { from, to } = req.query;
+    const { from: activationDateFrom, toExclusive: activationDateToExclusive } = parseInclusiveDateRangeParam(from, to);
+    const result = await computeStaleRevalidation(activationDateFrom, activationDateToExclusive);
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      candidateCount: result.candidateCount,
+      staleCount: result.staleCount,
+      unchangedCount: result.unchangedCount,
+      toPolicyNotFoundCount: result.toPolicyNotFoundCount,
+      toAutoMatchCount: result.toAutoMatchCount,
+      toReviewRequiredCount: result.toReviewRequiredCount,
+      protectedCompletedCount: result.protectedCompletedCount,
+      protectedAdjustedCount: result.protectedAdjustedCount,
+    });
+  } catch (error: any) {
+    console.error('[SETTLEMENT_REVALIDATE_STALE_PREVIEW] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/admin/settlement/revalidate-stale — 실제 적용(트랜잭션, §20)
+router.post('/api/admin/settlement/revalidate-stale', requireAdmin, async (req: any, res) => {
+  try {
+    const { from, to } = req.body ?? {};
+    const { from: activationDateFrom, toExclusive: activationDateToExclusive } = parseInclusiveDateRangeParam(from, to);
+    const result = await computeStaleRevalidation(activationDateFrom, activationDateToExclusive);
+
+    let updatedCount = 0;
+    if (result.stale.length > 0) {
+      const db = await getDatabase();
+      const { settlementItems: siTable } = await import('../shared/schema');
+      await db.transaction(async (tx: any) => {
+        for (const s of result.stale) {
+          const setData: any = {
+            policyVersionId: s.resolved.policyVersionId,
+            policyRowId: s.resolved.policyRowId,
+            matchStatus: s.resolved.matchStatus,
+            rebateAmount: s.resolved.matchedRow ? String(s.resolved.matchedRow.rebateAmount) : '0',
+            policySnapshotJson: s.resolved.matchedRow ?? null,
+          };
+          // §8 — forcePolicyVersionId는 그 값이 정확히 "이번에 무효화된 이전 정책 id"를
+          // 가리키고 있을 때만 함께 초기화한다(hardDeletePolicyVersion()과 동일 원칙).
+          // 무관한 forcePolicyVersionId(다른 정책을 강제 지정한 경우)는 건드리지 않는다.
+          if (s.forcePolicyVersionId != null && s.forcePolicyVersionId === s.oldPolicyVersionId && s.resolved.policyVersionId !== s.oldPolicyVersionId) {
+            setData.forcePolicyVersionId = null;
+          }
+          await tx.update(siTable).set(setData).where(eq(siTable.id, s.id));
+          updatedCount++;
+        }
+      });
+    }
+
+    res.json({
+      candidateCount: result.candidateCount,
+      staleCount: result.staleCount,
+      updatedCount,
+      unchangedCount: result.unchangedCount,
+      policyNotFoundCount: result.toPolicyNotFoundCount,
+      autoMatchedCount: result.toAutoMatchCount,
+      reviewRequiredCount: result.toReviewRequiredCount,
+      protectedCompletedCount: result.protectedCompletedCount,
+      protectedAdjustedCount: result.protectedAdjustedCount,
+    });
+  } catch (error: any) {
+    console.error('[SETTLEMENT_REVALIDATE_STALE_APPLY] error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
 // STEP 5D-5: 정산 결과 엑셀 다운로드
 // ============================================================
 
@@ -6400,13 +6583,20 @@ router.post('/api/admin/settlement/rematch', requireAdmin, async (req, res) => {
 router.get('/api/admin/settlement/export', requireAdmin, async (req: any, res) => {
   try {
     const { status, matchStatus, dealerRegistrationId, from, to } = req.query;
+    // [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §9 — 기존
+    // to:new Date(String(to))는 자정(00:00) 기준 lte라 그날 오후/저녁 시각에 개통된 건이
+    // 통째로 빠지는 실제 버그였다(DEV 실측: 8월 데이터가 전부 8/31 15:00으로 기록돼 있어
+    // 8/1~8/31 조회 시 Excel이 0건이 됨 — 화면/DB와 불일치). 화면 필터(getSettlementItems)와
+    // 동일한 "다음날 00:00 미만" 배타적 상한 규칙으로 통일해서 화면=Excel 행수를 보장한다
+    // (§9/CASE14). 정산 계산식/매칭 판정은 전혀 건드리지 않음 — 날짜 경계 조건만 수정.
+    const { from: exportFrom, toExclusive: exportToExclusive } = parseInclusiveDateRangeParam(from, to);
 
     const rows = await getStorage().getSettlementItemsForExport({
       status:               status      ? String(status)      : undefined,
       matchStatus:          matchStatus ? String(matchStatus) : undefined,
       dealerRegistrationId: dealerRegistrationId ? Number(dealerRegistrationId) : undefined,
-      from:                 from ? new Date(String(from)) : undefined,
-      to:                   to   ? new Date(String(to))   : undefined,
+      from:                 exportFrom,
+      toExclusive:          exportToExclusive,
     });
 
     const sheetData = rows.map((r: any) => {
@@ -6473,14 +6663,34 @@ router.get('/api/admin/settlement/export', requireAdmin, async (req: any, res) =
 // STEP 5D-4: 정산 결과 조회 / 수동 조정 / 확정 API
 // ============================================================
 
+// [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] from/to(YYYY-MM-DD, 둘 다
+// inclusive)를 activation_records.activation_datetime 범위로 변환한다. to는 다음날 00:00
+// 미만(<)으로 변환해서 시간대 때문에 그날 데이터가 누락되는 일이 없게 한다(§4 요구사항).
+// export의 lte(...) 방식과 다르지만, export 자체는 이번 작업에서 건드리지 않는다.
+function parseInclusiveDateRangeParam(fromStr: unknown, toStr: unknown): { from?: Date; toExclusive?: Date } {
+  const result: { from?: Date; toExclusive?: Date } = {};
+  if (typeof fromStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fromStr)) {
+    result.from = new Date(`${fromStr}T00:00:00.000Z`);
+  }
+  if (typeof toStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(toStr)) {
+    const d = new Date(`${toStr}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    result.toExclusive = d;
+  }
+  return result;
+}
+
 // 1. GET /api/admin/settlement/items — 목록 조회
 router.get('/api/admin/settlement/items', requireAdmin, async (req: any, res) => {
   try {
-    const { status, matchStatus, dealerRegistrationId, page, limit } = req.query;
+    const { status, matchStatus, dealerRegistrationId, page, limit, from, to } = req.query;
+    const { from: activationDateFrom, toExclusive: activationDateToExclusive } = parseInclusiveDateRangeParam(from, to);
     const result = await getStorage().getSettlementItems({
       status:               status      ? String(status)      : undefined,
       matchStatus:          matchStatus ? String(matchStatus) : undefined,
       dealerRegistrationId: dealerRegistrationId ? Number(dealerRegistrationId) : undefined,
+      activationDateFrom,
+      activationDateToExclusive,
       page:                 page  ? Number(page)  : 1,
       limit:                limit ? Number(limit) : 50,
     });

@@ -1,4 +1,4 @@
-import { eq, count, sql, and, gte, gt, lt, lte, inArray, isNull, desc, or, getTableColumns } from "drizzle-orm";
+import { eq, ne, count, sql, and, gte, gt, lt, lte, inArray, isNull, desc, or, getTableColumns } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
@@ -327,8 +327,8 @@ export interface IStorage {
   createPolicyVersion(data: any): Promise<any>;
   updatePolicyVersion(id: number, data: any): Promise<any>;
   deletePolicyVersion(id: number): Promise<void>;
-  getPolicyVersionDeletePreview(id: number): Promise<{ policyRowsCount: number; settlementItemsCount: number } | null>;
-  hardDeletePolicyVersion(id: number): Promise<{ policyRowsDeleted: number; settlementItemsUpdated: number }>;
+  getPolicyVersionDeletePreview(id: number): Promise<{ policyRowsCount: number; settlementItemsCount: number; protectedCompletedCount: number } | null>;
+  hardDeletePolicyVersion(id: number): Promise<{ policyRowsDeleted: number; settlementItemsUpdated: number; protectedCompletedCount: number }>;
 
   // Policy rows
   getPolicyRowsByVersionId(policyVersionId: number): Promise<any[]>;
@@ -363,6 +363,8 @@ export interface IStorage {
     dealerRegistrationId?: number;
     status?: string;
     matchStatus?: string;
+    activationDateFrom?: Date;
+    activationDateToExclusive?: Date;
     page?: number;
     limit?: number;
   }): Promise<{
@@ -384,7 +386,7 @@ export interface IStorage {
     matchStatus?: string;
     dealerRegistrationId?: number;
     from?: Date;
-    to?: Date;
+    toExclusive?: Date;
   }): Promise<any[]>;
 
   // Settlement files
@@ -3173,7 +3175,7 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   // 정책 차수 하드 삭제 전 영향 범위 미리보기 (연결 policy_rows / settlement_items 건수)
-  async getPolicyVersionDeletePreview(id: number): Promise<{ policyRowsCount: number; settlementItemsCount: number } | null> {
+  async getPolicyVersionDeletePreview(id: number): Promise<{ policyRowsCount: number; settlementItemsCount: number; protectedCompletedCount: number } | null> {
     return this.withDatabase(async (db) => {
       const version = await db.select().from(policyVersions).where(eq(policyVersions.id, id)).limit(1);
       if (!version[0]) return null;
@@ -3189,19 +3191,34 @@ export class PostgreSQLStorage implements IStorage {
         ? or(eq(settlementItems.policyVersionId, id), inArray(settlementItems.policyRowId, rowIds))
         : eq(settlementItems.policyVersionId, id);
 
+      // [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] §12 — 정산완료/
+      // 확정(locked) 건은 실제 UPDATE 대상에서 제외되므로 영향 건수(settlementItemsCount)에도
+      // 포함시키지 않는다. 보호되는 건수는 protectedCompletedCount로 별도 표시한다.
+      const notProtected = and(isNull(settlementItems.lockedAt), ne(settlementItems.status, '정산완료'));
+
       const [settlementCountResult] = await db.select({ value: count() }).from(settlementItems)
-        .where(settlementCondition);
+        .where(and(settlementCondition, notProtected));
+
+      const [protectedCountResult] = await db.select({ value: count() }).from(settlementItems)
+        .where(and(settlementCondition, or(sql`${settlementItems.lockedAt} IS NOT NULL`, eq(settlementItems.status, '정산완료'))));
 
       return {
         policyRowsCount: Number(rowsCountResult?.value ?? 0),
         settlementItemsCount: Number(settlementCountResult?.value ?? 0),
+        protectedCompletedCount: Number(protectedCountResult?.value ?? 0),
       };
     });
   }
 
   // 정책 차수 완전(하드) 삭제 — policy_rows/policy_files/adjustment_rules 삭제,
   // settlement_items/activation_records의 정책 참조는 NULL 초기화 (해당 테이블 행 자체는 보존)
-  async hardDeletePolicyVersion(id: number): Promise<{ policyRowsDeleted: number; settlementItemsUpdated: number }> {
+  //
+  // [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] §12 — 정산완료
+  // (status='정산완료') 또는 확정(lockedAt IS NOT NULL)된 settlement_items는 이 정책을
+  // 참조하고 있더라도 절대 건드리지 않는다(policyVersionId/policyRowId/forcePolicyVersionId/
+  // policySnapshotJson/matchStatus/rebateAmount/lockedAmount 전부 무변경). 과거에는 이 가드가
+  // 없어서 확정 건도 함께 POLICY_NOT_FOUND로 덮어써지는 결함이 있었다(감사로 실측 확인).
+  async hardDeletePolicyVersion(id: number): Promise<{ policyRowsDeleted: number; settlementItemsUpdated: number; protectedCompletedCount: number }> {
     const db = await getDatabase();
     return db.transaction(async (tx: any) => {
       const version = await tx.select().from(policyVersions).where(eq(policyVersions.id, id)).limit(1);
@@ -3216,6 +3233,22 @@ export class PostgreSQLStorage implements IStorage {
       const settlementCondition = rowIds.length > 0
         ? or(eq(settlementItems.policyVersionId, id), inArray(settlementItems.policyRowId, rowIds))
         : eq(settlementItems.policyVersionId, id);
+      const notProtected = and(isNull(settlementItems.lockedAt), ne(settlementItems.status, '정산완료'));
+
+      const [protectedCountResult] = await tx.select({ value: count() }).from(settlementItems)
+        .where(and(settlementCondition, or(sql`${settlementItems.lockedAt} IS NOT NULL`, eq(settlementItems.status, '정산완료'))));
+
+      // [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] 보호 대상이 하나라도
+      // 있으면 정책 행/차수 자체를 삭제할 수 없다 — policy_rows/policy_versions는 뒤에서 물리
+      // 삭제되는데, 보호 대상의 참조는 절대 null로 바꾸지 않으므로 그대로 두면 FK 위반으로
+      // DB가 트랜잭션을 거부한다. 애매한 FK 오류 대신 명확한 사유로 먼저 차단한다.
+      const protectedCount = Number(protectedCountResult?.value ?? 0);
+      if (protectedCount > 0) {
+        throw new Error(
+          `이 정책 차수를 참조하는 정산완료/확정 항목이 ${protectedCount}건 있어 완전 삭제할 수 없습니다. ` +
+          `확정된 정산 데이터는 정책 참조를 보존해야 합니다(§12 LOCK) — 비활성화만 가능합니다.`,
+        );
+      }
 
       const updatedSettlements = await tx.update(settlementItems)
         .set({
@@ -3225,13 +3258,14 @@ export class PostgreSQLStorage implements IStorage {
           policySnapshotJson: null,
           matchStatus: 'POLICY_NOT_FOUND',
         })
-        .where(settlementCondition)
+        .where(and(settlementCondition, notProtected))
         .returning({ id: settlementItems.id });
 
-      // force_policy_version_id는 이 정책 차수를 별도로 강제 지정한 경우에도 FK를 참조하므로 함께 초기화
+      // force_policy_version_id는 이 정책 차수를 별도로 강제 지정한 경우에도 FK를 참조하므로
+      // 함께 초기화한다 — 단 정산완료/확정 건은 동일하게 제외한다.
       await tx.update(settlementItems)
         .set({ forcePolicyVersionId: null })
-        .where(eq(settlementItems.forcePolicyVersionId, id));
+        .where(and(eq(settlementItems.forcePolicyVersionId, id), notProtected));
 
       // activation_records는 행 자체는 보존하되 정책 참조(FK)만 해제
       await tx.update(activationRecords)
@@ -3260,6 +3294,7 @@ export class PostgreSQLStorage implements IStorage {
       return {
         policyRowsDeleted: deletedRows.length,
         settlementItemsUpdated: updatedSettlements.length,
+        protectedCompletedCount: Number(protectedCountResult?.value ?? 0),
       };
     });
   }
@@ -3428,6 +3463,11 @@ export class PostgreSQLStorage implements IStorage {
     dealerRegistrationId?: number;
     status?: string;
     matchStatus?: string;
+    // [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] activation_records.
+    // activation_datetime 기준 범위(§4). toExclusive는 배타적 상한(다음날 00:00) — 호출부가
+    // inclusive to를 이미 변환해서 넘긴다.
+    activationDateFrom?: Date;
+    activationDateToExclusive?: Date;
     page?: number;
     limit?: number;
   }): Promise<{
@@ -3439,7 +3479,22 @@ export class PostgreSQLStorage implements IStorage {
     totalGroups: number;
   }> {
     return this.withDatabase(async (db) => {
-      const conditions: any[] = [];
+      // [MCC_SETTLEMENT_SUMMARY_CARD_INDEPENDENT_SNAPSHOT_AND_DETAIL_FILTER_FIX_1] §4/§19 —
+      // SUMMARY(상단 5개 카드)와 DETAIL(하단 목록/그룹)의 조건을 완전히 분리한다.
+      // dateConditions(날짜 범위만) = SUMMARY 전용. detailConditions(날짜 + status/matchStatus/
+      // dealerRegistrationId) = DETAIL(목록/그룹) 전용. 카드 클릭·드롭다운 선택은 detailConditions
+      // 에만 반영되고 summaryQuery는 절대 이 필터들을 보지 않는다 — 이전에는 두 쿼리가 같은
+      // conditions 배열을 공유해서 카드를 클릭하면 상단 숫자까지 그 카드 값 하나로 재계산되는
+      // 결함이 있었다(실측 확인: matchStatus=AUTO_MATCH를 걸면 summary.total까지 5로 줄어듦).
+      const dateConditions: any[] = [];
+      if (filters?.activationDateFrom) {
+        dateConditions.push(gte(activationRecords.activationDatetime, filters.activationDateFrom));
+      }
+      if (filters?.activationDateToExclusive) {
+        dateConditions.push(lt(activationRecords.activationDatetime, filters.activationDateToExclusive));
+      }
+
+      const conditions: any[] = [...dateConditions];
       if (filters?.dealerRegistrationId) {
         conditions.push(eq(settlementItems.dealerRegistrationId, filters.dealerRegistrationId));
       }
@@ -3544,15 +3599,20 @@ export class PostgreSQLStorage implements IStorage {
       const groupOffset = (page - 1) * limit;
       const groups = allGroups.slice(groupOffset, groupOffset + limit);
 
-      // 요약 집계 (별도 COUNT 쿼리)
+      // 요약 집계 (별도 COUNT 쿼리) — [MCC_SETTLEMENT_SUMMARY_CARD_INDEPENDENT_SNAPSHOT_AND_DETAIL_FILTER_FIX_1]
+      // 날짜 범위만 반영하는 독립 스냅샷이다(위 dateConditions만 사용, 아래 참고). activation_records
+      // 조인은 날짜 조건 컬럼(activationDatetime)이 그 테이블에 있어서 필요할 뿐이다.
       let summaryQuery = db.select({
         total: count(),
         autoMatch: sql<number>`cast(count(case when ${settlementItems.matchStatus} = 'AUTO_MATCH' then 1 end) as integer)`,
         reviewRequired: sql<number>`cast(count(case when ${settlementItems.matchStatus} = 'REVIEW_REQUIRED' then 1 end) as integer)`,
         policyNotFound: sql<number>`cast(count(case when ${settlementItems.matchStatus} = 'POLICY_NOT_FOUND' then 1 end) as integer)`,
         settlementDone: sql<number>`cast(count(case when ${settlementItems.status} = '정산완료' then 1 end) as integer)`,
-      }).from(settlementItems) as any;
-      if (conditions.length > 0) summaryQuery = summaryQuery.where(and(...conditions));
+      }).from(settlementItems)
+        .leftJoin(activationRecords, eq(settlementItems.activationId, activationRecords.id)) as any;
+      // §4 — SUMMARY는 dateConditions(날짜 범위)만 적용한다. detail 필터(status/matchStatus/
+      // dealerRegistrationId)는 절대 섞지 않는다.
+      if (dateConditions.length > 0) summaryQuery = summaryQuery.where(and(...dateConditions));
       const [summaryRow] = await summaryQuery;
 
       const summary = {
@@ -3644,7 +3704,10 @@ export class PostgreSQLStorage implements IStorage {
     matchStatus?: string;
     dealerRegistrationId?: number;
     from?: Date;
-    to?: Date;
+    // [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §9 — 기존
+    // to(lte, 자정 경계)는 화면 조회(getSettlementItems)와 다른 날짜 의미라 그날 오후/저녁
+    // 개통 건이 누락되는 버그였다. toExclusive(다음날 00:00 미만)로 통일한다.
+    toExclusive?: Date;
   }): Promise<any[]> {
     return this.withDatabase(async (db) => {
       const conditions: any[] = [];
@@ -3652,7 +3715,7 @@ export class PostgreSQLStorage implements IStorage {
       if (filters?.matchStatus)          conditions.push(eq(settlementItems.matchStatus, filters.matchStatus));
       if (filters?.dealerRegistrationId) conditions.push(eq(settlementItems.dealerRegistrationId, filters.dealerRegistrationId));
       if (filters?.from)                 conditions.push(gte(activationRecords.activationDatetime, filters.from));
-      if (filters?.to)                   conditions.push(lte(activationRecords.activationDatetime, filters.to));
+      if (filters?.toExclusive)          conditions.push(lt(activationRecords.activationDatetime, filters.toExclusive));
 
       let q = db.select({
         id:                   settlementItems.id,

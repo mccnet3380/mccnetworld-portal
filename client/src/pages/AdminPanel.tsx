@@ -1,5 +1,5 @@
 ﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -50,7 +50,8 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  ShieldCheck
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -2638,6 +2639,18 @@ function PerformanceMappingField({ userId, initialValue }: { userId: number; ini
   );
 }
 
+// [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §1 — 정산 결과 관리
+// 화면의 기본 조회기간. 하드코딩된 말일 없이 실제 연/월의 마지막 날짜를 계산한다
+// (new Date(y, m+1, 0) = 다음 달 0일 = 이번 달 마지막 날, 월별 28~31일 차이를 자동 처리).
+function currentMonthRange(): { from: string; to: string } {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  return { from: `${y}-${pad(m + 1)}-01`, to: `${y}-${pad(m + 1)}-${pad(lastDay)}` };
+}
+
 export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const { user } = useAuth();
   const apiRequest = useApiRequest();
@@ -3401,10 +3414,40 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   // ── STEP 5D-6: 정산 결과 관리 상태 ──────────────────────────
   const [siFilterStatus, setSiFilterStatus] = useState('');
   const [siFilterMatchStatus, setSiFilterMatchStatus] = useState('');
-  const [siFilterFrom, setSiFilterFrom] = useState('');
-  const [siFilterTo, setSiFilterTo] = useState('');
+  // [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §1 — 최초 진입/
+  // 새로고침 시 항상 "현재 월" 1일~말일을 기본값으로 사용한다(이전 선택을 기억하지 않음 —
+  // 매 마운트마다 실제 오늘 날짜 기준으로 다시 계산되므로 새로고침해도 전체기간으로
+  // 돌아가지 않는다). 사용자가 직접 바꾸는 기능은 그대로 유지(§2, 아래 Input onChange 무변경).
+  const [siFilterFrom, setSiFilterFrom] = useState(() => currentMonthRange().from);
+  const [siFilterTo, setSiFilterTo] = useState(() => currentMonthRange().to);
   const [siPage, setSiPage] = useState(1);
   const [siLimit, setSiLimit] = useState(100);
+
+  // [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §3~§6 — 상단 요약
+  // 카드를 클릭 가능한 필터 탭으로 만든다. 별도 상태를 두지 않고 기존 siFilterStatus/
+  // siFilterMatchStatus(이미 API에 그대로 전달되는 필터)로부터 직접 파생시킨다 — 카드가
+  // "선택됨"으로 보이는 조건과 실제 서버에 전달되는 필터 조건이 항상 정확히 같은 값이 되도록
+  // 보장하기 위함(§7 — 카드 숫자와 실제 행수가 어긋나는 이중 상태 금지). 매칭상태 3장은
+  // matchStatus만, 정산완료 카드는 status만 사용한다 — summary 집계도 정확히 이 두 축으로만
+  // 계산되므로(server/storage.ts getSettlementItems) 같은 축만 적용해야 카드 숫자와
+  // 상세 행수가 항상 일치한다.
+  type SiCardKey = 'all' | 'auto' | 'review' | 'notfound' | 'completed';
+  const siActiveCard: SiCardKey | null =
+    siFilterStatus === '정산완료' ? 'completed'
+    : siFilterMatchStatus === 'AUTO_MATCH' ? 'auto'
+    : siFilterMatchStatus === 'REVIEW_REQUIRED' ? 'review'
+    : siFilterMatchStatus === 'POLICY_NOT_FOUND' ? 'notfound'
+    : (!siFilterStatus && !siFilterMatchStatus) ? 'all'
+    : null;
+  function selectSiCard(card: SiCardKey) {
+    setSiPage(1);
+    if (card === 'all') { setSiFilterStatus(''); setSiFilterMatchStatus(''); }
+    else if (card === 'auto') { setSiFilterMatchStatus('AUTO_MATCH'); setSiFilterStatus(''); }
+    else if (card === 'review') { setSiFilterMatchStatus('REVIEW_REQUIRED'); setSiFilterStatus(''); }
+    else if (card === 'notfound') { setSiFilterMatchStatus('POLICY_NOT_FOUND'); setSiFilterStatus(''); }
+    else if (card === 'completed') { setSiFilterStatus('정산완료'); setSiFilterMatchStatus(''); }
+  }
+
   const [siEditDialogOpen, setSiEditDialogOpen] = useState(false);
   const [siEditTarget, setSiEditTarget] = useState<any>(null);
   const [siEditForm, setSiEditForm] = useState({
@@ -3423,6 +3466,10 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const [siExpandedDealers, setSiExpandedDealers] = useState<Set<string>>(new Set());
   // 정산 결과 선택/일괄 삭제
   const SI_DELETE_CONFIRM_TEXT = '삭제합니다';
+  // [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] §11 — 정책 매칭
+  // 재검증(STALE REVALIDATION). 클릭 즉시 실행 금지 — 반드시 Preview → 확인 → 실행 순서.
+  const [siRevalidateDialogOpen, setSiRevalidateDialogOpen] = useState(false);
+  const [siRevalidatePreview, setSiRevalidatePreview] = useState<any>(null);
   const [siSelectedIds, setSiSelectedIds] = useState<Set<number>>(new Set());
   const [siDeleteModalOpen, setSiDeleteModalOpen] = useState(false);
   const [siDeleteMode, setSiDeleteMode] = useState<'single' | 'selected' | 'dealer_all' | null>(null);
@@ -3685,6 +3732,11 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     queryKey: ['/api/admin/settlement/items', siFilterStatus, siFilterMatchStatus, siFilterFrom, siFilterTo, siPage, siLimit],
     queryFn: () => apiRequest(`/api/admin/settlement/items?${siQueryParams.toString()}`) as Promise<{ data: any[]; page: number; limit: number; summary: { total: number; autoMatch: number; reviewRequired: number; policyNotFound: number; settlementDone: number }; groups: Array<{ dealerName: string; total: number; autoMatch: number; reviewRequired: number; policyNotFound: number; settlementDone: number; sumPolicy: number; sumAdjusted: number; sumConfirmed: number; items: any[] }>; totalGroups: number }>,
     enabled: activeTab === 'settlement-results',
+    // [MCC_SETTLEMENT_SUMMARY_CARD_INDEPENDENT_SNAPSHOT_AND_DETAIL_FILTER_FIX_1] 카드/드롭다운
+    // 클릭은 queryKey(matchStatus/status)를 바꿔 새 요청을 트리거한다 — 서버가 summary를
+    // 날짜만으로 재계산해 값은 동일하지만, 리페치 동안 이전 데이터를 유지해 상단 카드가
+    // 잠깐 사라지는 깜빡임 없이 그대로 보이게 한다(§3 "그대로 유지한다"의 UX 측면).
+    placeholderData: keepPreviousData,
   });
 
   const siMatchMutation = useMutation({
@@ -3701,6 +3753,42 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
       toast({ title: '재매칭 완료', description: `대상: ${res.total}건 → 매칭: ${res.updated}건 (AUTO: ${res.autoMatch}, 검토: ${res.reviewRequired}), 미매칭: ${res.stillNotFound}건` });
+    },
+    onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
+  });
+
+  // [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] §11 — 현재 화면
+  // 조회기간(siFilterFrom/siFilterTo) 기준으로 Preview/실행한다. 둘 다 GET/POST 응답 그대로
+  // 반환 — 서버가 idempotent를 보장하므로 프론트는 결과만 표시한다.
+  const siRevalidatePreviewMutation = useMutation({
+    mutationFn: () => {
+      const params = new URLSearchParams();
+      if (siFilterFrom) params.set('from', siFilterFrom);
+      if (siFilterTo) params.set('to', siFilterTo);
+      return apiRequest(`/api/admin/settlement/revalidate-stale/preview?${params.toString()}`);
+    },
+    onSuccess: (res: any) => setSiRevalidatePreview(res),
+    onError: (e: Error) => {
+      toast({ title: '오류', description: e.message, variant: 'destructive' });
+      setSiRevalidateDialogOpen(false);
+    },
+  });
+
+  const siRevalidateApplyMutation = useMutation({
+    mutationFn: () => {
+      const body: any = {};
+      if (siFilterFrom) body.from = siFilterFrom;
+      if (siFilterTo) body.to = siFilterTo;
+      return apiRequest('/api/admin/settlement/revalidate-stale', { method: 'POST', body: JSON.stringify(body) });
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/settlement/items'] });
+      setSiRevalidateDialogOpen(false);
+      setSiRevalidatePreview(null);
+      toast({
+        title: '정책 매칭 재검증 완료',
+        description: `재평가: ${res.updatedCount}건 (정책없음: ${res.policyNotFoundCount}, 자동매칭: ${res.autoMatchedCount}, 확인필요: ${res.reviewRequiredCount})`,
+      });
     },
     onError: (e: Error) => toast({ title: '오류', description: e.message, variant: 'destructive' }),
   });
@@ -3848,11 +3936,19 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   };
 
   // ── STEP 5D-7: 정책 차수 쿼리 & mutations ───────────────────
+  // [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §6 — 정산 결과 관리
+  // 탭에서도 활성화한다(자동매칭 상세에 정책명을 표시하기 위해 재사용 — 새 API/쿼리를
+  // 추가하지 않고 이미 있는 정책 차수 목록을 그대로 조회만 한다. 개수가 적어 부담 없음).
   const { data: policyVersions, isLoading: pvLoading, refetch: pvRefetch } = useQuery({
     queryKey: ['/api/admin/policies'],
     queryFn: () => apiRequest('/api/admin/policies') as Promise<any[]>,
-    enabled: activeTab === 'policy-versions',
+    enabled: activeTab === 'policy-versions' || activeTab === 'settlement-results',
   });
+  const siPolicyVersionNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    (policyVersions || []).forEach((pv: any) => map.set(pv.id, pv.policyName));
+    return map;
+  }, [policyVersions]);
 
   const { data: policyRowsData, refetch: prRefetch } = useQuery({
     queryKey: ['/api/admin/policies', pvSelectedId, 'rows'],
@@ -10247,6 +10343,14 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   </Button>
                   <Button
                     size="sm"
+                    variant="outline"
+                    onClick={() => { setSiRevalidatePreview(null); setSiRevalidateDialogOpen(true); siRevalidatePreviewMutation.mutate(); }}
+                  >
+                    <ShieldCheck className="h-4 w-4 mr-1" />
+                    정책 매칭 재검증
+                  </Button>
+                  <Button
+                    size="sm"
                     variant="destructive"
                     disabled={siSelectedIds.size === 0}
                     onClick={() => openSiDeleteModal('selected', Array.from(siSelectedIds))}
@@ -10275,22 +10379,31 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   ))}
                 </div>
 
-                {/* 요약 카드 */}
+                {/* [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §3~§5 —
+                    요약 카드를 클릭 가능한 필터 탭으로. 카드가 보여주는 숫자를 만드는 조건과
+                    클릭 시 selectSiCard()가 적용하는 조건이 동일한 소스(siActiveCard)이므로
+                    카드 숫자=하단 행수가 항상 일치한다(§7). */}
                 {siData?.summary && (() => {
                   const s = siData.summary;
+                  const cards: Array<{ key: SiCardKey; label: string; value: number; idle: string; active: string }> = [
+                    { key: 'all', label: '전체', value: s.total, idle: 'bg-gray-100 text-gray-900', active: 'bg-gray-700 text-white ring-2 ring-gray-500' },
+                    { key: 'auto', label: '자동매칭', value: s.autoMatch, idle: 'bg-green-100 text-gray-900', active: 'bg-green-600 text-white ring-2 ring-green-400' },
+                    { key: 'review', label: '검토필요', value: s.reviewRequired, idle: 'bg-yellow-100 text-gray-900', active: 'bg-yellow-600 text-white ring-2 ring-yellow-400' },
+                    { key: 'notfound', label: '정책없음', value: s.policyNotFound, idle: 'bg-red-100 text-gray-900', active: 'bg-red-600 text-white ring-2 ring-red-400' },
+                    { key: 'completed', label: '정산완료', value: s.settlementDone, idle: 'bg-blue-100 text-gray-900', active: 'bg-blue-600 text-white ring-2 ring-blue-400' },
+                  ];
                   return (
                     <div className="grid grid-cols-5 gap-3">
-                      {[
-                        { label: '전체', value: s.total, color: 'bg-gray-100' },
-                        { label: '자동매칭', value: s.autoMatch, color: 'bg-green-100' },
-                        { label: '검토필요', value: s.reviewRequired, color: 'bg-yellow-100' },
-                        { label: '정책없음', value: s.policyNotFound, color: 'bg-red-100' },
-                        { label: '정산완료', value: s.settlementDone, color: 'bg-blue-100' },
-                      ].map(c => (
-                        <div key={c.label} className={`rounded-lg p-3 text-center ${c.color}`}>
+                      {cards.map(c => (
+                        <button
+                          key={c.label}
+                          type="button"
+                          onClick={() => selectSiCard(c.key)}
+                          className={`rounded-lg p-3 text-center transition-colors cursor-pointer ${siActiveCard === c.key ? c.active : `${c.idle} hover:opacity-80`}`}
+                        >
                           <div className="text-2xl font-bold">{c.value}</div>
-                          <div className="text-xs text-gray-600 mt-1">{c.label}</div>
-                        </div>
+                          <div className={`text-xs mt-1 ${siActiveCard === c.key ? 'text-white/90' : 'text-gray-600'}`}>{c.label}</div>
+                        </button>
                       ))}
                     </div>
                   );
@@ -10337,7 +10450,15 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                 ) : (() => {
                   const groups = siData?.groups ?? [];
                   if (groups.length === 0) {
-                    return <div className="text-center py-8 text-gray-400 text-sm">데이터가 없습니다. 자동 매칭을 실행하세요.</div>;
+                    // [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §5 —
+                    // 필터(카드/드롭다운)가 걸려 있는데 0건이면 "매칭 실행" 안내가 아니라
+                    // 해당 조건에 데이터가 없다는 정상 메시지를 보여준다(오류 아님).
+                    const hasFilter = !!(siFilterStatus || siFilterMatchStatus);
+                    return (
+                      <div className="text-center py-8 text-gray-400 text-sm">
+                        {hasFilter ? '해당 조건의 정산 데이터가 없습니다.' : '데이터가 없습니다. 자동 매칭을 실행하세요.'}
+                      </div>
+                    );
                   }
 
                   /* ── 공통 스타일 상수 ── */
@@ -10515,6 +10636,26 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                               const matchLabel = matchStatus === 'AUTO_MATCH' ? '자동'    : matchStatus === 'REVIEW_REQUIRED' ? '검토'   : '미매칭';
                                               const rowBg      = item.status === '정산완료' ? '#f0f9ff' : 'white';
 
+                                              // [MCC_SETTLEMENT_CURRENT_MONTH_DEFAULT_AND_SUMMARY_CARD_FILTER_1] §4/§6/§7 —
+                                              // "어떤 정책과 매칭됐는지"/"왜 검토필요인지"를 이미 API가 내려주는 정보
+                                              // (policyVersionId, dealerRegistrationId, policySnapshotJson)만으로 파생한다 —
+                                              // 새 계산/새 필드를 추가하지 않는다. 검토필요 사유는 matchRow()의 실제 분기
+                                              // 3가지(판매점 미매칭/국적 와일드카드/부분조건 예외매칭)를 그대로 반영한다.
+                                              const siPolicyName = item.policyVersionId
+                                                ? (siPolicyVersionNameById.get(item.policyVersionId) ?? `정책 #${item.policyVersionId}`)
+                                                : null;
+                                              const siReviewReasons: string[] = [];
+                                              if (matchStatus === 'REVIEW_REQUIRED') {
+                                                if (!item.dealerRegistrationId) siReviewReasons.push('판매점 미매칭(접점코드에 연결된 판매점 없음)');
+                                                if (item.policySnapshotJson && !item.policySnapshotJson.nationalityType) siReviewReasons.push('정책 국적조건 와일드카드 매칭');
+                                                if (siReviewReasons.length === 0) siReviewReasons.push('정책 부분조건(결합/부가서비스/가입비 등) 예외 매칭');
+                                              }
+                                              const siMatchTitle = matchStatus === 'AUTO_MATCH'
+                                                ? `매칭 정책: ${siPolicyName ?? '-'}\n정책금액: ${item.rebateAmount ? Number(item.rebateAmount).toLocaleString('ko-KR') : '-'}`
+                                                : matchStatus === 'REVIEW_REQUIRED'
+                                                ? `매칭 정책: ${siPolicyName ?? '-'}\n검토필요 사유: ${siReviewReasons.join(', ')}`
+                                                : '해당 개통일에 적용 가능한 정책을 찾지 못했습니다.';
+
                                               const finalAmount = (() => {
                                                 if (item.lockedAmount != null) return Number(item.lockedAmount);
                                                 const base = item.adjustedAmount != null ? Number(item.adjustedAmount) : (item.rebateAmount != null ? Number(item.rebateAmount) : null);
@@ -10575,7 +10716,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                                   </td>
                                                   {/* 매칭상태 */}
                                                   <td style={{ ...tdD, textAlign: 'center', background: matchBg }}>
-                                                    <span style={{ fontWeight: 700, color: matchColor }}>{matchLabel}</span>
+                                                    <span style={{ fontWeight: 700, color: matchColor, cursor: 'help' }} title={siMatchTitle}>{matchLabel}</span>
                                                   </td>
                                                   {/* 정책금액 */}
                                                   <td style={{ ...tdD, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -10689,6 +10830,50 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                 })()}
               </CardContent>
             </Card>
+
+            {/* [MCC_SETTLEMENT_MONTHLY_ISOLATION_AND_STALE_POLICY_REMATCH_FIX_1] §11 — 정책
+                매칭 재검증 다이얼로그. 열리는 즉시 Preview를 실행하고, 실행 버튼은 정산완료
+                건이 0건이라도 항상 사용자가 직접 눌러야 한다(클릭 즉시 실행 금지). */}
+            <Dialog open={siRevalidateDialogOpen} onOpenChange={(open) => { setSiRevalidateDialogOpen(open); if (!open) setSiRevalidatePreview(null); }}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>정책 매칭 재검증</DialogTitle>
+                  <DialogDescription>
+                    조회기간: {siFilterFrom || '(전체)'} ~ {siFilterTo || '(전체)'}<br />
+                    현재 정책 기준으로 AUTO_MATCH/검토필요 상태의 미확정 건을 다시 평가합니다.
+                    정산완료·수동조정 건은 절대 변경되지 않습니다.
+                  </DialogDescription>
+                </DialogHeader>
+                {siRevalidatePreviewMutation.isPending && (
+                  <div className="flex items-center justify-center py-6 text-sm text-gray-500">
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />Preview 계산 중...
+                  </div>
+                )}
+                {!siRevalidatePreviewMutation.isPending && siRevalidatePreview && (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span>재검증 대상</span><span className="font-bold">{siRevalidatePreview.staleCount + siRevalidatePreview.unchangedCount}건</span></div>
+                    <div className="rounded border p-3 space-y-1 bg-gray-50">
+                      <div className="flex justify-between"><span>변경 없음(이미 정확함)</span><span>{siRevalidatePreview.unchangedCount}건</span></div>
+                      <div className="flex justify-between font-semibold text-red-700"><span>정책 없음으로 변경</span><span>{siRevalidatePreview.toPolicyNotFoundCount}건</span></div>
+                      <div className="flex justify-between"><span>자동매칭으로 변경</span><span>{siRevalidatePreview.toAutoMatchCount}건</span></div>
+                      <div className="flex justify-between"><span>확인필요로 변경</span><span>{siRevalidatePreview.toReviewRequiredCount}건</span></div>
+                    </div>
+                    <div className="flex justify-between text-green-700"><span>정산완료 보호</span><span>{siRevalidatePreview.protectedCompletedCount}건</span></div>
+                    <div className="flex justify-between text-green-700"><span>수동조정 보호</span><span>{siRevalidatePreview.protectedAdjustedCount}건</span></div>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setSiRevalidateDialogOpen(false)}>취소</Button>
+                  <Button
+                    disabled={!siRevalidatePreview || siRevalidatePreview.staleCount === 0 || siRevalidateApplyMutation.isPending}
+                    onClick={() => siRevalidateApplyMutation.mutate()}
+                  >
+                    {siRevalidateApplyMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+                    재검증 실행{siRevalidatePreview ? ` (${siRevalidatePreview.staleCount}건)` : ''}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {/* 수정 다이얼로그 */}
             <Dialog open={siEditDialogOpen} onOpenChange={setSiEditDialogOpen}>
