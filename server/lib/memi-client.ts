@@ -206,7 +206,13 @@ interface XlsDownResult {
  * winUser 쿼리 파라미터 누락 — 이 값 없이는 매미가 "어느 계정의 판매 데이터"를 조회할지
  * 알 수 없다). 아래는 실제 요청을 그대로 재현한 것이다.
  */
-async function xlsDown(dateYmd: string, cookieHeader: string): Promise<XlsDownResult> {
+// [MCC_ACTIVATION_AUDIT_DATE_RANGE_EXCEL_EXPORT_1] sDayYmd/eDayYmd로 분리했다(기존
+// dateYmd 단일 인자 → 동일 값을 sDay/eDay 양쪽에 넣던 호출부만 xlsDownWithAuth(dateYmd,
+// dateYmd)로 바뀌었을 뿐 단일 날짜 동작은 100% 동일). DEV 실측(스크립트로 직접 확인)
+// 결과 매미가 SearchSDay≠SearchEDay 진짜 기간 조회를 정확히 지원한다: 9/24(5건)+9/28(20건)
+// 개별 호출 합계(25건)와 9/24~9/28 범위 1회 호출 결과(25건)가 정확히 일치했다 — 추측이
+// 아니라 실측으로 확정.
+async function xlsDown(sDayYmd: string, eDayYmd: string, cookieHeader: string): Promise<XlsDownResult> {
   const creds = getCredentials();
   if (!creds) throw new MemiUnavailableError("MEMI_CREDENTIAL_REQUIRED");
 
@@ -221,8 +227,8 @@ async function xlsDown(dateYmd: string, cookieHeader: string): Promise<XlsDownRe
     SearchOption: "1",
     SearchDayChk: "Y",
     SearchDayChk2: "",
-    SearchSDay: dateYmd,
-    SearchEDay: dateYmd,
+    SearchSDay: sDayYmd,
+    SearchEDay: eDayYmd,
     SearchMulti: "",
   });
 
@@ -239,8 +245,8 @@ async function xlsDown(dateYmd: string, cookieHeader: string): Promise<XlsDownRe
     SearchType1: "none",
     SearchDayChk: "on",
     SearchDayChk2: "",
-    SearchSDay: dateYmd,
-    SearchEDay: dateYmd,
+    SearchSDay: sDayYmd,
+    SearchEDay: eDayYmd,
     TelComValue: "--통신사--",
     TelCom: "",
     PhnMaker: "",
@@ -312,14 +318,14 @@ class SessionExpiredError extends Error {}
 /**
  * 로그인 → xlsDown, 세션 만료로 보이면 재로그인 후 1회만 재시도(§5/§8 CASE 8 — 무한 반복 금지).
  */
-async function xlsDownWithAuth(dateYmd: string): Promise<XlsDownResult> {
+async function xlsDownWithAuth(sDayYmd: string, eDayYmd: string): Promise<XlsDownResult> {
   const cookieHeader = await getSession();
   try {
-    return await xlsDown(dateYmd, cookieHeader);
+    return await xlsDown(sDayYmd, eDayYmd, cookieHeader);
   } catch (err) {
     if (err instanceof SessionExpiredError) {
       const freshCookie = await getSession(true);
-      return await xlsDown(dateYmd, freshCookie); // 1회만 재시도 — 실패하면 그대로 throw
+      return await xlsDown(sDayYmd, eDayYmd, freshCookie); // 1회만 재시도 — 실패하면 그대로 throw
     }
     throw err;
   }
@@ -463,7 +469,7 @@ export async function getMemiDailyReconciliation(dateYmd: string, opts?: { force
   }
 
   try {
-    const { html } = await xlsDownWithAuth(dateYmd);
+    const { html } = await xlsDownWithAuth(dateYmd, dateYmd);
     const parsed = parseExcelHtml(html);
     const bySerial = new Map<string, MemiDeviceRow>();
     for (const d of parsed.devices) {
@@ -484,6 +490,62 @@ export async function getMemiDailyReconciliation(dateYmd: string, opts?: { force
     console.error("[MEMI] daily reconciliation 실패:", message);
     const result = emptyUnavailable(dateYmd, message);
     syncCache.set(dateYmd, { result, expiresAt: Date.now() + FAILURE_CACHE_TTL_MS });
+    return result;
+  }
+}
+
+// [MCC_ACTIVATION_AUDIT_DATE_RANGE_EXCEL_EXPORT_1] §12/§13 — 기간 조회 전용. 날짜별로
+// N번 로그인+xlsDown을 반복하지 않는다(§13 "불필요한 반복 로그인 금지"): DEV 실측으로
+// 매미가 진짜 SearchSDay~SearchEDay 범위를 지원함을 확인했으므로 기간 전체를 xlsDown
+// 1회로 조회한다. 캐시는 기존 syncCache Map을 그대로 재사용하되 키를 "start::end"로
+// 구성해 단일 날짜 캐시(키가 순수 YYYY-MM-DD라 "::"를 포함하지 않음)와 절대 충돌하지
+// 않는다. 성공 5분/실패 60초 TTL도 기존과 동일하게 적용한다(§13 "기존 구조를 임의
+// 변경하지 말고" 그대로 재사용). start===end(사용자가 오늘 하루만 조회하는 기존 방식
+// 그대로 쓰는 경우)는 완전히 동일한 결과를 내는 getMemiDailyReconciliation()에 그대로
+// 위임한다 — 새 캐시 엔트리를 중복으로 만들지 않고 기존 단일 날짜 캐시를 재사용한다.
+export async function getMemiRangeReconciliation(
+  startYmd: string,
+  endYmd: string,
+  opts?: { force?: boolean },
+): Promise<MemiSyncResult> {
+  if (startYmd === endYmd) {
+    return getMemiDailyReconciliation(startYmd, opts);
+  }
+
+  const cacheKey = `${startYmd}::${endYmd}`;
+  const cached = syncCache.get(cacheKey);
+  if (!opts?.force && cached && Date.now() < cached.expiresAt) {
+    return cached.result;
+  }
+
+  if (!isMemiConfigured()) {
+    const result = emptyUnavailable(cacheKey, "MEMI_CREDENTIAL_REQUIRED");
+    syncCache.set(cacheKey, { result, expiresAt: Date.now() + FAILURE_CACHE_TTL_MS });
+    return result;
+  }
+
+  try {
+    const { html } = await xlsDownWithAuth(startYmd, endYmd);
+    const parsed = parseExcelHtml(html);
+    const bySerial = new Map<string, MemiDeviceRow>();
+    for (const d of parsed.devices) {
+      if (d.normalizedSerial) bySerial.set(d.normalizedSerial, d);
+    }
+    const result: MemiSyncResult = {
+      status: "ok",
+      date: cacheKey,
+      syncedAt: new Date().toISOString(),
+      rowCount: parsed.rowCount,
+      header: parsed.header,
+      bySerial,
+    };
+    syncCache.set(cacheKey, { result, expiresAt: Date.now() + SUCCESS_CACHE_TTL_MS });
+    return result;
+  } catch (err: any) {
+    const message = err?.message ?? String(err);
+    console.error("[MEMI] range reconciliation 실패:", message);
+    const result = emptyUnavailable(cacheKey, message);
+    syncCache.set(cacheKey, { result, expiresAt: Date.now() + FAILURE_CACHE_TTL_MS });
     return result;
   }
 }

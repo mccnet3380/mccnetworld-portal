@@ -39,7 +39,7 @@
 
 import { fetchLedgerCached, type LedgerCache } from "./personal-performance";
 import { matchesDate } from "./performance-calc";
-import { getMemiDailyReconciliation, normalizeSerial, type MemiSyncResult } from "./memi-client";
+import { getMemiDailyReconciliation, getMemiRangeReconciliation, normalizeSerial, type MemiSyncResult } from "./memi-client";
 
 export const AUDIT_SOURCE_SHEETS = {
   today: "■당일완료",
@@ -69,6 +69,12 @@ export interface AuditIssue {
 export type RowAuditStatus = "PASS" | "ERROR" | "DATA_UNAVAILABLE";
 
 export interface AuditedActivationRow {
+  /** [MCC_ACTIVATION_AUDIT_DATE_RANGE_EXCEL_EXPORT_1] 이 행이 속한 조회 날짜(YYYY-MM-DD,
+   * 항상 명확한 형식 — activationDate 원본 셀은 "9/24"처럼 연도 없는 표기라 기간 조회/
+   * 월 경계 상황에서 모호할 수 있다). computeActivationAudit()/computeActivationAuditRange()
+   * 둘 다 채운다(단일 날짜 조회는 그 날짜 그대로, 기간 조회는 이 행이 속한 하루). 기존
+   * 소비처(SheetViewer.tsx 단일 날짜 화면)는 이 필드를 참조하지 않아 무영향(additive). */
+  auditDate: string;
   worker: string;
   activationDate: string;
   requestPoint: string;
@@ -86,6 +92,9 @@ export interface AuditedActivationRow {
   memiStatus?: "MATCHED" | "NOT_FOUND" | "DATA_UNAVAILABLE";
   /** 매미 쪽 모델명(정보용 — MCC_MODEL과 다르다는 이유만으로 ERROR 처리하지 않음, §10) */
   memiModel?: string;
+  /** [MCC_ACTIVATION_AUDIT_DATE_RANGE_EXCEL_EXPORT_1] 매미 쪽 원본 일련번호 문자열(정보용,
+   * Excel §19 "매미 일련번호" 컬럼 전용). 매칭 안 되면 undefined. */
+  memiSerial?: string;
   status: RowAuditStatus;
   issues: AuditIssue[];
 }
@@ -194,6 +203,7 @@ function auditRow(
   row: string[],
   cols: ColumnIndexes,
   memiSync: MemiSyncResult,
+  auditDate: string,
 ): { fields: Omit<AuditedActivationRow, "status" | "issues">; issues: AuditIssue[] } {
   const worker = cell(row, cols.worker);
   const requestPoint = cell(row, cols.requestPoint);
@@ -229,6 +239,7 @@ function auditRow(
   const isDeviceTarget = requestPoint.startsWith("단말)");
   let memiStatus: AuditedActivationRow["memiStatus"];
   let memiModel: string | undefined;
+  let memiSerial: string | undefined;
   if (isDeviceTarget) {
     if (cols.model >= 0 && !model) issues.push(issue("DEVICE_MODEL_MISSING", "ERROR"));
     if (cols.serial >= 0 && !serial) issues.push(issue("DEVICE_SERIAL_MISSING", "ERROR"));
@@ -244,6 +255,7 @@ function auditRow(
       if (matched) {
         memiStatus = "MATCHED";
         memiModel = matched.model;
+        memiSerial = matched.rawSerial || undefined;
       } else {
         memiStatus = "NOT_FOUND";
         issues.push(issue("MEMI_DEVICE_NOT_FOUND", "ERROR"));
@@ -253,6 +265,7 @@ function auditRow(
 
   return {
     fields: {
+      auditDate,
       worker,
       activationDate: cell(row, cols.date),
       requestPoint,
@@ -268,6 +281,7 @@ function auditRow(
       serial,
       memiStatus,
       memiModel,
+      memiSerial,
     },
     issues,
   };
@@ -308,7 +322,7 @@ export async function computeActivationAudit(date: Date, cache: LedgerCache): Pr
 
   for (const r of entry.rows) {
     if (!matchesDate(r[cols.date], date)) continue;
-    const { fields, issues } = auditRow(r, cols, memiSync);
+    const { fields, issues } = auditRow(r, cols, memiSync, dateYmd);
     const status = rowStatus(issues);
     if (status === "PASS") pass++;
     else if (status === "ERROR") error++;
@@ -322,6 +336,123 @@ export async function computeActivationAudit(date: Date, cache: LedgerCache): Pr
   return {
     date: dateYmd,
     sourceSheet,
+    total: rows.length,
+    summary: { pass, error, dataUnavailable },
+    byCode,
+    rows,
+    memiSync: { status: memiSync.status, syncedAt: memiSync.syncedAt, rowCount: memiSync.rowCount, error: memiSync.error },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// [MCC_ACTIVATION_AUDIT_DATE_RANGE_EXCEL_EXPORT_1] 기간 조회 확장
+//
+// §4/§5/§6 실측 결론: "■당일완료"는 항상 "오늘"의 행만 보유하고(자정이 지나면 그 행은
+// 더 이상 여기 없음 — 기존 personal-performance.ts 주석/§0 LOCK 전제), "개통처리부"는
+// 항상 "오늘 이전" 행만 보유한다(실측: DEV에서 조회 시점 기준 개통처리부의 오늘 날짜
+// 행이 0건임을 직접 확인). 즉 두 시트는 "같은 날짜의 데이터를 중복 보유"하지 않고
+// 날짜 자체로 이미 배타적으로 partition되어 있다 — 그래서 기간 조회도 "day-by-day로
+// 그날에 맞는 소스 하나만 선택해서 합치는" 기존 computeActivationAudit()의 원칙을
+// 날짜별로 반복 적용하기만 하면 되고, 행 단위 중복 제거(dedup)가 필요 없다.
+//
+// DEDUP_KEY=해당없음(불필요) — DEDUP_REASON: 두 시트가 날짜로 이미 배타적 partition되어
+// 있음을 실측 확인(오늘 날짜의 개통처리부 행=0건, 이번 달 데이터가 옮겨진 과거 날짜
+// (9/24·9/28)는 개통처리부에만 존재·■당일완료엔 전혀 없음 — 같은 업무건이 두 시트에
+// 동시에 존재하는 사례 자체가 없다). DUPLICATE_COUNT=0(같은 이유로 발생하지 않음).
+// 완료 보고서에 실측 근거를 그대로 남긴다.
+//
+// §5 "■당일완료 → 개통처리부 이동 안전성": 과거 날짜를 재조회할 때 그 날짜가 오늘이
+// 아니면 무조건 개통처리부만 본다(당일완료는 애초에 그 날짜 데이터를 갖고 있지 않음) —
+// 이동이 이미 끝났다고 가정하지 않고, "오늘 이후로는 항상 개통처리부에서 찾는다"는
+// 날짜 기준 규칙 자체가 이동 완료 여부와 무관하게 항상 안전하다(개통처리부에 아직
+// 반영되지 않았다면 그 날짜는 정말로 0건으로 나오는 것이 맞다 — 검수 결과를 조작해서
+// 억지로 채우지 않는다).
+function ymd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function enumerateDates(start: Date, end: Date): Date[] {
+  const out: Date[] = [];
+  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cur.getTime() <= last.getTime()) {
+    out.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+export interface ActivationAuditRangeResult {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  /** §7 — 실제로 읽은 원본만, 읽은 순서 그대로(예: ["개통처리부"] | ["■당일완료"] | ["개통처리부","■당일완료"]) */
+  sourceSheets: string[];
+  total: number;
+  summary: { pass: number; error: number; dataUnavailable: number };
+  byCode: Partial<Record<AuditCode, number>>;
+  rows: AuditedActivationRow[];
+  memiSync: { status: "ok" | "unavailable"; syncedAt: string | null; rowCount: number; error?: string };
+}
+
+/**
+ * 지정한 [startDate, endDate] 기간(양끝 포함, §2)을 자동검수한다. 날짜별로 §0 LOCK된
+ * 기존 원칙(오늘=■당일완료, 과거=개통처리부, 절대 합산하지 않음)을 그대로 적용해서
+ * 모은다 — 판정 규칙(auditRow)도 단일 날짜 경로와 완전히 동일한 함수를 그대로 재사용한다.
+ * 매미 조회는 기간 전체 1회만 수행한다(§13 — 날짜별 반복 로그인 금지, DEV 실측으로
+ * 매미가 실제 기간 조회를 지원함을 확인했다).
+ */
+export async function computeActivationAuditRange(
+  startDate: Date,
+  endDate: Date,
+  cache: LedgerCache,
+): Promise<ActivationAuditRangeResult> {
+  if (startDate.getTime() > endDate.getTime()) {
+    throw new Error("[ActivationAudit] 시작일이 종료일보다 늦습니다.");
+  }
+
+  const dates = enumerateDates(startDate, endDate);
+  const startYmd = ymd(startDate);
+  const endYmd = ymd(endDate);
+
+  const memiSync = await getMemiRangeReconciliation(startYmd, endYmd);
+
+  const rows: AuditedActivationRow[] = [];
+  const byCode: Partial<Record<AuditCode, number>> = {};
+  let pass = 0;
+  let error = 0;
+  let dataUnavailable = 0;
+  const sourceSheetsUsed: string[] = [];
+  const sourceSheetsSeen = new Set<string>();
+
+  for (const date of dates) {
+    const dateYmd = ymd(date);
+    const sourceSheet = isToday(date) ? AUDIT_SOURCE_SHEETS.today : AUDIT_SOURCE_SHEETS.historical;
+    if (!sourceSheetsSeen.has(sourceSheet)) {
+      sourceSheetsSeen.add(sourceSheet);
+      sourceSheetsUsed.push(sourceSheet);
+    }
+
+    const entry = await fetchLedgerCached(date, cache, sourceSheet);
+    const cols = resolveColumns(entry.header);
+
+    for (const r of entry.rows) {
+      if (!matchesDate(r[cols.date], date)) continue;
+      const { fields, issues } = auditRow(r, cols, memiSync, dateYmd);
+      const status = rowStatus(issues);
+      if (status === "PASS") pass++;
+      else if (status === "ERROR") error++;
+      else dataUnavailable++;
+      for (const iss of issues) {
+        byCode[iss.code] = (byCode[iss.code] ?? 0) + 1;
+      }
+      rows.push({ ...fields, status, issues });
+    }
+  }
+
+  return {
+    startDate: startYmd,
+    endDate: endYmd,
+    sourceSheets: sourceSheetsUsed,
     total: rows.length,
     summary: { pass, error, dataUnavailable },
     byCode,

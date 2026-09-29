@@ -20,10 +20,10 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useApiRequest } from "@/lib/auth";
+import { useApiRequest, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { FileSpreadsheet, Search, Loader2, Bookmark, Trash2, ShieldAlert, ShieldCheck, HelpCircle } from "lucide-react";
+import { FileSpreadsheet, Search, Loader2, Bookmark, Trash2, ShieldAlert, ShieldCheck, HelpCircle, Download } from "lucide-react";
 
 type AuditCode =
   | "ACTIVATION_PHONE_MISSING"
@@ -45,6 +45,7 @@ interface AuditIssue {
 }
 
 interface AuditedActivationRow {
+  auditDate: string;
   worker: string;
   activationDate: string;
   requestPoint: string;
@@ -60,6 +61,7 @@ interface AuditedActivationRow {
   serial: string;
   memiStatus?: "MATCHED" | "NOT_FOUND" | "DATA_UNAVAILABLE";
   memiModel?: string;
+  memiSerial?: string;
   status: RowAuditStatus;
   issues: AuditIssue[];
 }
@@ -71,9 +73,12 @@ interface MemiSyncStatus {
   error?: string;
 }
 
+// [MCC_ACTIVATION_AUDIT_DATE_RANGE_EXCEL_EXPORT_1] date/sourceSheet(단일 날짜) →
+// startDate/endDate/sourceSheets(기간, §1~§8)로 확장. 서버 응답 shape과 1:1 대응.
 interface ActivationAuditResult {
-  date: string;
-  sourceSheet: string;
+  startDate: string;
+  endDate: string;
+  sourceSheets: string[];
   total: number;
   summary: { pass: number; error: number; dataUnavailable: number };
   byCode: Partial<Record<AuditCode, number>>;
@@ -176,7 +181,10 @@ export function SheetViewer() {
   const [newViewName, setNewViewName] = useState("");
 
   // ── [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 자동검수 상태 ──────────
-  const [auditDate, setAuditDate] = useState<string>(() => todayStr());
+  // [MCC_ACTIVATION_AUDIT_DATE_RANGE_EXCEL_EXPORT_1] §1 — 단일 날짜 → 기간(시작일~종료일).
+  // 기본값 시작일=종료일=오늘이라 기존처럼 "오늘 하루만" 조회하는 사용 방식도 그대로 된다.
+  const [auditStartDate, setAuditStartDate] = useState<string>(() => todayStr());
+  const [auditEndDate, setAuditEndDate] = useState<string>(() => todayStr());
   const [auditData, setAuditData] = useState<ActivationAuditResult | null>(null);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditError, setAuditError] = useState("");
@@ -184,12 +192,16 @@ export function SheetViewer() {
   const [codeFilter, setCodeFilter] = useState<AuditCode | null>(null);
   const [workerFilter, setWorkerFilter] = useState<string>("ALL");
   const [memiRefreshing, setMemiRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  async function loadAudit(date: string) {
+  // §2 — 시작일>종료일이면 API 요청을 아예 실행하지 않고 명확히 안내한다.
+  const rangeInvalid = auditStartDate > auditEndDate;
+
+  async function loadAudit(startDate: string, endDate: string) {
     setAuditLoading(true);
     setAuditError("");
     try {
-      const res = await apiRequest(`/api/activation-audit/summary?date=${date}`);
+      const res = await apiRequest(`/api/activation-audit/summary?startDate=${startDate}&endDate=${endDate}`);
       setAuditData(res);
     } catch (e: any) {
       setAuditData(null);
@@ -200,24 +212,77 @@ export function SheetViewer() {
   }
 
   useEffect(() => {
-    loadAudit(auditDate);
+    if (rangeInvalid) {
+      setAuditLoading(false);
+      setAuditData(null);
+      setAuditError("시작일이 종료일보다 늦을 수 없습니다.");
+      return;
+    }
+    loadAudit(auditStartDate, auditEndDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditDate]);
+  }, [auditStartDate, auditEndDate]);
 
   // [MCC_MEMI_REALTIME_DEVICE_RECONCILIATION_DEV_1] 보조 수동 새로고침(§14) — 기본 흐름은
-  // 자동이므로 이 버튼은 캐시가 stale해 보일 때만 쓰는 보조 기능이다.
+  // 자동이므로 이 버튼은 캐시가 stale해 보일 때만 쓰는 보조 기능이다. 매미 새로고침 자체는
+  // 단일 날짜 캐시 무효화(memi-client.ts LOCK, 기존 동작 그대로) — 기간 조회 중이면 종료일
+  // 기준으로 무효화하고 전체 기간을 다시 계산한다.
   async function handleMemiRefresh() {
     setMemiRefreshing(true);
     try {
       await apiRequest(`/api/activation-audit/memi-refresh`, {
         method: "POST",
-        body: JSON.stringify({ date: auditDate }),
+        body: JSON.stringify({ date: auditEndDate }),
       });
-      await loadAudit(auditDate);
+      await loadAudit(auditStartDate, auditEndDate);
     } catch (e: any) {
       toast({ title: "매미 새로고침 실패", description: e.message, variant: "destructive" });
     } finally {
       setMemiRefreshing(false);
+    }
+  }
+
+  // [MCC_ACTIVATION_AUDIT_DATE_RANGE_EXCEL_EXPORT_1] §15~§23 — 현재 화면 필터 조건 그대로
+  // 서버에 다시 전달해서(§17 — 화면 DOM이 아니라 서버 계산 결과 기준) Excel을 생성한다.
+  async function handleAuditExport() {
+    if (filteredAuditRows.length === 0) {
+      toast({ title: "다운로드할 검수 데이터가 없습니다.", variant: "destructive" });
+      return;
+    }
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        startDate: auditStartDate,
+        endDate: auditEndDate,
+        status: statusFilter,
+      });
+      if (codeFilter) params.set("code", codeFilter);
+      if (workerFilter !== "ALL") params.set("worker", workerFilter);
+
+      const sessionId = useAuth.getState().sessionId;
+      const resp = await fetch(`/api/activation-audit/export?${params.toString()}`, {
+        method: "GET",
+        headers: sessionId ? { Authorization: `Bearer ${sessionId}` } : {},
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "다운로드 실패" }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const disposition = resp.headers.get("content-disposition") || "";
+      const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+      const filename = match ? decodeURIComponent(match[1]) : `MCC_개통후자동검수_${auditStartDate}_${auditEndDate}.xlsx`;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e: any) {
+      toast({ title: "다운로드 실패", description: e.message, variant: "destructive" });
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -369,25 +434,45 @@ export function SheetViewer() {
                 <ShieldCheck className="h-5 w-5 text-primary" />
                 <h2 className="text-base font-semibold">개통 후 자동검수</h2>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">검수 날짜</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium">검수 기간</span>
                 <Input
                   type="date"
                   className="w-40 h-9"
-                  value={auditDate}
-                  onChange={(e) => setAuditDate(e.target.value)}
+                  value={auditStartDate}
+                  onChange={(e) => setAuditStartDate(e.target.value)}
                 />
+                <span className="text-sm text-muted-foreground">~</span>
+                <Input
+                  type="date"
+                  className="w-40 h-9"
+                  value={auditEndDate}
+                  onChange={(e) => setAuditEndDate(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9"
+                  onClick={handleAuditExport}
+                  disabled={exporting || rangeInvalid || auditLoading || !auditData}
+                >
+                  {exporting ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                  엑셀 다운로드
+                </Button>
               </div>
             </div>
 
-            {auditLoading && <p className="text-sm text-muted-foreground">검수 데이터를 불러오는 중...</p>}
-            {auditError && <p className="text-sm text-red-600 font-semibold">{auditError}</p>}
+            {rangeInvalid && (
+              <p className="text-sm text-red-600 font-semibold">시작일이 종료일보다 늦을 수 없습니다. 검수 기간을 다시 선택해 주세요.</p>
+            )}
+            {!rangeInvalid && auditLoading && <p className="text-sm text-muted-foreground">검수 데이터를 불러오는 중...</p>}
+            {!rangeInvalid && auditError && <p className="text-sm text-red-600 font-semibold">{auditError}</p>}
 
             {!auditLoading && !auditError && auditData && (
               <>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <p className="text-xs text-muted-foreground">
-                    데이터 원본: {auditData.sourceSheet} · {auditData.date} 기준
+                    데이터 원본: {auditData.sourceSheets.length > 0 ? auditData.sourceSheets.join(" + ") : "(해당 기간 원본 없음)"} · {auditData.startDate === auditData.endDate ? `${auditData.startDate} 기준` : `${auditData.startDate} ~ ${auditData.endDate} 기준`}
                   </p>
                   <div className="flex items-center gap-2 text-xs">
                     <span
