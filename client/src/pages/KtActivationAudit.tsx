@@ -178,6 +178,16 @@ function getValue(row: Row, key: string, columns: Record<string, string>): strin
   return col ? text(row[col]) : '';
 }
 
+/** ledgerRow(Google Sheets "개통처리부" 원장에서 매칭된 원본 행)의 "작업자" 헤더 값을
+ *  가공 없이 그대로 읽는다 — server/lib/activation-audit.ts의 idx("작업자")와 동일한 헤더를
+ *  source of truth로 사용한다("K)유리" 같은 접두어를 제거하지 않음). 헤더에 공백이 섞인
+ *  경우만 대비해 trim 비교로 한 번 더 찾는다(값 자체는 변형하지 않음). */
+function getWorkerFromLedgerRow(row: Row): string {
+  if (Object.prototype.hasOwnProperty.call(row, '작업자')) return text(row['작업자']);
+  const key = Object.keys(row).find((k) => k.trim() === '작업자');
+  return key ? text(row[key]) : '';
+}
+
 function parseDateValue(v: unknown): { y: number; m: number; d: number } | null {
   if (v instanceof Date && !isNaN(v.getTime())) {
     return { y: v.getFullYear(), m: v.getMonth() + 1, d: v.getDate() };
@@ -296,6 +306,8 @@ function persistRules(rules: Record<string, MatchRule>) {
 
 type ResultKind = 'ok' | 'mismatch' | 'missing' | 'review' | 'info';
 interface ResultRow {
+  /** Google Sheets 원장(개통처리부) "작업자" 헤더 원본값 — 미매칭/미확정 행은 '-' */
+  worker: string;
   status: string;
   kind: ResultKind;
   channel: string;
@@ -355,6 +367,7 @@ function computeResults(
 
     if (!rule) {
       results.push({
+        worker: '-',
         status: '매칭키 누락', kind: 'review', channel, key: '', id: '', name: ktName,
         field: '매칭 기준', base: '', kt: '', reason: '이 채널에 매칭 기준이 설정되지 않았습니다.',
       });
@@ -368,6 +381,7 @@ function computeResults(
 
     if (!id) {
       results.push({
+        worker: '-',
         status: '매칭키 누락', kind: 'review', channel, key: keyLabel, id: '', name: ktName,
         field: LABELS[rule], base: '', kt: text(raw), reason: `${LABELS[rule]} 값이 없어 매칭할 수 없습니다.`,
       });
@@ -388,6 +402,7 @@ function computeResults(
 
     if (candidates.length === 0) {
       results.push({
+        worker: '-',
         status: '미매칭', kind: 'missing', channel, key: keyLabel, id, name: ktName,
         field: keyLabel, base: '원장에 없음', kt: text(raw),
         reason: `${keyLabel}가 스프레드시트에 존재하지 않습니다.`,
@@ -397,6 +412,7 @@ function computeResults(
     }
     if (candidates.length > 1) {
       results.push({
+        worker: '-',
         status: '중복후보', kind: 'review', channel, key: keyLabel, id, name: ktName,
         field: keyLabel, base: `${candidates.length}건`, kt: text(raw),
         reason: '동일 식별값이 여러 건이라 자동 확정하지 않았습니다.',
@@ -407,6 +423,7 @@ function computeResults(
 
     const base = candidates[0];
     const displayName = text(getValue(base, 'name', columns)) || ktName;
+    const worker = getWorkerFromLedgerRow(base) || '-';
     matched++;
     let rowIssue = 0;
     const corp = isCorporate(base, columns);
@@ -423,6 +440,7 @@ function computeResults(
         if (String(kv).includes('*') && maskedNameCompatible(kv, bv)) continue;
         if (corp === true) {
           results.push({
+            worker,
             status: '법인명/대표자명 차이', kind: 'info', channel, key: keyLabel, id, name: displayName,
             field: LABELS[field], base: text(bv), kt: text(kv),
             reason: '법인 건으로 확인되어 법인명과 대표자명 차이를 오류에서 제외했습니다.',
@@ -432,6 +450,7 @@ function computeResults(
         }
         if (corp === null) {
           results.push({
+            worker,
             status: '명의 확인 필요', kind: 'review', channel, key: keyLabel, id, name: displayName,
             field: LABELS[field], base: text(bv), kt: text(kv),
             reason: '마스킹 이름이 원장 이름과 연결되지 않아 확인이 필요합니다.',
@@ -446,6 +465,7 @@ function computeResults(
 
       if (normalize(bv, field) !== normalize(kv, field)) {
         results.push({
+          worker,
           status: '값 불일치', kind: 'mismatch', channel, key: keyLabel, id, name: displayName,
           field: LABELS[field], base: text(bv), kt: text(kv),
           reason: `${keyLabel} 정확 매칭 후 값이 다릅니다.`,
@@ -457,6 +477,7 @@ function computeResults(
 
     if (!rowIssue) {
       results.push({
+        worker,
         status: '정상', kind: 'ok', channel, key: keyLabel, id, name: displayName,
         field: '전체 비교', base: '', kt: '', reason: '비교 가능한 검수 항목이 모두 일치합니다.',
       });
@@ -724,8 +745,8 @@ export function KtActivationAudit() {
 
   function exportCsv() {
     const data = [
-      ['상태', '채널', '적용키', '식별값', '고객명', '문제항목', '스프레드시트', 'KT파일', '판정사유'],
-      ...filteredResults.map((r) => [r.status, r.channel, r.key, r.id, r.name, r.field, r.base, r.kt, r.reason]),
+      ['작업자', '상태', '적용키', '식별값', '고객명', '문제항목', '스프레드시트', 'KT파일', '판정사유'],
+      ...filteredResults.map((r) => [r.worker, r.status, r.key, r.id, r.name, r.field, r.base, r.kt, r.reason]),
     ];
     const csv =
       '﻿' + data.map((row) => row.map((v) => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
@@ -947,8 +968,8 @@ export function KtActivationAudit() {
                   <table className="w-full text-sm min-w-[1000px]">
                     <thead className="bg-muted sticky top-0 z-10">
                       <tr>
+                        <th className="p-2 text-left font-medium">작업자</th>
                         <th className="p-2 text-left font-medium">상태</th>
-                        <th className="p-2 text-left font-medium">채널</th>
                         <th className="p-2 text-left font-medium">적용키</th>
                         <th className="p-2 text-left font-medium">식별값</th>
                         <th className="p-2 text-left font-medium">고객명</th>
@@ -961,8 +982,8 @@ export function KtActivationAudit() {
                     <tbody>
                       {filteredResults.map((r, i) => (
                         <tr key={i} className="border-t hover:bg-muted/40">
+                          <td className="p-2 font-semibold whitespace-nowrap">{r.worker}</td>
                           <td className="p-2"><StatusBadge kind={r.kind}>{r.status}</StatusBadge></td>
-                          <td className="p-2">{r.channel}</td>
                           <td className="p-2 text-xs text-muted-foreground">{r.key}</td>
                           <td className="p-2">{r.id}</td>
                           <td className="p-2">{r.name}</td>
