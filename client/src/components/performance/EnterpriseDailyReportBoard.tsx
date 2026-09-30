@@ -24,8 +24,12 @@
 // 데이터는 dataset.closing(공지텍스트)과 dataset.dealerMatrix(담당판매점별 상세 실적)를
 // 그대로 표시만 한다 — 여기서 재계산하지 않는다.
 
+import { useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { PerformanceDataset } from "@/types/performance";
+import { Button } from "@/components/ui/button";
+import { Copy, Check } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import "./EnterpriseDailyReportBoard.css";
 
 const SECTION_COLORS = [
@@ -49,12 +53,44 @@ interface Props {
 export function EnterpriseDailyReportBoard({ dataset, tableExportRef }: Props) {
   const { closing, dealerMatrix } = dataset;
   const columns = dealerMatrix.columns;
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // [MCC_CLOSING_REPORT_NOTICE_TEXT_COPY_BUTTON_1] 화면에 표시되는 closing.noticeText를
+  // 그대로 복사한다 — 노란 안내문(.edrb-rule)은 textarea 밖에 있으므로 애초에 포함되지 않고,
+  // 별도로 복사용 문자열을 재조립하지 않는다(공지문 계산 로직 무변경).
+  const handleCopyNotice = async () => {
+    try {
+      await navigator.clipboard.writeText(closing.noticeText);
+      setCopied(true);
+      clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = setTimeout(() => setCopied(false), 1800);
+    } catch (err: any) {
+      toast({ title: "복사 실패", description: err?.message ?? "클립보드 복사 중 오류가 발생했습니다.", variant: "destructive" });
+    }
+  };
 
   return (
     <div className="edrb-layout">
       {/* 왼쪽: 공지 텍스트 (closing.html section.card #1) — JPG 캡처 대상 아님 */}
       <section className="edrb-card">
-        <h2 style={{ margin: "0 0 12px" }}>공지 텍스트</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 12px" }}>
+          <h2 style={{ margin: 0 }}>공지 텍스트</h2>
+          <Button variant="outline" size="sm" onClick={handleCopyNotice}>
+            {copied ? (
+              <>
+                <Check className="h-4 w-4 mr-2" />
+                복사 완료 ✓
+              </>
+            ) : (
+              <>
+                <Copy className="h-4 w-4 mr-2" />
+                전체 복사
+              </>
+            )}
+          </Button>
+        </div>
         <div className="edrb-rule">
           앞 숫자 = <b>당일을 포함한 누적값</b> / 뒤 숫자 = <b>당일값</b>
           <br />※ 이 설명은 복사되는 공지 텍스트에는 포함되지 않습니다.
