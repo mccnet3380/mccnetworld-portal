@@ -1,0 +1,4274 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<script src="../../../app/typing-version-bridge.js" defer></script>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MCCNETWORLD · 미디어로그 단말</title>
+
+<link rel="icon" type="image/png" sizes="16x16"  href="/mccnetworld/favicon-16x16.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32"  href="/mccnetworld/favicon-32x32.png?v=2">
+<link rel="icon" type="image/png" sizes="192x192" href="/mccnetworld/android-chrome-192x192.png?v=2">
+<link rel="icon" type="image/png" sizes="512x512" href="/mccnetworld/android-chrome-512x512.png?v=2">
+<link rel="apple-touch-icon" href="/mccnetworld/apple-touch-icon.png?v=2">
+<link rel="shortcut icon" href="/mccnetworld/favicon.ico?v=2">
+<meta name="theme-color" content="#0c1117"/>
+
+<style>
+  :root{
+    --bg:#0c1117;--fg:#eaf1ff;--card:#121a24;--line:#243347;
+    --pink:#e6007e;--vio:#6a35ff;--danger:#ff3b3b;
+    --zoom:1;
+    --stage-w:210mm;
+    --stage-h:297mm;
+    --phc:#c05;--phbg:#ffe08a66;
+  }
+
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,"Noto Sans KR",sans-serif}
+  .wrap{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;min-height:100vh;padding:12px}
+  html.fill .wrap{grid-template-columns:1fr}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:visible}
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .hd strong{font-weight:800}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid #ffffff1f;background:linear-gradient(90deg,var(--pink),var(--vio));color:#fff;cursor:pointer}
+  .btn--ghost{background:#182234;border-color:#2b3a54;color:#d6e4ff}
+  .stack{padding:12px;overflow:auto}
+
+  /* 화면 캔버스 */
+  .paper{position:relative;width:min(1480px,100%);margin:auto;border:1px solid #223049;border-radius:10px;background:#0f1624;height:calc((var(--stage-h)) * var(--zoom));overflow:hidden;}
+  .stage{width:var(--stage-w);height:var(--stage-h);transform-origin:top left;transform:scale(var(--zoom));position:relative;}
+  .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none}
+  .overlay{position:absolute;inset:0}
+
+  /* 필드 */
+  .field{position:absolute;transform:none;cursor:move;z-index:2;--fs:18px;}
+  .field.checkbox{transform:translate(-50%,-50%)}
+  .label{position:absolute;top:-16px;left:0;font-size:12px;font-weight:800;text-shadow:0 1px 2px #0009}
+  .field input,.field textarea,.field select{
+    width:100%;background:transparent;border:none;color:var(--fgc,#fff);
+    height:var(--ih,28px);outline:none;padding:0 6px;font:700 var(--fs)/1.2 system-ui
+  }
+  .field:focus-within{
+    outline: 3px solid #e724ee83;
+    outline-offset: 0px;
+    border-radius: 0px;
+    background: rgba(37,99,235,.03);
+  }
+
+  /* ✅ 길면 자동 축소용(한 줄 고정) */
+  .field input.fit-one-line,
+  .field textarea.fit-one-line{
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+  }
+
+  /* 세로 가운데(텍스트 한 줄용) */
+  .field input[type="text"],
+  .field select{
+    line-height: var(--ih, 28px);
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  /* 리사이즈 손잡이 */
+  .field .resize-handle{
+    position:absolute;
+    right:-6px;
+    bottom:-6px;
+    width:12px;
+    height:12px;
+    border-radius:3px;
+    cursor:nwse-resize;
+    opacity:0;
+    border:1px solid transparent;
+    background:transparent;
+    box-shadow:none;
+  }
+  .field:hover .resize-handle,
+  .field.sel .resize-handle{
+    opacity:1;
+    border-color:#60a5fa;
+    background:#1d4ed8;
+    box-shadow:0 0 0 1px #0b1120;
+  }
+  html.fill .field .resize-handle{display:none !important;}
+
+  /* 서류 영역(왼쪽 캔버스) 드롭다운 화살표 숨기기 */
+  .paper .field select{
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: none !important;
+    padding-right: 8px;
+  }
+
+  /* 필드(중복 선언 정리) */
+  .field input,
+  .field select{
+    width:100%;
+    background:transparent;
+    border:none;
+    color:var(--fgc,#fff);
+    height:var(--ih,28px);
+    outline:none;
+    padding:0 6px;
+    font:700 var(--fs)/1.2 system-ui;
+    text-align:var(--ta,left);
+    line-height:var(--ih,28px);
+  }
+
+  /* textarea는 autosize가 있으니 line-height만 유지하고 height는 JS가 제어 */
+  .field textarea{
+    width:100%;
+    background:transparent;
+    border:none;
+    color:var(--fgc,#fff);
+    outline:none;
+    padding:0 6px;
+    font:700 var(--fs)/1.2 system-ui;
+    text-align:var(--ta,left);
+
+    white-space:pre-wrap;
+    word-break:break-word;
+    overflow-wrap:anywhere;
+    overflow:hidden;
+    resize:none !important;
+    min-height:5px;
+    max-height:none !important;
+  }
+
+  .field textarea::-webkit-scrollbar{display:none}
+
+  /* 입력 잠금(시각적 안내만) */
+  .field [data-locked="1"]{caret-color:transparent}
+  .field [data-locked="1"]::placeholder{color:var(--phc);font-weight:900;background:var(--phbg);padding:0 .25em;border-radius:6px;}
+
+  /* 체크/라디오 */
+  .field.checkbox input,.field.radio input[type="checkbox"]{
+    appearance:none;-webkit-appearance:none;background:transparent;
+    border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000);
+    position:relative;vertical-align:middle;display:inline-block;box-sizing:border-box;
+  }
+
+  /* ===== radio 표시 스타일 3종 (dot / solid / tick) ===== */
+  .field.radio.rd-dot input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    inset:3px;
+    border-radius:999px;
+    background:#000;
+  }
+  .field.radio.rd-solid input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    inset:2px;
+    border-radius:999px;
+    background:#000;
+  }
+  .field.radio.rd-tick input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    left:5px;
+    top:2px;
+    width:calc(var(--rsize,18px) - 10px);
+    height:calc(var(--rsize,18px) - 10px);
+    border-right:2px solid #000;
+    border-bottom:2px solid #000;
+    transform:rotate(45deg);
+    border-radius:0;
+  }
+
+  .field.checkbox input{width:var(--cksize,18px);height:var(--cksize,18px);border-radius:2px;}
+  .field.checkbox.ck-tick input:checked::after,
+  .field.checkbox:not(.ck-solid):not(.ck-dot) input:checked::after{
+    content:"";
+    position:absolute;
+    left:3px;
+    top:0px;
+    width:calc(var(--cksize,18px) - 6px);
+    height:calc(var(--cksize,18px) - 6px);
+    border-right:2px solid #000;
+    border-bottom:2px solid #000;
+    transform:rotate(45deg) translateY(-2px);
+  }
+  .field.checkbox.ck-solid input:checked::after{
+    content:"";
+    position:absolute;
+    inset:2px;
+    background:#000;
+    border:none;
+    transform:none;
+  }
+  .field.checkbox.ck-dot input:checked::after{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:calc(var(--cksize,18px) * 0.45);
+    height:calc(var(--cksize,18px) * 0.45);
+    background:#000;
+    border-radius:999px;
+    transform:translate(-50%,-50%);
+    border:none;
+  }
+
+  .field.checkbox .label{top:0;left:24px}
+
+  /* ===== radio 개선 ===== */
+  .field.radio{ white-space: normal; }
+  .field.radio > div{
+    display:flex;
+    flex-wrap:wrap;
+    gap: var(--rgap,0px);
+    align-items:center;
+    max-width:100%;
+  }
+
+  .field.radio .radio-item{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:0;
+    border-radius:8px;
+    border: var(--rbw,1px) solid var(--rbc, rgba(0,0,0,.25));
+    background: var(--rbg, transparent);
+    flex:0 1 auto;
+    max-width:100%;
+  }
+  .field.radio .radio-item span{
+    display:inline;
+    font-weight:700;
+    color:#000;
+    white-space:normal;
+    word-break:keep-all;
+  }
+  .field.radio.noText .radio-item span{display:none !important;}
+
+  .sel{outline:3px solid #00d2ff66;border-radius:8px}
+
+  /* 우측 기본도구 */
+  .group{border:2px solid #2b3a54;border-radius:12px;padding:10px;margin:10px 0 14px;background:#0f1624}
+  .group h4{margin:0 0 8px;font-size:12px;color:#9fb0cc;font-weight:800;letter-spacing:.4px}
+  .row{display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+  .row input,.row select,.row textarea{width:100%;background:#0f1624;border:1px solid #2b3a54;border-radius:10px;color:#dfe9ff;outline:none;padding:8px 10px;font-weight:700}
+  .hint{color:#9fb0cc;font-size:12px}
+  .stack .paper{margin-bottom:56px}
+  .stack{padding-bottom:140px}
+  .pager{display:flex;align-items:center;gap:8px;justify-content:center;margin:6px 0 18px;flex-wrap:wrap}
+  #pageInfo{min-width:84px;text-align:center;font-weight:800}
+
+  .toast{position:fixed;left:0;right:0;bottom:16px;display:none;justify-content:center;z-index:9999}
+  .toast__card{background:#172131;border:1px solid #2b3a54;border-radius:10px;padding:10px 12px;color:#fff;max-width:680px;width:calc(100% - 32px)}
+  .invalid{outline:3px solid var(--danger)!important;background:rgba(255,59,59,.2);border-radius:8px}
+  .required-pending{
+  background: rgba(255, 166, 0, 0.212) !important;
+  outline: 2px solid #ff9100 !important;
+  border-radius: 6px !important;
+}
+  html.fill .builder{display:none}
+
+  /* 인쇄 공통 */
+  @page{size:A4 portrait;margin:0}
+  #printAll{display:none}
+  .print-value{display:none;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;padding:6px 6px 3px;font:600 var(--fs)/1.2 system-ui}
+
+  /* ✅ PRINT: radio (원형 유지) */
+  .field.radio input[type="checkbox"]{
+    width:var(--rsize,18px) !important;
+    height:var(--rsize,18px) !important;
+    border-radius:999px !important;
+  }
+
+  @media print{
+    body{background:#fff}
+    .wrap,.builder,.pager,.hint,.hd,#affPopup{display:none !important}
+    #printAll{display:block}
+    .pageWrap{width:210mm;height:297mm;position:relative;overflow:visible;padding:0;box-sizing:border-box;page-break-after:always;}
+    .pageWrap:last-child{page-break-after:auto}
+    #printAll .stage{transform:scale(1)}
+    #printAll .paper{border:none;height:auto}
+    #printAll .stage img{width:100%;height:100%;object-fit:fill}
+    #printAll .overlay{position:absolute;inset:0;overflow:visible !important}
+    #printAll,#printAll *{font-family:system-ui,"Noto Sans KR",sans-serif !important;letter-spacing:0 !important}
+    #printAll .field input,#printAll .field textarea,#printAll .field select{color:#000 !important;background:transparent !important;border-bottom:none !important}
+    #printAll .label{color:#000 !important;text-shadow:none !important}
+    #printAll .field.radio .radio-item span{display:inline !important;color:#000 !important}
+    #printAll .field select{display:none !important}
+    #printAll .field .print-value{display:block !important;color:#000 !important}
+
+    #printAll textarea{
+      height:auto !important;
+      resize:none !important;
+      max-height:none !important;
+    }
+
+    .field.checkbox input,.field.radio input[type="checkbox"]{
+      appearance:none !important;
+      -webkit-appearance:none !important;
+      background:transparent !important;
+      border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000) !important;
+      position:relative !important;
+      vertical-align:middle;
+    }
+    .field.checkbox input{
+      width:var(--cksize,18px) !important;
+      height:var(--cksize,18px) !important;
+      border-radius:2px !important
+    }
+
+    .field.radio.rd-dot input[type="checkbox"]:checked::after{
+      content:"";
+      position:absolute;
+      inset:3px;
+      border-radius:999px;
+      background:#000;
+    }
+    .field.radio.rd-solid input[type="checkbox"]:checked::after{
+      content:"";
+      position:absolute;
+      inset:2px;
+      border-radius:999px;
+      background:#000;
+    }
+    .field.radio.rd-tick input[type="checkbox"]:checked::after{
+      content:"";
+      position:absolute;
+      left:5px;
+      top:2px;
+      width:calc(var(--rsize,18px) - 10px);
+      height:calc(var(--rsize,18px) - 10px);
+      border-right:2px solid #000;
+      border-bottom:2px solid #000;
+      transform:rotate(45deg);
+    }
+
+    .env-badge{display:none !important;}
+  }
+
+  .field.hasBorder input[type="text"],.field.hasBorder textarea{border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;border-radius:8px;background:transparent;padding:6px 8px;}
+  #printAll .field.hasBorder input[type="text"],#printAll .field.hasBorder textarea{border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;border-bottom:none !important;border-radius:8px;}
+  .field.hasBG input[type="text"],.field.hasBG textarea{background:var(--bgc,transparent) !important}
+  #printAll .field.hasBG input[type="text"],#printAll .field.hasBG textarea{background:var(--bgc,transparent) !important}
+
+  .affBanner{display:none;position:sticky;top:0;z-index:50;margin:6px 0 10px}
+  .affBanner__card{background:#ffe08a;color:#2a2100;border:1px solid #cfa442;border-radius:10px;padding:10px 12px;font-weight:800}
+  #affPopup{position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:99999;display:none}
+  #affPopup .card b{font-weight:900}
+
+  .extraBar{display:none;margin:6px 0 0}
+  .extraBar__card{background:#0f2036;border:1px solid #2b3a54;border-radius:10px;padding:8px 10px;font-weight:800;color:#cfe0ff}
+  .extraBar__label{opacity:.85;margin-right:8px}
+
+  html.is-staging .env-badge{
+    position:fixed;z-index:9999;top:10px;left:10px;
+    padding:6px 10px;border-radius:6px;font-weight:700;
+    background:#f59e0b;color:#111827;box-shadow:0 2px 6px rgba(0,0,0,.2);
+    user-select:none;pointer-events:none;
+  }
+  html.is-prod .builder{display:none !important;}
+  html.is-prod .hd .builder{display:none !important;}
+
+  .btn-back{
+    min-width: 140px;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 6px 14px;
+    text-decoration:none;
+  }
+  .btn-back::before{
+    content: "←";
+    margin-right: 4px;
+    font-size: 14px;
+  }
+
+  /* =========================
+     ✅ select 잘림 해결: select는 클릭만 / 표시는 div로 2줄+자동축소
+  ========================= */
+  .field.selectLike{ position:absolute; }
+  .field.selectLike select{
+    color: transparent !important;
+    background: transparent !important;
+    text-shadow: none !important;
+  }
+  .field.selectLike .select-display{
+    position:absolute;
+    inset:0;
+    padding:0 6px;
+    pointer-events:none;
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    white-space:normal;
+    word-break:keep-all;
+    overflow:hidden;
+    line-height:1.15;
+    font-weight:700;
+    color:var(--fgc,#fff);
+  }
+
+  /* ✅ [추가] 인쇄 시 검정화면(오버레이/모달) 방지 */
+  @media print{
+    #msgModal,
+    #docsModal,
+    #comingSoonModal,
+    #formModal,
+    .modal, .cs-modal, .form-modal,
+    .modal-backdrop, .cs-backdrop, .form-backdrop{
+      display:none !important;
+      visibility:hidden !important;
+    }
+
+    html, body{
+      background:#fff !important;
+    }
+
+    /* 혹시 남아있는 fixed/overlay 계열 차단 */
+    [style*="position: fixed"]{
+      visibility:hidden !important;
+    }
+  }
+@media print{
+  /* 1) ✅ 라디오/체크 '원(input)' 테두리 제거 (투명 설정일 때) */
+  #printAll .field.radio[style*="--tick-bdc: transparent"] input[type="checkbox"],
+  #printAll .field.checkbox[style*="--tick-bdc: transparent"] input{
+    border: 0 !important;
+    border-color: transparent !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* 2) ✅ 라디오 '박스(.radio-item)' 테두리 제거 (투명 설정일 때) */
+  #printAll .field.radio[style*="--rbc: transparent"] .radio-item{
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* 3) (원하면) 라디오 박스 테두리를 그냥 무조건 다 없애기 — 위 2번이 안 먹을 때만 사용
+  #printAll .field.radio .radio-item{
+    border: 0 !important;
+    background: transparent !important;
+  }
+  */
+}
+
+  /* ✅ (원하시면) 평상시에도 msgModal 자체를 사용 안 할 경우 */
+  /* #msgModal{ display:none !important; } */
+
+/* =========================================================
+   ✅ checkmark / 조건부 필수 도구 / 양식 팝업
+========================================================= */
+.field.checkmark{transform:translate(-50%,-50%)}
+.field.checkmark .checkmark-symbol{
+  width:100%;
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:var(--fs,18px);
+  font-weight:900;
+  color:var(--fgc,#000);
+  line-height:1;
+  pointer-events:none;
+}
+.field.checkmark .label{display:none}
+html:not(.fill) .field.checkmark{
+  outline:1px dashed rgba(255,59,59,.7);
+  background:rgba(255,59,59,.08);
+  min-height:16px;
+}
+.cond-rule-list{
+  background:#0f1624;
+  border:1px solid #2b3a54;
+  border-radius:10px;
+  padding:10px;
+  min-height:104px;
+  max-height:160px;
+  overflow:auto;
+  display:block;
+  white-space:normal;
+}
+.cond-rule-item{
+  border:0;
+  border-radius:0;
+  padding:0 0 4px 0;
+  margin:0;
+  background:transparent;
+  cursor:pointer;
+  font-size:12px;
+  line-height:1.45;
+  color:#dfe9ff;
+  white-space:normal;
+}
+.cond-rule-item.active{color:#fff;font-weight:900;text-decoration:underline;text-underline-offset:3px}
+.form-modal{
+  position:fixed;
+  inset:0;
+  display:none;
+  z-index:11000;
+}
+.form-modal[aria-hidden="false"]{display:block}
+.form-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.form-panel{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(760px, calc(100% - 32px));
+  background:#fff;
+  color:#111827;
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+.form-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 14px;
+  border-bottom:1px solid #e5e7eb;
+}
+.form-head strong{font-weight:900}
+.form-x{
+  border:1px solid #d1d5db;
+  background:#fff;
+  border-radius:10px;
+  padding:6px 10px;
+  cursor:pointer;
+  font-weight:800;
+  font-size:12px;
+}
+.form-body{padding:14px;max-height:calc(90vh - 140px);overflow:auto}
+.form-textarea{
+  width:100%;
+  min-height:420px;
+  resize:none;
+  overflow:auto;
+  border:1px solid #d1d5db;
+  border-radius:12px;
+  padding:12px;
+  font:13px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Noto Sans KR", monospace;
+  white-space:pre-wrap;
+  outline:none;
+}
+.form-actions{display:flex;justify-content:flex-end;gap:8px;padding:0 14px 14px}
+.form-btn{border:none;border-radius:10px;padding:8px 14px;background:#111827;color:#fff;font-weight:900;cursor:pointer}
+.form-btn.ghost{background:#fff;color:#111827;border:1px solid #d1d5db}
+.form-toast{margin-top:8px;font-size:12px;font-weight:800;color:#16a34a;display:none}
+.form-toast.show{display:block}
+@media print{
+  .form-modal,.form-backdrop{display:none !important}
+  #printAll .field.checkmark .checkmark-symbol{color:#000 !important}
+  #printAll .field.checkmark .label{display:none !important}
+}
+
+
+/* =========================================================
+   ✅ 두 번째 HTML 텍스트 필드 스타일 적용본
+   - 입력 박스 높이/세로정렬/인쇄값/단말명 자동축소 보정
+========================================================= */
+.field[data-va="top"]{display:flex;align-items:flex-start;}
+.field[data-va="middle"]{display:flex;align-items:center;}
+.field[data-va="bottom"]{display:flex;align-items:flex-end;}
+.field input,.field textarea,.field select{
+  width:100%;
+  background:transparent;
+  border:none;
+  color:var(--fgc,#fff);
+  outline:none;
+  box-sizing:border-box !important;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  font-weight:700;
+}
+.field input[type="text"],
+.field select{
+  height:100% !important;
+  line-height:1 !important;
+  padding:0 1px !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  font-weight:700;
+  transform:translateY(-0.02em);
+}
+.field input,
+.field select{
+  width:100%;
+  background:transparent;
+  border:none;
+  color:var(--fgc,#fff);
+  height:100% !important;
+  outline:none;
+  padding:0 1px !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+  line-height:1 !important;
+  font-size:var(--fs);
+  font-weight:700;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  text-align:var(--ta,left);
+}
+.field textarea{
+  width:100%;
+  background:transparent;
+  border:none;
+  color:var(--fgc,#fff);
+  outline:none;
+  padding:0 2px !important;
+  font-size:var(--fs);
+  font-weight:700;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  text-align:var(--ta,left);
+  line-height:1.1 !important;
+  white-space:pre-wrap;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  overflow:hidden;
+  resize:none !important;
+  min-height:5px;
+  max-height:none !important;
+}
+.print-value{
+  display:none;
+  white-space:pre-wrap;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  padding:0 1px;
+  font:700 var(--fs)/1.1 system-ui,"Noto Sans KR",sans-serif;
+  box-sizing:border-box;
+}
+.field.hasBorder input[type="text"],
+.field.hasBorder textarea,
+.field.hasBorder select,
+.field.selectLike.hasBorder .select-display{
+  border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;
+  border-radius:8px;
+  background:transparent;
+  padding:0 2px !important;
+}
+.field.hasBG input[type="text"],
+.field.hasBG textarea,
+.field.hasBG select,
+.field.selectLike.hasBG .select-display{
+  background:var(--bgc,transparent) !important;
+}
+.field.selectLike .select-display{
+  position:absolute;
+  inset:0;
+  padding:0 1px;
+  pointer-events:none;
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  white-space:normal;
+  word-break:keep-all;
+  overflow:hidden;
+  line-height:1.1;
+  font-weight:700;
+  color:var(--fgc,#fff);
+}
+.field.selectLike .select-display.device-one-line{
+  white-space:nowrap !important;
+  word-break:normal !important;
+  overflow:hidden !important;
+  text-overflow:clip !important;
+  overflow-wrap:normal !important;
+  line-height:1.0 !important;
+  transform:translateY(-0.02em) !important;
+}
+@media print{
+  #printAll .field input[type="text"],
+  #printAll .field textarea,
+  #printAll .field select{display:none !important;}
+  #printAll .field.checkbox input,
+  #printAll .field.radio input[type="checkbox"]{display:inline-block !important;}
+  #printAll .field .label{display:none !important;}
+  #printAll .field .print-value{
+    display:flex !important;
+    color:#000 !important;
+    position:absolute !important;
+    inset:0 !important;
+    padding:0 1px !important;
+    margin:0 !important;
+    box-sizing:border-box !important;
+    font-family:system-ui,"Noto Sans KR",sans-serif !important;
+    font-weight:700 !important;
+    line-height:1.0 !important;
+    white-space:pre-wrap !important;
+    word-break:break-word !important;
+    overflow-wrap:anywhere !important;
+    text-align:var(--ta,left) !important;
+    transform:translateY(-0.02em) !important;
+  }
+  #printAll .field[data-va="top"] .print-value{align-items:flex-start !important;}
+  #printAll .field[data-va="middle"] .print-value{align-items:center !important;}
+  #printAll .field[data-va="bottom"] .print-value{align-items:flex-end !important;}
+  #printAll .field .print-value-ta{
+    line-height:1.1 !important;
+    transform:none !important;
+    padding:0 2px !important;
+  }
+  #printAll .field.hasBorder .print-value{
+    border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;
+    border-radius:8px !important;
+    background:transparent !important;
+  }
+  #printAll .field.hasBG .print-value{background:var(--bgc,transparent) !important;}
+}
+
+
+/* =========================
+   주소 검색 팝업
+========================= */
+#addressSearchModal{
+  position:fixed;
+  inset:0;
+  z-index:120000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(3,10,22,.58);
+}
+#addressSearchModal.open{display:flex;}
+#addressSearchModal .asm-card{
+  width:min(94vw,620px);
+  max-height:94vh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  background:#fff;
+  color:#111827;
+  border:1px solid #d1d5db;
+  border-radius:16px;
+  box-shadow:0 24px 70px rgba(0,0,0,.34);
+}
+#addressSearchModal .asm-hd{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border-bottom:1px solid #e5e7eb;
+}
+#addressSearchModal .asm-title{font-size:17px;font-weight:900;}
+#addressSearchModal .asm-close,
+#addressSearchModal .asm-btn{
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:9px 14px;
+  background:#f1f5f9;
+  color:#0f172a;
+  font-weight:800;
+  cursor:pointer;
+}
+#addressSearchModal .asm-btn--primary{
+  border-color:#111827;
+  background:#111827;
+  color:#fff;
+}
+#addressSearchModal .asm-search{
+  min-height:430px;
+  height:min(58vh,520px);
+  background:#fff;
+}
+#addressSearchModal .asm-loading{
+  min-height:430px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  color:#475569;
+  font-weight:700;
+}
+#addressSearchModal .asm-detail{
+  padding:12px 14px;
+  border-top:1px solid #e5e7eb;
+  background:#fff;
+}
+#addressSearchModal .asm-label{
+  display:block;
+  margin-bottom:6px;
+  font-size:12px;
+  font-weight:900;
+  color:#334155;
+}
+#addressSearchModal .asm-selected,
+#addressSearchModal .asm-detail-input{
+  width:100%;
+  min-height:42px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:10px 12px;
+  background:#fff;
+  color:#111827;
+  font:700 14px/1.4 system-ui,"Noto Sans KR",sans-serif;
+}
+#addressSearchModal .asm-selected{
+  margin-bottom:10px;
+  background:#f8fafc;
+}
+#addressSearchModal .asm-selected:empty::before{
+  content:"주소 검색 결과를 선택해 주세요.";
+  color:#94a3b8;
+}
+#addressSearchModal .asm-error{
+  min-height:20px;
+  margin-top:7px;
+  color:#dc2626;
+  font-size:12px;
+  font-weight:800;
+}
+#addressSearchModal .asm-ft{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  padding:0 14px 14px;
+  background:#fff;
+}
+.field.address-search-enabled{cursor:pointer !important;}
+.field.address-search-enabled input,
+.field.address-search-enabled textarea{cursor:pointer;}
+html.fill .field.address-search-enabled::after{
+  display:none !important;
+  content:none !important;
+}
+@media (max-width:640px){
+  #addressSearchModal{padding:6px;}
+  #addressSearchModal .asm-card{width:100%;max-height:98vh;border-radius:12px;}
+  #addressSearchModal .asm-search,
+  #addressSearchModal .asm-loading{height:55vh;min-height:360px;}
+}
+@media print{
+  #addressSearchModal{display:none !important;visibility:hidden !important;}
+}
+
+</style>
+
+<script>
+/* =========================
+   ✅ ENV / URL 가드 (KT 단말 전용)
+   (⚠️ 여기에는 조건부필수 함수 넣지 않습니다)
+========================= */
+(function(){
+  const host = location.hostname;
+  const IS_LOCAL   = /^(localhost|127\.0\.0\.1)$/i.test(host);
+  const IS_STAGING = host.startsWith('staging.') || IS_LOCAL;
+
+  document.documentElement.classList.toggle('is-staging', IS_STAGING);
+  document.documentElement.classList.toggle('is-prod', !IS_STAGING);
+
+  const qs = new URLSearchParams(location.search);
+  const doc = (qs.get('doc') || 'device').toLowerCase();
+
+  // ✅ 단말 페이지는 doc=device로 고정(다른 값이면 device로 정리)
+  if (doc !== 'device') {
+    qs.set('doc','device');
+    const url = new URL(location.href);
+    url.search = qs.toString();
+    location.replace(url.toString());
+    return;
+  }
+
+  const fav = document.querySelector('link[rel="icon"][sizes="32x32"]') || document.querySelector('link[rel="icon"]');
+  if (IS_STAGING) {
+    document.title = 'STAGING · ' + document.title.replace(/^STAGING ·\s*/,'');
+    if (fav) fav.href = '/favicon-32x32.png?v=stg';
+
+    const b = document.createElement('div');
+    b.className = 'env-badge';
+    b.textContent = 'STAGING (개발/테스트)';
+    window.addEventListener('DOMContentLoaded', ()=>document.body.appendChild(b));
+  } else {
+    document.title = document.title.replace(/^STAGING ·\s*/,'');
+    if (fav) fav.href = '/favicon-32x32.png?v=prod';
+
+    const url = new URL(location.href);
+    if (!url.searchParams.has('mode')) {
+      url.searchParams.set('mode','fill');
+      history.replaceState(null,'',url.toString());
+    }
+    if (!url.searchParams.has('doc')) {
+      url.searchParams.set('doc','device');
+      history.replaceState(null,'',url.toString());
+    }
+  }
+})();
+
+(function(){
+  function forceCloseForPrint(){
+    const ids = ['msgModal','docsModal','comingSoonModal','formModal','addressSearchModal'];
+    ids.forEach(id=>{
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.setAttribute('aria-hidden','true');
+      el.classList.remove('open');
+      el.style.display = 'none';
+    });
+
+    document.querySelectorAll('.modal-backdrop,.cs-backdrop,.form-backdrop,.backdrop').forEach(b=>{
+      b.style.display = 'none';
+    });
+  }
+
+  window.addEventListener('beforeprint', forceCloseForPrint);
+})();
+/* ✅ 모든 입력에서 Enter 줄바꿈/제출 방지(동적 생성 포함) */
+(function blockEnterEverywhere(){
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+
+    const t = e.target;
+    if (!t) return;
+
+    // 입력 요소에서만 막기
+    const isInputLike =
+      t.tagName === 'TEXTAREA' ||
+      (t.tagName === 'INPUT' && (t.type === 'text' || t.type === 'search' || t.type === 'tel' || t.type === 'number')) ||
+      t.isContentEditable;
+
+    if (!isInputLike) return;
+
+    // (선택) Shift+Enter도 막기: 현재는 Enter면 전부 막음
+    e.preventDefault();
+  }, true);
+})();
+
+</script>
+</head>
+
+<body>
+<div class="wrap">
+  <section class="panel">
+    <div class="hd">
+      <strong>MCC · 미디어로그 단말 개통</strong>
+
+      <div style="display:flex; gap:8px; align-items:center">
+        <a href="../../../index.html" class="btn btn--ghost btn-back" id="backToHub">서류 선택 화면</a>
+        <div class="builder">
+          <button class="btn--ghost btn" id="enableWrapAll">모든 텍스트 자동 줄바꿈 켜기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div id="affBanner" class="affBanner"><div class="affBanner__card">제휴 요금제 진행 시 <b> C-1 성함·동의 체크</b>가 필요합니다.</div></div>
+
+      <div id="extraBar" class="extraBar">
+        <div class="extraBar__card"><span class="extraBar__label">추가 데이터</span><span id="extraBarText"></span></div>
+      </div>
+
+      <div class="paper" id="paper">
+        <div class="stage" id="stage">
+          <img id="bg" src="" alt="">
+          <div class="overlay" id="overlay"></div>
+        </div>
+      </div>
+
+      <div class="pager">
+        <button class="btn--ghost btn" id="prev">◀ 이전</button>
+        <div id="pageInfo">1 / 1</div>
+        <button class="btn--ghost btn" id="next">다음 ▶</button>
+        <button class="btn" id="btnPdf">PDF 생성OR인쇄</button>
+      </div>
+      <p class="hint" style="text-align:center">필드를 클릭해 드래그로 이동. 입력은 컨트롤을 클릭 후 타이핑.</p>
+    </div>
+  </section>
+
+  <section class="panel builder">
+    <div class="hd">
+      <strong>기본 도구</strong>
+      <div>
+        <button class="btn--ghost btn" id="reload">설계 다시읽기</button>
+        <button class="btn--ghost btn" id="resetValues">값 초기화</button>
+        <button class="btn" id="saveJson">설계 저장(JSON)</button>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="group">
+        <h4>새 필드</h4>
+        <div class="row"><div>새 필드 타입</div>
+          <select id="newType">
+            <option value="text">텍스트박스</option>
+            <option value="textarea">텍스트영역</option>
+            <option value="select">드롭다운</option>
+            <option value="radio">라디오(단일선택)</option>
+            <option value="checkbox">체크박스</option>
+            <option value="checkmark">체크표시(✓)</option>
+          </select>
+        </div>
+        <div class="row"><div>새 필드 ID</div><input id="newId" placeholder="예: deviceId / planId / subsidy 등"></div>
+        <div class="row"><div>라벨</div><input id="newLabel" placeholder="예: 단말 선택"></div>
+        <div class="row"><div>옵션(콤마)</div><input id="newOpts" placeholder="라디오·드롭다운: 예) 12,24,36"></div>
+        <div class="row"><div>필수</div><label><input type="checkbox" id="newReq"> 필수값</label></div>
+        <div class="row"><button class="btn" id="addField">필드 추가</button></div>
+      </div>
+
+      <div class="group" id="conditionalTool">
+        <h4>조건부 필수 설정</h4>
+        <div class="row"><div>기준 필드 ID/그룹명</div><input id="cond_sourceId" type="text" placeholder="예: 신규/번이"></div>
+        <div class="row"><div>기준 값</div><input id="cond_whenValue" type="text" placeholder="예: 신규"></div>
+        <div class="row"><div>필수 대상 ID</div><input id="cond_requiredOn" type="text" placeholder="예: 희망번호, 통신사명"></div>
+        <div class="row">
+          <div></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn--ghost btn" id="cr_add" type="button">규칙 추가</button>
+            <button class="btn--ghost btn" id="cr_update" type="button">선택 수정</button>
+            <button class="btn--ghost btn" id="cr_delete" type="button">선택 삭제</button>
+          </div>
+        </div>
+        <div class="row"><div>규칙 목록</div><div class="cond-rule-list" id="condRuleList"></div></div>
+      </div>
+
+      <div id="propBox" class="group">
+        <h4>선택한 필드 속성</h4>
+        <div class="row"><div>선택된 항목</div><div id="selInfo" class="hint">없음</div></div>
+
+        <div class="row"><div>라벨(선택)</div><input id="p_label" type="text" placeholder="라벨"></div>
+        <div class="row"><div>필드 ID</div><input id="p_id" type="text" placeholder="예: deviceId / planId / msrp"></div>
+        <div class="row" id="row_checkGroup"><div>체크 그룹명</div><input id="p_groupId" type="text" placeholder="예: 신규/번이 / 전통신사 / 성별"></div>
+        <div class="row" id="row_checkValue"><div>체크 값</div><input id="p_checkValue" type="text" placeholder="예: 신규 / 번이 / MVNO / 남 / 여"></div>
+
+        <div class="row" id="row_opts"><div>옵션(콤마)</div><input id="p_options" type="text" placeholder="예: 12, 24, 36"></div>
+        <div class="row" id="row_req"><div>필수</div><label><input type="checkbox" id="p_required"> 반드시 작성</label></div>
+
+        <div class="row"><div>X(%)</div><input id="p_x" type="number" step="0.1"></div>
+        <div class="row"><div>Y(%)</div><input id="p_y" type="number" step="0.1"></div>
+        <div class="row"><div>폭(%)</div><input id="p_w" type="number" step="0.1"></div>
+
+        <div class="row"><div>라디오 크기(px)</div><input id="p_radioSize" type="number" min="10" max="32" step="1" placeholder="18"></div>
+        <div class="row"><div>라디오 간격(px)</div><input id="p_radioGap" type="number" min="0" max="200" step="1" placeholder="12"></div>
+        <div class="row" id="row_checkStyle">
+          <div>체크 스타일</div>
+          <select id="p_checkStyle">
+            <option value="tick">✓ 체크</option>
+            <option value="solid">■ 꽉찬</option>
+            <option value="dot">● 점</option>
+          </select>
+        </div>
+
+        <div class="row"><div>텍스트 색상</div><input id="p_color" type="color" value="#000000"></div>
+        <div class="row"><div>입력 높이(px)</div><input id="p_height" type="number" min="5" max="60" step="1" placeholder="auto"></div>
+        <div class="row"><div>글자 크기(px)</div><input id="p_fontSize" type="number" min="5" max="32" step="1" placeholder="14"></div>
+
+        <div class="row"><div>정렬</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn--ghost btn" id="alignLeft">좌</button>
+            <button class="btn--ghost btn" id="alignCX">가운데</button>
+            <button class="btn--ghost btn" id="alignRight">우</button>
+            <button class="btn--ghost btn" id="alignTop">상</button>
+            <button class="btn--ghost btn" id="alignCY">중앙</button>
+            <button class="btn--ghost btn" id="alignBottom">하</button>
+
+            <div class="row"><div>텍스트 정렬</div>
+              <select id="p_textAlign">
+                <option value="">기본(좌측)</option>
+                <option value="left">좌측</option>
+                <option value="center">가운데</option>
+                <option value="right">우측</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row"><div>입력 잠금</div>
+          <label><input type="checkbox" id="p_locked"> 화면에서 타이핑 금지</label>
+        </div>
+        <div class="row"><div>placeholder 잠금</div>
+          <label><input type="checkbox" id="p_lockOnPh"> placeholder만 표시(값 없으면 읽기전용)</label>
+        </div>
+
+        <div class="group" style="margin:8px 0 0;padding-top:8px">
+          <h4>입력 제한(마스크)</h4>
+          <div class="row"><div>패턴 선택</div>
+            <select id="p_mask">
+              <option value="">없음</option>
+              <option value="number">숫자만</option>
+              <option value="tel">전화번호(숫자-)</option>
+              <option value="alpha">영문</option>
+              <option value="alnum">영문+숫자</option>
+              <option value="hangul">한글만</option>
+              <option value="custom">사용자정의(정규식)</option>
+            </select>
+          </div>
+          <div class="row"><div>허용 패턴(정규식)</div><input id="p_maskRe" type="text" placeholder="예: [0-9-], [A-Za-z], [가-힣0-9 ]"></div>
+        </div>
+
+        <div class="group" style="margin-top:8px">
+          <h4>콘텐츠 설정</h4>
+          <div class="row"><div>최대 글자 수</div><input id="p_maxlen" type="number" min="1" max="500" step="1"></div>
+          <div class="row"><div>안내 문구(placeholder)</div><input id="p_placeholder" type="text" placeholder="예: 선납금 입력"></div>
+          <div class="row"><div>자동 줄바꿈</div><label><input id="p_wrap" type="checkbox" checked> 사용</label></div>
+          <div class="row"><div>자동 날짜</div>
+            <select id="p_autoDate">
+              <option value="">없음</option>
+              <option value="year">년(YYYY)</option>
+              <option value="month">월(MM)</option>
+              <option value="day">일(DD)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="group" style="margin-top:8px">
+          <h4>테두리/배경</h4>
+          <div class="row"><div>테두리 색상</div><input id="p_borderColor" type="color" value="#ff3b3b"></div>
+          <div class="row"><div>테두리 굵기(px)</div><input id="p_borderWidth" type="number" min="1" max="8" step="1" placeholder="2"></div>
+          <div class="row"><div>테두리 투명</div><label><input type="checkbox" id="p_borderTransparent"> 사용</label></div>
+          <div class="row"><div>배경 색상</div><input id="p_bgColor" type="color" value="#000000"></div>
+          <div class="row"><div>배경 투명</div><label><input type="checkbox" id="p_bgTransparent"> 사용</label></div>
+        </div>
+
+        <div class="row" style="margin-top:8px">
+          <button class="btn--ghost btn" id="applyProp">적용</button>
+          <button class="btn--ghost btn" id="delField" style="margin-left:8px">삭제</button>
+        </div>
+      </div>
+
+      <div class="group" id="formPopupTool">
+        <h4>양식 팝업 설정</h4>
+        <div class="row"><div>팝업 사용</div><label><input type="checkbox" id="formPopupEnabled"> 사용</label></div>
+        <div class="row"><div>양식 키</div><input id="formKey" type="text" placeholder="예: usim"></div>
+        <div class="row"><div>양식 제목</div><input id="formTitleInput" type="text" placeholder="예: 유심 개통 양식"></div>
+        <div class="row"><div>양식 내용</div><textarea id="formTextInput" rows="6" placeholder="팝업에 표시할 양식 내용을 입력"></textarea></div>
+        <div class="row">
+          <button class="btn--ghost btn" id="formSaveBtn" type="button">양식 저장</button>
+          <button class="btn--ghost btn" id="formDeleteBtn" type="button">양식 삭제</button>
+        </div>
+        <div class="hint">기본값은 비활성(false)입니다. 필드 ID를 form:양식키 형태로 만들면 팝업 버튼으로 사용할 수 있습니다.</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="printAll"></div>
+
+<div class="toast" id="toast"><div class="toast__card">
+  <b>작성되지 않은 필수 항목이 있습니다</b>
+  <ul id="missList" style="margin:8px 0 0 18px;padding:0"></ul>
+  <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn--ghost btn" id="tClose">확인</button></div>
+</div></div>
+
+<div id="affPopup"><div class="card">⚠️ <b>제휴 요금제</b>입니다. <b> C-1 성함·동의 체크</b>가 모두 완료되어야 진행됩니다.</div></div>
+
+<div id="addressSearchModal" aria-hidden="true">
+  <div class="asm-card" role="dialog" aria-modal="true" aria-labelledby="addressSearchTitle">
+    <div class="asm-hd">
+      <div class="asm-title" id="addressSearchTitle">주소 검색</div>
+      <button type="button" class="asm-close" id="addressSearchClose">닫기</button>
+    </div>
+    <div id="addressSearchLayer" class="asm-search">
+      <div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>
+    </div>
+    <div class="asm-detail">
+      <label class="asm-label">선택한 주소</label>
+      <div id="addressSearchSelected" class="asm-selected"></div>
+      <label class="asm-label" for="addressSearchDetail">상세주소</label>
+      <input id="addressSearchDetail" class="asm-detail-input" type="text"
+             maxlength="100" autocomplete="off"
+             placeholder="동/호수 등 상세주소를 입력해 주세요">
+      <div id="addressSearchError" class="asm-error" aria-live="polite"></div>
+    </div>
+    <div class="asm-ft">
+      <button type="button" class="asm-btn" id="addressSearchReset">다시 검색</button>
+      <button type="button" class="asm-btn asm-btn--primary" id="addressSearchApply">주소 적용</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="form-modal" id="formModal" aria-hidden="true">
+  <div class="form-backdrop" data-form-close="1"></div>
+  <div class="form-panel" role="dialog" aria-modal="true" aria-label="양식 복사 팝업">
+    <div class="form-head">
+      <strong id="formPopupTitle">양식</strong>
+      <button class="form-x" id="formCloseX" type="button">닫기</button>
+    </div>
+    <div class="form-body">
+      <div class="form-textarea" id="formPopupText"></div>
+      <div class="form-toast" id="formToast">복사되었습니다.</div>
+    </div>
+    <div class="form-actions">
+      <button class="form-btn ghost" id="formSelectAll" type="button">전체선택</button>
+      <button class="form-btn" id="formCopyBtn" type="button">복사</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   ✅ [핵심] BASE_URL: 현재 파일(index.html)이 있는 폴더 기준
+========================================================= */
+const BASE_URL = new URL('./', location.href);
+const ABS = (p) => new URL(String(p || ''), BASE_URL).toString();
+
+/* ✅ 조건부 필수 규칙 */
+let CONDITIONAL_REQUIRED = [
+  { sourceId: '신규/번이', whenValue: '신규', requiredOn: ['희망번호'] },
+  { sourceId: '신규/번이', whenValue: '번이', requiredOn: ['번호이동', '전통신사'] },
+  { sourceId: '전통신사', whenValue: 'MVNO', requiredOn: ['통신사명'] },
+];
+let USE_FORM_POPUP = false;
+let FORM_POPUP_FORMS = Object.create(null);
+
+/* =========================
+   ✅ 전역 값 저장/동기화
+========================= */
+const valuesById = Object.create(null);
+const elById = Object.create(null);
+let SHOW_INVALID = false;
+let __programmaticUpdate = false;
+
+
+function setValueById(id, value) {
+  if (!id) return;
+  const v = (value ?? "");
+
+  // ✅ 같은 값이면 DOM 업데이트 자체를 하지 않음(루프 예방)
+  if (valuesById[id] === v) return;
+
+  // 1) 값 저장
+  valuesById[id] = v;
+
+  // 2) pages 설계에도 반영
+  try {
+    const key = String(id).toLowerCase();
+    pages.forEach(pg => {
+      (pg.fields || []).forEach(f => {
+        if (String(f.id || '').toLowerCase() === key) {
+          if (f.type === 'checkbox' || f.type === 'checkmark') f.value = !!value;
+          else f.value = v;
+        }
+      });
+    });
+  } catch (_) {}
+
+  // 3) 화면 DOM 반영
+  let el = elById[id];
+  if (!el) el = document.getElementById(id);
+  if (!el) return;
+
+  // ✅ 여기부터는 "프로그램이 값을 넣는 중"이라고 표시
+  __programmaticUpdate = true;
+
+  // radio 더미객체면 값만 보관
+  if (typeof el === 'object' && el.type === 'radio') {
+    el.value = v;
+    __programmaticUpdate = false;
+    return;
+  }
+
+  // checkbox
+  if (el.type === 'checkbox') {
+    el.checked = !!value;
+    __programmaticUpdate = false;
+    return;
+  }
+  if (el.dataset && el.dataset.type === 'checkmark') {
+    el.textContent = value ? '✓' : '';
+    __programmaticUpdate = false;
+    return;
+  }
+
+  // input/textarea/select
+if ('value' in el) {
+  el.value = v;
+} else {
+  el.textContent = v;
+}
+__programmaticUpdate = false;
+}
+function applyAutoDateAll(){
+  const d = new Date();
+  const YYYY = String(d.getFullYear());
+  const MM   = String(d.getMonth() + 1).padStart(2, '0');
+  const DD   = String(d.getDate()).padStart(2, '0');
+
+  pages.forEach(pg=>{
+    (pg.fields || []).forEach(f=>{
+      if(!f.autoDate) return;
+
+      // 값이 비어있을 때만 자동 입력
+      if(String(f.value || '').trim() !== '') return;
+
+      if (f.autoDate === 'year')  f.value = YYYY;
+      if (f.autoDate === 'month') f.value = MM;
+      if (f.autoDate === 'day')   f.value = DD;
+
+      if (f.id) setValueById(f.id, f.value);
+    });
+  });
+}
+
+function applyMirror(sourceField, value) {
+  const targets = sourceField.mirrorTo || [];
+  targets.forEach(tid => setValueById(tid, value));
+}
+
+function __normKey(v){ return String(v || '').toLowerCase().replace(/\s+/g,'').trim(); }
+function getCheckmarkGroupId(f){
+  if (!f || f.type !== 'checkmark') return '';
+  if (f.groupId) return String(f.groupId).trim();
+  const text = [f.id, f.label, f.checkValue].map(v => String(v || '')).join(' ');
+  if (/신규|번이|번호\s*이동|mnp|new/i.test(text)) return '신규/번이';
+  if (/전통신사|통신사|skt|sk|kt|lg|lgu|별정|mvno/i.test(text)) return '전통신사';
+  if (/성별|남|여|male|female/i.test(text)) return '성별';
+  return '';
+}
+function getCheckmarkValue(f){
+  if (!f || f.type !== 'checkmark') return '';
+  if (f.checkValue) return String(f.checkValue).trim();
+  const text = [f.id, f.label].map(v => String(v || '')).join(' ');
+  if (/번호\s*이동|번이|mnp/i.test(text)) return '번이';
+  if (/신규|new/i.test(text)) return '신규';
+  if (/별정|mvno/i.test(text)) return 'MVNO';
+  if (/lgu|lg\+|lg/i.test(text)) return 'LG';
+  if (/kt/i.test(text)) return 'KT';
+  if (/skt|sk/i.test(text)) return 'SK';
+  if (/남|male/i.test(text)) return '남';
+  if (/여|female/i.test(text)) return '여';
+  return f.id || 'Y';
+}
+function getCheckmarkGroupValue(groupId){
+  const gid = String(groupId || '').trim();
+  const key = __normKey(gid);
+  if (!key) return '';
+  const direct = valuesById[gid] ?? valuesById[key] ?? valuesById[String(gid).toLowerCase()];
+  if (direct != null && String(direct).trim() !== '') return String(direct).trim();
+  for (const pg of pages){
+    for (const f of (pg.fields || [])){
+      if (f.type !== 'checkmark') continue;
+      if (__normKey(getCheckmarkGroupId(f)) === key && !!f.value){
+        return getCheckmarkValue(f);
+      }
+    }
+  }
+  return '';
+}
+function isCheckmarkGroupChecked(groupId){
+  return !!getCheckmarkGroupValue(groupId);
+}
+function setCheckmarkGroupValue(groupId, checkValue){
+  const gid = String(groupId || '').trim();
+  const key = __normKey(gid);
+  const wanted = String(checkValue || '').trim();
+  if (!key) return;
+  pages.forEach(pg => {
+    (pg.fields || []).forEach(f => {
+      if (f.type !== 'checkmark') return;
+      if (__normKey(getCheckmarkGroupId(f)) !== key) return;
+      f.value = (getCheckmarkValue(f) === wanted);
+      if (f.id) {
+        valuesById[f.id] = !!f.value;
+        valuesById[String(f.id).toLowerCase()] = !!f.value;
+      }
+    });
+  });
+  valuesById[gid] = wanted;
+  valuesById[key] = wanted;
+  valuesById[String(gid).toLowerCase()] = wanted;
+}
+function handleCheckmarkToggle(f){
+  const groupId = getCheckmarkGroupId(f);
+  const checkValue = getCheckmarkValue(f);
+  if (groupId) {
+    setCheckmarkGroupValue(groupId, checkValue);
+    f.value = true;
+    if (f.id) valuesById[f.id] = true;
+  } else {
+    f.value = !f.value;
+    if (f.id) valuesById[f.id] = !!f.value;
+  }
+  applyConditionalRequired();
+  render();
+  scheduleSave();
+  refreshConditionalInvalid();
+}
+
+
+/* ===== 모드/상태 ===== */
+const QS  = new URLSearchParams(location.search);
+const DOC = (QS.get('doc') || 'device').toLowerCase();
+const FILL  = QS.get('mode') === 'fill';
+const FRESH = QS.get('fresh') === '1';
+if(FILL) document.documentElement.classList.add('fill');
+
+let selected=-1;
+let pages=[{bg:ABS('images/device-1.jpg'),fields:[]}], pageIndex=0;
+
+/* ✅ age별 bg 강제 덮기 */
+/* ✅ age별 bg 강제 덮기 (반드시 loadDesign()보다 위에 있어야 함) */
+function getSafeAge(){
+  const age = (new URLSearchParams(location.search).get('age') || 'adult').toLowerCase();
+  return (age === 'teen') ? 'teen' : 'adult';
+}
+
+function forceAgeBgOnPages(){
+  const safeAge = getSafeAge();
+  const pageCount = pages.length || 8;
+
+  for (let i = 0; i < pageCount; i++){
+    if (!pages[i]) pages[i] = { bg:'', fields:[] };
+    pages[i].bg = ABS(`images/${safeAge}-${i+1}.jpg`);
+  }
+}
+
+
+const paper   = document.getElementById('paper');
+const stage   = document.getElementById('stage');
+const overlay = document.getElementById('overlay');
+const bg      = document.getElementById('bg');
+const pageInfo= document.getElementById('pageInfo');
+const affBanner=document.getElementById('affBanner');
+const affPopup = document.getElementById('affPopup');
+
+const extraBar = document.getElementById('extraBar');
+const extraBarText = document.getElementById('extraBarText');
+
+let LAST_EXTRA_TXT = '';
+let __MIRRORING__ = false;
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const num=(v,d)=>{const n=parseFloat(v);return isNaN(n)?d:n;};
+const cur=()=>pages[pageIndex];
+
+/* ===== 화면 줌 ===== */
+function applyZoom(){
+  stage.style.transform='scale(1)';
+  const stageRect = stage.getBoundingClientRect();
+  const targetW = paper.clientWidth;
+  let z = targetW / Math.max(stageRect.width,1);
+  z = Math.max(0.4, Math.min(2, z));
+  document.documentElement.style.setProperty('--zoom', z);
+  stage.style.transform = '';
+  paper.style.height = (stage.offsetHeight * z) + 'px';
+}
+window.addEventListener('resize', applyZoom);
+
+/* ===== 자동 저장 비활성 ===== */
+const AUTOSAVE_KEY=null;
+function scheduleSave(){ }
+function tryLoadAutosave(){ }
+const clearAutosave = () => { try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_) {} };
+
+/* ===== 드롭다운 글자 자동 축소 ===== */
+function fitSelectText(sel, maxPx = 16, minPx = 8, arrowPx) {
+  sel.style.fontSize = maxPx + 'px';
+  try {
+    const text = (sel.options[sel.selectedIndex] || {}).text || sel.value || '';
+    const style = getComputedStyle(sel);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padR = parseFloat(style.paddingRight) || 0;
+    const ARROW_W = (typeof arrowPx === 'number') ? arrowPx : 0;
+    const inner = sel.clientWidth - padL - padR - ARROW_W;
+    if (inner <= 0 || !text) return;
+
+    let meas = document.getElementById('__measure_span__');
+    if (!meas) {
+      meas = document.createElement('span');
+      meas.id = '__measure_span__';
+      meas.style.position = 'fixed';
+      meas.style.visibility = 'hidden';
+      meas.style.whiteSpace = 'nowrap';
+      meas.style.left = '-9999px';
+      document.body.appendChild(meas);
+    }
+    meas.style.fontFamily = style.fontFamily;
+    meas.style.fontWeight = style.fontWeight;
+    meas.style.fontStyle = style.fontStyle;
+    meas.style.letterSpacing = style.letterSpacing;
+    meas.style.textTransform = style.textTransform;
+
+    for (let px = maxPx; px >= minPx; px -= 0.5) {
+      meas.style.fontSize = px + 'px';
+      meas.textContent = text;
+      if (meas.getBoundingClientRect().width <= inner) {
+        sel.style.fontSize = px + 'px';
+        return;
+      }
+    }
+    sel.style.fontSize = minPx + 'px';
+  } catch (_) {}
+}
+
+function fitTextToWidth(el, maxPx = 20, minPx = 12){
+  try{
+    const raw = (el.value ?? '').toString();
+    const text = raw.replace(/\n+/g,' ').trim();
+
+    if(!text){
+      el.classList.remove('fit-one-line');
+      el.style.fontSize = maxPx + 'px';
+      return;
+    }
+
+    el.classList.add('fit-one-line');
+    el.style.fontSize = maxPx + 'px';
+
+    const style = getComputedStyle(el);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padR = parseFloat(style.paddingRight) || 0;
+    const inner = el.clientWidth - padL - padR;
+    if (inner <= 0) return;
+
+    let meas = document.getElementById('__measure_span__');
+    if (!meas) {
+      meas = document.createElement('span');
+      meas.id = '__measure_span__';
+      meas.style.position = 'fixed';
+      meas.style.visibility = 'hidden';
+      meas.style.whiteSpace = 'nowrap';
+      meas.style.left = '-9999px';
+      document.body.appendChild(meas);
+    }
+
+    meas.style.fontFamily = style.fontFamily;
+    meas.style.fontWeight = style.fontWeight;
+    meas.style.fontStyle  = style.fontStyle;
+    meas.style.letterSpacing = style.letterSpacing;
+    meas.style.textTransform  = style.textTransform;
+
+    for (let px = maxPx; px >= minPx; px -= 0.5) {
+      meas.style.fontSize = px + 'px';
+      meas.textContent = text;
+      if (meas.getBoundingClientRect().width <= inner) {
+        el.style.fontSize = px + 'px';
+        return;
+      }
+    }
+    el.style.fontSize = minPx + 'px';
+  }catch(_){}
+}
+
+function fitStringToWidth(text, widthPx, styleSourceEl, maxPx = 20, minPx = 12){
+  try{
+    const raw = String(text ?? '').replace(/\n+/g,' ').trim();
+    if(!raw) return maxPx;
+
+    let meas = document.getElementById('__measure_span__');
+    if (!meas) {
+      meas = document.createElement('span');
+      meas.id = '__measure_span__';
+      meas.style.position = 'fixed';
+      meas.style.visibility = 'hidden';
+      meas.style.whiteSpace = 'nowrap';
+      meas.style.left = '-9999px';
+      document.body.appendChild(meas);
+    }
+
+    const style = getComputedStyle(styleSourceEl);
+    meas.style.fontFamily = style.fontFamily;
+    meas.style.fontWeight = style.fontWeight;
+    meas.style.fontStyle  = style.fontStyle;
+    meas.style.letterSpacing = style.letterSpacing;
+    meas.style.textTransform  = style.textTransform;
+
+    for (let px = maxPx; px >= minPx; px -= 0.5) {
+      meas.style.fontSize = px + 'px';
+      meas.textContent = raw;
+      if (meas.getBoundingClientRect().width <= widthPx) return px;
+    }
+    return minPx;
+  }catch(_){ return minPx; }
+}
+
+function isNameField(f){
+  const id = String(f?.id || '').toLowerCase();
+  const label = String(f?.label || '').toLowerCase();
+  return (
+    id.includes('name') || id.includes('성명') || id.includes('이름') ||
+    id.includes('고객명') || id.includes('법인명') || id.includes('대표자명') ||
+    id.includes('가입자명') || id.includes('예금주') || id.includes('상호명') ||
+    id.includes('성함') || id.includes('고객성명') || id.includes('명의자') ||
+    id.includes('실사용자') || id.includes('수령인') || id.includes('가입자') ||
+    id.includes('대표자') || id.includes('수취인') || id.includes('회사명') || id.includes('업체명') ||
+    label.includes('name') || label.includes('성명') || label.includes('이름') ||
+    label.includes('고객명') || label.includes('법인명') || label.includes('대표자명') ||
+    label.includes('가입자명') || label.includes('예금주') || label.includes('상호명') ||
+    label.includes('성함') || label.includes('고객성명') || label.includes('명의자') ||
+    label.includes('실사용자') || label.includes('수령인') || label.includes('가입자') ||
+    label.includes('대표자') || label.includes('수취인') || label.includes('회사명') || label.includes('업체명')
+  );
+}
+
+function isAddressField(f){
+  const text = [
+    String(f?.id || ''),
+    String(f?.label || ''),
+    String(f?.placeholder || '')
+  ].join(' ');
+  return /(주소|거주지|도로명|상세주소|배송지|수령지|addr|address)/i.test(text);
+}
+function isAddressDetailField(f){
+  return /(상세\s*주소|상세주소|address.?detail|detail.?address|addr.?detail)/i.test([
+    f?.id, f?.label, f?.placeholder
+  ].join(' '));
+}
+function isAddressZipField(f){
+  return /(우편\s*번호|우편번호|zonecode|zip.?code|postcode)/i.test([
+    f?.id, f?.label, f?.placeholder
+  ].join(' '));
+}
+function isAddressBaseField(f){
+  return isAddressField(f) && !isAddressDetailField(f) && !isAddressZipField(f);
+}
+
+const ADDRESS_POSTCODE_SCRIPT =
+  'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+
+let __addressScriptPromise = null;
+let __addressTargetField = null;
+let __addressTargetControl = null;
+let __addressResult = null;
+let __addressPostcodeInstance = null;
+
+function loadAddressPostcodeScript(){
+  if (window.daum?.Postcode) return Promise.resolve();
+  if (__addressScriptPromise) return __addressScriptPromise;
+
+  __addressScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-address-postcode="1"]');
+    if (existing) {
+      existing.addEventListener('load', resolve, {once:true});
+      existing.addEventListener('error', () => reject(new Error('주소 검색 스크립트를 불러오지 못했습니다.')), {once:true});
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = ADDRESS_POSTCODE_SCRIPT;
+    script.async = true;
+    script.dataset.addressPostcode = '1';
+    script.onload = resolve;
+    script.onerror = () => {
+      __addressScriptPromise = null;
+      reject(new Error('주소 검색 서비스를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'));
+    };
+    document.head.appendChild(script);
+  });
+
+  return __addressScriptPromise;
+}
+
+function findAddressFields(predicate){
+  const found = [];
+  pages.forEach((pg, pi) => {
+    (pg.fields || []).forEach((f, fi) => {
+      if (predicate(f)) found.push({f, pi, fi});
+    });
+  });
+  return found;
+}
+
+function setAddressFieldValue(f, value){
+  if (!f) return;
+  f.value = value ?? '';
+  if (f.id) setValueById(f.id, f.value);
+}
+
+function normalizeSelectedAddress(data){
+  const road = String(data?.roadAddress || '').trim();
+  const jibun = String(data?.jibunAddress || '').trim();
+  const base = road || jibun;
+  const extras = [];
+
+  if (data?.bname && /[동|로|가]$/.test(data.bname)) extras.push(data.bname);
+  if (data?.buildingName && data?.apartment === 'Y') extras.push(data.buildingName);
+
+  return {
+    zonecode: String(data?.zonecode || '').trim(),
+    base,
+    extra: extras.length ? ` (${extras.join(', ')})` : ''
+  };
+}
+
+function resetAddressSearchResult(){
+  __addressResult = null;
+  const selected = document.getElementById('addressSearchSelected');
+  const detail = document.getElementById('addressSearchDetail');
+  const error = document.getElementById('addressSearchError');
+  if (selected) selected.textContent = '';
+  if (detail) detail.value = '';
+  if (error) error.textContent = '';
+}
+
+function closeAddressSearch(){
+  const modal = document.getElementById('addressSearchModal');
+  if (!modal) return;
+
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open','no-scroll');
+
+  const layer = document.getElementById('addressSearchLayer');
+  if (layer) {
+    layer.style.height = '';
+    layer.innerHTML = '<div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>';
+  }
+
+  __addressPostcodeInstance = null;
+  __addressResult = null;
+}
+
+function renderAddressPostcode(){
+  const layer = document.getElementById('addressSearchLayer');
+  const error = document.getElementById('addressSearchError');
+  if (!layer || !window.daum?.Postcode) return;
+
+  layer.innerHTML = '';
+  if (error) error.textContent = '';
+
+  __addressPostcodeInstance = new daum.Postcode({
+    width:'100%',
+    height:'100%',
+    animation:true,
+    autoClose:false,
+    oncomplete(data){
+      __addressResult = normalizeSelectedAddress(data);
+
+      const selected = document.getElementById('addressSearchSelected');
+      const detail = document.getElementById('addressSearchDetail');
+
+      if (selected) {
+        selected.textContent =
+          `${__addressResult.zonecode ? `[${__addressResult.zonecode}] ` : ''}` +
+          __addressResult.base +
+          __addressResult.extra;
+      }
+
+      if (error) error.textContent = '';
+      requestAnimationFrame(() => detail?.focus());
+    },
+    onresize(size){
+      if (size?.height && window.innerWidth > 640) {
+        layer.style.height = Math.min(Math.max(size.height,430),520) + 'px';
+      }
+    }
+  });
+
+  __addressPostcodeInstance.embed(layer, {autoClose:false});
+}
+
+async function openAddressSearch(f, ctrl){
+  if (!FILL || !f || !ctrl || f.locked) return;
+
+  __addressTargetField = f;
+  __addressTargetControl = ctrl;
+  resetAddressSearchResult();
+
+  const modal = document.getElementById('addressSearchModal');
+  const layer = document.getElementById('addressSearchLayer');
+  if (!modal || !layer) return;
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open','no-scroll');
+  layer.innerHTML = '<div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>';
+
+  try {
+    await loadAddressPostcodeScript();
+    renderAddressPostcode();
+  } catch (err) {
+    layer.innerHTML = `<div class="asm-loading">${String(err?.message || err)}</div>`;
+  }
+}
+
+function applySelectedAddress(){
+  const error = document.getElementById('addressSearchError');
+  const detailEl = document.getElementById('addressSearchDetail');
+
+  if (!__addressResult?.base) {
+    if (error) error.textContent = '검색 결과에서 기본 주소를 먼저 선택해 주세요.';
+    return;
+  }
+
+  const detail = String(detailEl?.value || '').trim();
+  if (!detail) {
+    if (error) error.textContent = '동/호수 등 상세주소를 입력해 주세요.';
+    detailEl?.focus();
+    return;
+  }
+
+  const baseAddress = (__addressResult.base + __addressResult.extra).trim();
+  const fullAddress = `${baseAddress} ${detail}`.replace(/\s+/g,' ').trim();
+
+  setAddressFieldValue(__addressTargetField, fullAddress);
+
+  findAddressFields(isAddressZipField).forEach(({f}) => {
+    if (f !== __addressTargetField) setAddressFieldValue(f, __addressResult.zonecode);
+  });
+  findAddressFields(isAddressDetailField).forEach(({f}) => {
+    if (f !== __addressTargetField) setAddressFieldValue(f, detail);
+  });
+
+  if (__addressTargetControl) {
+    __addressTargetControl.value = fullAddress;
+    const maxPx = Number.isFinite(__addressTargetField?.inputHeight)
+      ? (__addressTargetField.inputHeight - 4)
+      : (__addressTargetField?.fontSize ?? 20);
+    fitTextToWidth(__addressTargetControl, maxPx, 6);
+  }
+
+  scheduleSave();
+  refreshConditionalInvalid();
+  closeAddressSearch();
+  render();
+
+  requestAnimationFrame(() => {
+    const id = String(__addressTargetField?.id || '');
+    if (!id) return;
+    const live = overlay.querySelector(
+      `.field[data-id="${CSS.escape(id)}"] input[type="text"],` +
+      `.field[data-id="${CSS.escape(id)}"] textarea`
+    );
+    if (!live) return;
+
+    const maxPx = Number.isFinite(__addressTargetField?.inputHeight)
+      ? (__addressTargetField.inputHeight - 4)
+      : (__addressTargetField?.fontSize ?? 20);
+    fitTextToWidth(live, maxPx, 6);
+  });
+}
+
+function wireAddressSearchModal(){
+  const modal = document.getElementById('addressSearchModal');
+  const close = document.getElementById('addressSearchClose');
+  const reset = document.getElementById('addressSearchReset');
+  const apply = document.getElementById('addressSearchApply');
+  const detail = document.getElementById('addressSearchDetail');
+
+  close?.addEventListener('click', closeAddressSearch);
+  reset?.addEventListener('click', () => {
+    resetAddressSearchResult();
+    renderAddressPostcode();
+  });
+  apply?.addEventListener('click', applySelectedAddress);
+
+  detail?.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    e.stopPropagation();
+    applySelectedAddress();
+  });
+
+  modal?.addEventListener('click', e => {
+    if (e.target === modal) closeAddressSearch();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && modal?.classList.contains('open')) {
+      e.preventDefault();
+      closeAddressSearch();
+    }
+  }, true);
+}
+
+function bindAddressSearchToControl(f, w, ctrl){
+  if (!FILL || !isAddressBaseField(f) || f.locked || !ctrl?.addEventListener) return;
+
+  w.classList.add('address-search-enabled');
+  w.setAttribute('role','button');
+  w.setAttribute('tabindex','0');
+  w.setAttribute('aria-haspopup','dialog');
+  w.title = '주소 입력칸을 클릭하면 주소 검색창이 열립니다.';
+
+  ctrl.readOnly = true;
+  ctrl.setAttribute('aria-haspopup','dialog');
+  ctrl.title = '클릭하면 주소 검색창이 열립니다.';
+
+  let opening = false;
+  const open = async e => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+
+    if (opening) return;
+    if (document.getElementById('addressSearchModal')?.classList.contains('open')) return;
+
+    opening = true;
+    try {
+      await openAddressSearch(f, ctrl);
+    } finally {
+      setTimeout(() => { opening = false; }, 250);
+    }
+  };
+
+  ctrl.addEventListener('click', open);
+  w.addEventListener('click', open);
+
+  const onKey = e => {
+    if (e.key === 'Enter' || e.key === ' ') open(e);
+  };
+  ctrl.addEventListener('keydown', onKey);
+  w.addEventListener('keydown', onKey);
+}
+
+window.addEventListener('DOMContentLoaded', wireAddressSearchModal);
+
+
+/* =========================
+   ✅ select 표시 div: 2줄 허용 + 박스에 맞춰 자동 축소
+========================= */
+function fitSelectDisplay(div, maxPx = 20, minPx = 10){
+  if(!div) return;
+  try{
+    div.style.fontSize = maxPx + 'px';
+
+    for(let px = maxPx; px >= minPx; px -= 0.5){
+      div.style.fontSize = px + 'px';
+      const overH = div.scrollHeight > div.clientHeight + 1;
+      const overW = div.scrollWidth  > div.clientWidth  + 1;
+      if(!overH && !overW) return;
+    }
+    div.style.fontSize = minPx + 'px';
+  }catch(_){}
+}
+
+function parsePackedId(v){
+  const s = String(v||'');
+  const i = s.indexOf('|');
+  if(i<0) return { id:s.trim(), name:'' };
+  return { id:s.slice(0,i).trim(), name:s.slice(i+1).trim() };
+}
+
+function setSelectDisplay(wrapEl, selEl, f){
+  if(!wrapEl || !selEl) return;
+
+  let d = wrapEl.querySelector('.select-display');
+  if(!d){
+    d = document.createElement('div');
+    d.className = 'select-display';
+    wrapEl.appendChild(d);
+  }
+
+  const fid = String(f?.id || '').toLowerCase();
+  const flabel = String(f?.label || '').toLowerCase();
+
+  const isDeviceSelect =
+    fid === 'deviceid' || fid === 'device' ||
+    fid.includes('단말') || fid.includes('모델') || fid.includes('핸드폰모델명') ||
+    flabel.includes('단말') || flabel.includes('모델') || flabel.includes('핸드폰모델명');
+
+  d.classList.remove('device-one-line');
+  const text = (selEl.options[selEl.selectedIndex] || {}).textContent || '';
+  d.textContent = text;
+
+  const maxPx = Number.isFinite(f?.fontSize) ? f.fontSize : 20;
+
+  if (isDeviceSelect) {
+    d.classList.add('device-one-line');
+    const style = getComputedStyle(selEl);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padR = parseFloat(style.paddingRight) || 0;
+    const inner = selEl.clientWidth - padL - padR;
+    const fitted = fitStringToWidth(text, inner, selEl, maxPx, 10);
+    d.style.fontSize = fitted + 'px';
+  } else {
+    fitSelectDisplay(d, maxPx, 10);
+  }
+}
+
+const refitAllSelects = () => {
+  overlay.querySelectorAll('.field.selectLike').forEach(w => {
+    const sel = w.querySelector('select');
+    const idx = Number(w.dataset.i);
+    const f = (Number.isFinite(idx) ? (cur().fields || [])[idx] : null);
+    if(sel) setSelectDisplay(w, sel, f);
+  });
+};
+
+/* ===== textarea 자동 높이 ===== */
+function autosizeTA(el){
+  try{
+    if (el.dataset.fixedH) {
+      el.style.height = el.dataset.fixedH + 'px';
+      return;
+    }
+    const minH = parseFloat(el.dataset.minH || '') || 5;
+    el.style.height = 'auto';
+    el.style.height = Math.max(el.scrollHeight, minH) + 'px';
+  }catch(_){}
+}
+function autosizeAllTextareas(root){
+  (root || document).querySelectorAll('textarea').forEach(autosizeTA);
+}
+
+/* =========================================================
+   ✅ 단말/요금제/공시 분리 로드
+========================================================= */
+const PATH_DEVICE_CATALOG = ABS('data/device_catalog.json');
+const PATH_PLAN_CATALOG   = ABS('data/plan_catalog.json');
+const PATH_SUBSIDY_LATEST = ABS('data/subsidy/latest.json');
+
+let DEVICE_DB = null;
+
+function won(n){
+  if(n==null || n==='') return '';
+  const x = Number(n);
+  if(!isFinite(x)) return '';
+  return String(Math.round(x));
+}
+function numOnly(v){
+  const n = Number(String(v??'').replace(/[^\d.-]/g,''));
+  return isFinite(n) ? n : 0;
+}
+function displayOnlyName(packed){
+  const { id, name } = parsePackedId(packed);
+  return name || id || '';
+}
+
+function findDeviceById(id){
+  return (DEVICE_DB?.devices||[]).find(d => d.id === id) || null;
+}
+function findPlanById(id){
+  return (DEVICE_DB?.plans||[]).find(p => p.id === id) || null;
+}
+function getSubsidy(deviceId, planId){
+  // ✅ 정규화: 대소문자/공백 차이로 인한 미매칭 방지 (AT-M140L 케이스 해결)
+  const d = String(deviceId || '').trim().toLowerCase();
+  const p = String(planId   || '').trim().toLowerCase();
+  const key = `${d}|${p}`;
+
+  // ✅ subsidy/latest.json 로딩 결과 객체(기존 변수명에 맞춰 사용)
+  const map =
+    (SUBSIDY_LATEST && SUBSIDY_LATEST.subsidyMap) ? SUBSIDY_LATEST.subsidyMap :
+    (window.SUBSIDY_LATEST && window.SUBSIDY_LATEST.subsidyMap) ? window.SUBSIDY_LATEST.subsidyMap :
+    null;
+
+  const v = map ? Number(map[key] ?? 0) : 0;
+
+  return Number.isFinite(v) ? v : 0;
+}
+
+
+function calcMonthlyFeeSimple(principal, aprPercent){
+  principal = Number(principal)||0;
+  const r = (Number(aprPercent)||0) / 100 / 12;
+  if (principal <= 0 || r <= 0) return 0;
+  return principal * r;
+}
+
+async function fetchJson(url){
+  const r = await fetch(url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(), { cache:'no-store' });
+  if(!r.ok) throw new Error(`${url} not found (${r.status})`);
+  return await r.json();
+}
+
+async function loadDevicePricingSeparated(){
+  try{
+    const [deviceCatalog, planCatalog, subsidyLatest] = await Promise.all([
+      fetchJson(PATH_DEVICE_CATALOG),
+      fetchJson(PATH_PLAN_CATALOG),
+      fetchJson(PATH_SUBSIDY_LATEST),
+    ]);
+    SUBSIDY_LATEST = subsidyLatest;
+    window.SUBSIDY_LATEST = subsidyLatest;
+    const devices = Array.isArray(deviceCatalog.devices) ? deviceCatalog.devices : [];
+    const plans   = Array.isArray(planCatalog.plans) ? planCatalog.plans : [];
+
+    const subsidyMap = subsidyLatest.subsidyMap || {};
+    const subsidyMeta = {
+      effectiveFrom: subsidyLatest.effectiveFrom || '',
+      effectiveTo: subsidyLatest.effectiveTo || '',
+      memo: subsidyLatest.memo || '',
+    };
+
+    const aprPercent = (subsidyLatest.aprPercent != null)
+      ? Number(subsidyLatest.aprPercent)
+      : 5.8;
+
+    const defaultInstallmentMonths = (subsidyLatest.defaultInstallmentMonths != null)
+      ? Number(subsidyLatest.defaultInstallmentMonths)
+      : 24;
+
+    DEVICE_DB = {
+      aprPercent,
+      defaultInstallmentMonths,
+      devices,
+      plans,
+      subsidyMeta,
+      subsidyMap
+    };
+
+    console.log('[pricing] loaded OK', {
+      deviceCount: devices.length,
+      planCount: plans.length,
+      subsidyKeys: Object.keys(subsidyMap||{}).length
+    });
+  }catch(err){
+    console.warn('[pricing separated] load fail:', err);
+    DEVICE_DB = null;
+  }
+}
+
+/* ===== id로 전체 필드 탐색 ===== */
+const getFieldsByIdAll=id=>{
+  id=String(id||'').toLowerCase();
+  const out=[];
+  pages.forEach((pg,pi)=>(pg.fields||[]).forEach((f,idx)=>{
+    if(String(f.id||'').toLowerCase()===id) out.push({f,pi,idx});
+  }));
+  return out;
+};
+
+function setOptionsByFieldId(fieldId, optionsArr){
+  const list = getFieldsByIdAll(fieldId);
+  list.forEach(({f})=>{
+    if(f.type !== 'select') return;
+    f.options = Array.isArray(optionsArr) ? optionsArr.slice() : [];
+    if(f.value && !f.options.includes(f.value)) f.value = '';
+  });
+}
+
+function applyDeviceDbToDesign(){
+  if(!DEVICE_DB) return;
+
+  const deviceOpts = (DEVICE_DB.devices||[]).map(d => `${d.id}|${d.name}`);
+  setOptionsByFieldId('deviceId', deviceOpts);
+  setOptionsByFieldId('deviceid', deviceOpts);
+
+  const planOpts = (DEVICE_DB.plans||[]).map(p => `${p.id}|${p.name}`);
+  setOptionsByFieldId('planId', planOpts);
+  setOptionsByFieldId('plan', planOpts);
+
+  const monthOpts = ['12','24','30','36'];
+  setOptionsByFieldId('installMonths', monthOpts);
+
+  const defM = String(Number(DEVICE_DB.defaultInstallmentMonths || 24));
+  
+  getFieldsByIdAll('installMonths').forEach(({f})=>{
+    if(f.type==='select' && !f.value) f.value = defM;
+  });
+  // ✅ 기본값을 valuesById에도 확정(미러/텍스트필드가 바로 인식하게)
+setValueById('installMonths', defM);
+setValueById('installmonths', defM); // 혹시 소문자 id도 쓰면 같이
+
+  render();
+}
+
+/* =========================================================
+   ✅✅✅ 조건부 필수 함수 (정상 위치로 이동 완료)
+   - getFieldsByIdAll 아래에 있어야 안전합니다.
+========================================================= */
+function normalizeVal(v){
+  return (v ?? '').toString().trim();
+}
+
+function getFieldCurrentValueById(id){
+  const groupValue = getCheckmarkGroupValue(id);
+  if (groupValue) return groupValue;
+
+  const v = valuesById[id] ?? valuesById[String(id || '').toLowerCase()] ?? valuesById[__normKey(id)];
+  if (v != null) return v;
+
+  const found = getFieldsByIdAll(id)[0]?.f;
+  if (!found) return '';
+  if (found.type === 'checkmark') return found.value ? getCheckmarkValue(found) : '';
+  return found.value;
+}
+
+function getConditionalRequiredSet(){
+  const set = new Set();
+
+  (CONDITIONAL_REQUIRED || []).forEach(rule => {
+    const curVal = normalizeVal(getFieldCurrentValueById(rule.sourceId));
+    if (curVal === normalizeVal(rule.whenValue)) {
+      (rule.requiredOn || []).forEach(tid => set.add(tid));
+    }
+  });
+
+  return set;
+}
+
+function refreshConditionalInvalid(){
+   if (!SHOW_INVALID) return;
+  const condReq = getConditionalRequiredSet();
+
+  // 현재 페이지 invalid 초기화
+  overlay.querySelectorAll('.field.invalid').forEach(el=>el.classList.remove('invalid'));
+
+  const pg = cur();
+  (pg.fields || []).forEach((f, idx) => {
+    const fid = (f.id || '').toString();
+    const isRequired = !!f.required || (fid && condReq.has(fid));
+    if(!isRequired) return;
+
+    const v = (f.type==='checkbox') ? !!f.value : (f.value ?? '').toString().trim();
+    if(!v){
+      const el = overlay.querySelector(`.field[data-i="${idx}"]`);
+      if(el) el.classList.add('invalid');
+    }
+  });
+}
+
+/* =========================================================
+   ✅ 요금 계산
+========================================================= */
+function recalcDevicePricing(){
+  if(!DEVICE_DB) return;
+
+  const rawDevice = (valuesById.deviceId || valuesById.deviceid || '');
+  const rawPlan   = (valuesById.planId   || valuesById.plan     || '');
+
+  const dv = parsePackedId(rawDevice);
+  const pl = parsePackedId(rawPlan);
+
+  const months  = numOnly(valuesById.installMonths ?? DEVICE_DB.defaultInstallmentMonths ?? 24);
+  const payType = (valuesById.payType ?? '').toString().trim(); // ✅ 여기 1번만
+
+  if(!dv.id || !pl.id){
+    [
+       'deviceName','msrp','commonSubsidy','extraSubsidy','otherDiscount',
+    'principal','monthlyInstall','monthlyFeeAvg','monthlyPayTotal',
+    'baseFee','discountFee','totalFee','monthlyBasePay','planEcho',
+    'penalty12','penalty18'
+    ].forEach(id => setValueById(id,''));
+    return;
+  }
+
+  const dev  = findDeviceById(dv.id);
+  const plan = findPlanById(pl.id);
+
+  setValueById('planEcho', plan?.name || '');
+
+  const msrp         = Number(dev?.msrp) || 0;
+  const commonSubsidy= getSubsidy(dv.id, pl.id);
+
+  const down     = numOnly(valuesById.downPayment ?? 0);
+  const otherDis = numOnly(valuesById.otherDiscount ?? 0);
+
+  const totalSupport = commonSubsidy + down;
+setValueById('totalSupport', won(totalSupport));
+setValueById('supportSum',  won(totalSupport));
+
+  let extraSub = numOnly(valuesById.extraSubsidy ?? 0);
+  let principal = 0;
+
+  if (payType === '일시불') {
+    extraSub  = Math.max(0, msrp - commonSubsidy);
+    principal = 0;
+
+    setValueById('extraSubsidy', won(extraSub));
+    setValueById('downPayment',  '0');
+    setValueById('otherDiscount','0');
+      // ✅ (권장) 일시불에서도 공시+선납 합계 표기(선납은 0으로 강제된 값 기준)
+  setValueById('supportSum', won(commonSubsidy + 0));
+
+} else {
+  // 할부
+  extraSub = 0;
+  setValueById('extraSubsidy', '0');
+
+  // ✅ LG: 공시+선납 합계
+  const supportSum = commonSubsidy + down; // commonSubsidy + downPayment
+  setValueById('supportSum', won(supportSum)); // 디자인에 supportSum 텍스트필드가 있으면 표기
+
+  // ✅ principal = msrp - (공시+선납) - 기타할인
+  principal = Math.max(0, msrp - supportSum - otherDis);
+}
+
+
+  // ✅ 월 할부/수수료 계산
+  const monthlyInstallRaw = (months > 0) ? (principal / months) : 0;
+  const monthlyFeeAvgRaw  = calcMonthlyFeeSimple(principal, DEVICE_DB.aprPercent ?? 0);
+
+  const monthlyInstallWon  = Math.round(monthlyInstallRaw);
+  const monthlyFeeAvgWon   = Math.round(monthlyFeeAvgRaw);
+  const monthlyPayTotalWon = monthlyInstallWon + monthlyFeeAvgWon;
+  const totalFeeByAvgWon = Math.round(monthlyFeeAvgWon * months);
+setValueById('totalFeeByAvg', String(totalFeeByAvgWon));
+
+
+  setValueById('deviceName',     dev?.name || '');
+  setValueById('msrp',           won(msrp));
+  setValueById('commonSubsidy',  won(commonSubsidy));
+  setValueById('extraSubsidy',   won(extraSub));
+  setValueById('otherDiscount',  won(otherDis));
+  setValueById('principal',      won(principal));
+
+  // ✅ 위약금(12개월/18개월) = 공시지원금 기준
+// 12개월: 공시지원금의 절반
+// 18개월: 12개월 위약금의 절반 (= 공시지원금의 1/4)
+const penalty12 = Math.round((commonSubsidy || 0) / 2);
+const penalty18 = Math.round(penalty12 / 2);
+
+setValueById('penalty12', won(penalty12));
+setValueById('penalty18', won(penalty18));
+
+
+if (payType === '일시불') {
+  setValueById('monthlyInstall', '0');
+  setValueById('monthlyFeeAvg',  '0');
+  setValueById('monthlyPayTotal','0');
+
+  // ✅ 총 할부수수료도 0
+  setValueById('installFeeTotal','0');
+} else {
+  setValueById('monthlyInstall',  String(monthlyInstallWon));
+  setValueById('monthlyFeeAvg',   String(monthlyFeeAvgWon));
+  setValueById('monthlyPayTotal', String(monthlyPayTotalWon));
+
+  // ✅ 총 할부수수료 = 월 평균할부수수료 * 할부개월수
+  const installFeeTotalWon = monthlyFeeAvgWon * Math.max(0, months);
+  setValueById('installFeeTotal', String(installFeeTotalWon));
+}
+
+
+  // ✅ 요금제 금액
+  if (plan) {
+    const base  = Number(plan.baseFee);
+    const total = Number(plan.totalFee);
+
+    let discount = plan.discountFee;
+    if (discount == null || discount === '') {
+      discount = (isFinite(base) && isFinite(total)) ? (base - total) : 0;
+    }
+    discount = Number(discount);
+    if (!isFinite(discount)) discount = 0;
+
+    setValueById('baseFee',     won(isFinite(base) ? base : 0));
+    setValueById('discountFee', won(discount));
+    setValueById('totalFee',    won(isFinite(total) ? total : (isFinite(base) ? base - discount : 0)));
+  } else {
+    setValueById('baseFee', '');
+    setValueById('discountFee', '');
+    setValueById('totalFee', '');
+  }
+
+  // ✅ A(단말 월납부) + B(통신요금 월납부)
+  const A = numOnly(valuesById.monthlyPayTotal ?? 0);
+  const B = numOnly(valuesById.totalFee ?? 0);
+  setValueById('monthlyBasePay', won(A + B));
+}
+
+let __DEVICE_RECALC_HOOKED__ = false;
+function hookDeviceRecalc(){
+  if (__DEVICE_RECALC_HOOKED__) return;
+
+  const ids = ['deviceId','deviceid','planId','plan','installMonths','downPayment','extraSubsidy','otherDiscount','payType'];
+  let hookedAny = false;
+
+  ids.forEach(id=>{
+    const el = elById[id];
+    if(!el || !el.addEventListener) return;
+    el.addEventListener('change', recalcDevicePricing);
+    el.addEventListener('input', recalcDevicePricing);
+    hookedAny = true;
+  });
+
+  if (hookedAny) __DEVICE_RECALC_HOOKED__ = true;
+}
+
+/* =========================
+   ✅ 설계 로드
+========================= */
+function seedDevicePages(){
+  const age = (new URLSearchParams(location.search).get('age') || 'adult').toLowerCase();
+  const safeAge = (age === 'teen') ? 'teen' : 'adult';
+
+  const pageCount = 8;
+
+  pages = [...Array(pageCount)].map((_, i) => ({
+    bg: ABS(`images/${safeAge}-${i+1}.jpg`),
+    fields: []
+  }));
+}
+
+function designFileOf(doc){
+  doc = String(doc||'device').toLowerCase();
+  if (doc !== 'device') doc = 'device';
+
+  const age = getSafeAge(); // teen/adult
+
+  return [
+    `overlay-design.${doc}.${age}.json`,   // ✅ 1순위: age별
+    `overlay-design.${doc}.json`,          // 2순위: 공통
+    `overlay-design.json`                  // 3순위: 최후 fallback
+  ];
+}
+
+
+function buildDesignUrls(){
+  return designFileOf(DOC).map(f => ABS(f) + (f.includes('?') ? '&' : '?') + 'v=' + Date.now());
+}
+
+function normalizeBgUrls(){
+  pages.forEach(pg=>{
+    if (!pg) return;
+    if (pg.bg) pg.bg = ABS(pg.bg);
+    else pg.bg = ABS('images/device-1.jpg');
+    if (!Array.isArray(pg.fields)) pg.fields = [];
+  });
+}
+
+async function loadDesign(){
+  const urls = buildDesignUrls();
+  console.log('[loadDesign] try urls:', urls);
+
+  let ok = false;
+
+  for (const url of urls){
+    try{
+      const r = await fetch(url, { cache: 'no-store' });
+      console.log('[loadDesign] fetch', r.status, url, 'ct=', r.headers.get('content-type'));
+
+      if (!r.ok) continue;
+
+      // 서버가 404 HTML을 200으로 주는 케이스 방지
+      const txt = await r.text();
+      try{
+        const j = JSON.parse(txt);
+        if (Array.isArray(j.pages) && j.pages.length){
+          pages = j.pages;
+          if (Array.isArray(j.conditionalRequired)) CONDITIONAL_REQUIRED = j.conditionalRequired;
+          if (j.formPopup && typeof j.formPopup === 'object') { USE_FORM_POPUP = !!j.formPopup.enabled; FORM_POPUP_FORMS = j.formPopup.forms || Object.create(null); }
+          ok = true;
+          console.log('[loadDesign] loaded OK from:', url, 'pages=', pages.length);
+          break;
+        } else {
+          console.warn('[loadDesign] JSON ok but no pages:', url, j);
+        }
+      }catch(e){
+        console.warn('[loadDesign] JSON parse fail:', url, e, 'first200=', txt.slice(0,200));
+      }
+
+    }catch(e){
+      console.warn('[loadDesign] fetch fail:', url, e);
+    }
+  }
+
+  if (!ok){
+    console.warn('[loadDesign] no design found => seedDevicePages()');
+    seedDevicePages();
+  }
+
+  forceAgeBgOnPages();
+  normalizeBgUrls();
+  pageIndex = 0;
+}
+
+/* ===== 자필(잠금) 키 입력 방지 ===== */
+function blockTyping(el){
+  const prevent = e=>{ if(e.key !== 'Tab') e.preventDefault(); };
+  el.addEventListener('keydown', prevent);
+  el.addEventListener('beforeinput', e=>e.preventDefault());
+  el.addEventListener('paste', e=>e.preventDefault());
+}
+
+/* =========================
+   ✅ render()
+========================= */
+function render(){
+  Object.keys(elById).forEach(k => delete elById[k]);
+
+  const p = cur();
+ bg.src = (p.bg ? (p.bg + (p.bg.includes('?') ? '&' : '?') + 'v=' + Date.now()) : ''); 
+  overlay.innerHTML = '';
+
+  (p.fields || []).forEach((f, i) => {
+    if (Number.isFinite(f.fontSize))     f.fontSize     = clamp(f.fontSize, 5, 32);
+    if (Number.isFinite(f.inputHeight))  f.inputHeight  = clamp(f.inputHeight, 5, 60);
+
+    const w = document.createElement('div');
+    w.className = 'field '
+      + (f.type === 'radio'    ? 'radio '    : '')
+      + (f.type === 'checkbox' ? 'checkbox ' : '')
+      + (f.type === 'checkmark' ? 'checkmark ' : '')
+      + (i === selected        ? ' sel'      : '');
+
+    if (f.type === 'checkbox' || f.type === 'radio') {
+      const tickColor = (f.borderTransparent) ? 'transparent' : (f.borderColor || '#000');
+      const tickWidth = Number.isFinite(Number(f.borderWidth))
+        ? Math.max(0, Math.min(8, Number(f.borderWidth)))
+        : 1.6;
+      w.style.setProperty('--tick-bdc', tickColor);
+      w.style.setProperty('--tick-bdw', tickWidth + 'px');
+    }
+
+    const _w = (f.w ?? 24);
+    w.style.left  = `${f.x}%`;
+    w.style.top   = `${f.y}%`;
+    w.style.width = `${_w}%`;
+    if (f.fontSize) w.style.setProperty('--fs', f.fontSize + 'px');
+
+    if (f.color) w.style.setProperty('--fgc', f.color);
+    if (f.textAlign) w.style.setProperty('--ta', f.textAlign);
+    else w.style.removeProperty('--ta');
+
+    if (f.inputHeight) {
+      w.style.setProperty('--ih', f.inputHeight + 'px');
+      w.style.height = f.inputHeight + 'px';
+    } else {
+      w.style.removeProperty('--ih');
+      w.style.height = '';
+    }
+
+    w.dataset.va = f.verticalAlign || 'middle';
+    w.dataset.i = i;
+    if (f.id) w.dataset.id = f.id;
+
+    if (f.type === 'radio') {
+      w.style.setProperty('--rsize', (f.radioSize ?? 18) + 'px');
+      w.style.setProperty('--rgap',  (f.radioGap  ?? 12) + 'px');
+
+      const rs = (f.radioStyle || 'dot');
+      w.classList.remove('rd-dot','rd-solid','rd-tick');
+      w.classList.add('rd-' + rs);
+
+      if (f.radioShowText === false) w.classList.add('noText');
+      else w.classList.remove('noText');
+
+      const outerColor = (f.radioOuterBorderTransparent || f.borderTransparent) ? 'transparent'
+                        : (f.radioOuterBorderColor || 'rgba(0,0,0,.25)');
+      const outerWidth = Number.isFinite(Number(f.radioOuterBorderWidth))
+        ? Math.max(0, Math.min(8, Number(f.radioOuterBorderWidth)))
+        : 1;
+
+      w.style.setProperty('--rbc', outerColor);
+      w.style.setProperty('--rbw', outerWidth + 'px');
+    }
+
+    if (f.color) w.style.setProperty('--fgc', f.color);
+    if (f.inputHeight) w.style.setProperty('--ih', f.inputHeight + 'px');
+
+    const lab = document.createElement('div');
+    lab.className   = 'label';
+    lab.textContent = f.label || '';
+    w.appendChild(lab);
+
+    let ctrl;
+    const lockByPlaceholder = !!f.lockOnPh && !!f.placeholder && !f.value;
+
+    const isNameBox = isNameField(f);
+
+    const treatAsTextarea =
+      (f.type === 'textarea') ||
+      (f.type === 'text' && (f.wrap) && !isNameBox && !isAddressField(f));
+
+    if (treatAsTextarea) {
+      ctrl = document.createElement('textarea');
+      ctrl.spellcheck = false;
+      ctrl.style.resize = 'none';
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      ctrl.value = init;
+      f.value = init;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.placeholder) ctrl.placeholder = f.placeholder;
+      if (f.maxLength)   ctrl.maxLength = f.maxLength;
+
+      if (f.inputHeight) {
+        ctrl.dataset.fixedH = f.inputHeight;
+        ctrl.style.height = f.inputHeight + 'px';
+      }
+
+      if (f.locked || lockByPlaceholder) {
+        ctrl.readOnly = true;
+        ctrl.dataset.locked = '1';
+        blockTyping(ctrl);
+      }
+
+ctrl.oninput = () => {
+  if (__programmaticUpdate) return;
+  if (f.locked || lockByPlaceholder) return;
+
+  let v = ctrl.value;
+  if (f.maxLength) v = v.slice(0, f.maxLength);
+  if (ctrl.value !== v) ctrl.value = v;
+
+  f.value = v;
+  setValueById(f.id, v);
+  applyMirror(f, v);
+
+  autosizeTA(ctrl);
+  scheduleSave();
+  if (f.id === 'downPayment') recalcDevicePricing();
+
+  refreshConditionalInvalid();
+};
+
+    }
+    else if (f.type === 'select') {
+      const sel = document.createElement('select');
+      w.classList.add('selectLike');
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      f.value = init;
+
+      const phText = (f.placeholder || '').trim();
+      if (phText) {
+        const op0 = document.createElement('option');
+        op0.value = '';
+        op0.textContent = phText;
+        op0.disabled = true;
+        op0.hidden = true;
+        sel.appendChild(op0);
+      }
+
+      (f.options || []).forEach(o => {
+        const packed = String(o ?? '');
+        const { id, name } = parsePackedId(packed);
+
+        const op = document.createElement('option');
+        op.value = id || packed;
+        op.textContent = name || id || packed;
+        sel.appendChild(op);
+      });
+
+      sel.value = parsePackedId(init ?? '').id || '';
+
+      sel.style.color = (f.color || '#000');
+      sel.style.caretColor = (f.color || '#000');
+      sel.style.backgroundColor = (f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+      sel.querySelectorAll('option').forEach(op => {
+        op.style.color = '#000';
+        op.style.backgroundColor = '#fff';
+      });
+
+      if (f.id) elById[f.id] = sel;
+      if (f.inputHeight) sel.style.height = f.inputHeight + 'px';
+
+      if (f.locked || lockByPlaceholder) {
+        sel.disabled = true;
+        sel.dataset.locked = '1';
+      }
+
+      sel.onchange = () => {
+        if (sel.value === '') return;
+
+        f.value = sel.value;
+        setValueById(f.id, sel.value);
+        applyMirror(f, sel.value);
+
+          applyConditionalRequired();
+          render();
+
+        scheduleSave();
+        setSelectDisplay(w, sel, f);
+
+        if (f.id === 'deviceId' || f.id === 'planId' || f.id === 'installMonths') {
+          recalcDevicePricing();
+        }
+
+        // ✅ 어떤 select가 바뀌든 조건부필수 표시 갱신
+        refreshConditionalInvalid();
+      };
+
+      requestAnimationFrame(() => setSelectDisplay(w, sel, f));
+      ctrl = sel;
+    }
+    else if (f.type === 'checkmark') {
+      ctrl = document.createElement('div');
+      ctrl.className = 'checkmark-symbol';
+      ctrl.dataset.type = 'checkmark';
+      const init = !!(f.id ? (valuesById[f.id] ?? f.value ?? false) : (f.value ?? false));
+      f.value = init;
+      ctrl.textContent = init ? '✓' : '';
+      ctrl.style.width = '100%';
+      ctrl.style.height = '100%';
+      if (f.id) elById[f.id] = ctrl;
+      lab.style.display = 'none';
+
+      if (FILL) {
+        w.addEventListener('click', e => {
+          e.stopPropagation();
+          handleCheckmarkToggle(f);
+        });
+      } else {
+        w.addEventListener('dblclick', e => {
+          e.stopPropagation();
+          handleCheckmarkToggle(f);
+        });
+      }
+    }
+    else if (f.type === 'checkmark') {
+      ctrl = document.createElement('div');
+      ctrl.className = 'checkmark-symbol';
+      ctrl.textContent = f.value ? '✓' : '';
+      ctrl.style.width = '100%';
+      ctrl.style.height = '100%';
+      lab.style.display = 'none';
+    }
+    else if (f.type === 'checkbox') {
+      ctrl = document.createElement('input');
+      ctrl.type = 'checkbox';
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? false) : (f.value ?? false));
+      ctrl.checked = !!init;
+      f.value = !!init;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.locked || lockByPlaceholder){
+        ctrl.disabled = true;
+        ctrl.dataset.locked = '1';
+      }
+
+      w.style.setProperty('--cksize', (f.checkSize ?? f.radioSize ?? 18) + 'px');
+
+      const style = (f.checkStyle || 'tick');
+      w.classList.remove('ck-tick','ck-solid','ck-dot');
+      w.classList.add('ck-' + style);
+
+      ctrl.onchange = () => {
+        f.value = ctrl.checked;
+        setValueById(f.id, ctrl.checked);
+        applyMirror(f, ctrl.checked);
+        scheduleSave();
+
+        refreshConditionalInvalid();
+      };
+
+      lab.style.top  = '0';
+      lab.style.left = '24px';
+    }
+    else if (f.type === 'radio') {
+      ctrl = document.createElement('div');
+      const opts = (f.options && f.options.length)
+        ? f.options
+        : Array.from({ length: (f.radioCount || 2) }, (_, k) => String(k + 1));
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? '') : (f.value ?? ''));
+      f.value = init;
+      if (f.id) elById[f.id] = { type:'radio', value:init };
+
+      opts.forEach(o => {
+        const it = document.createElement('label');
+        it.className = 'radio-item';
+
+        const cb = document.createElement('input');
+        cb.type  = 'checkbox';
+        cb.value = o;
+        cb.checked = (f.value === o);
+        if (f.locked || lockByPlaceholder) cb.disabled = true;
+
+cb.onchange = () => {
+  if (!cb.checked) return;
+
+  ctrl.querySelectorAll('input[type="checkbox"]').forEach(x => {
+    if (x !== cb) x.checked = false;
+  });
+
+  f.value = o;
+  setValueById(f.id, o);
+  applyMirror(f, o);
+  scheduleSave();
+
+  if (f.id === 'payType') recalcDevicePricing();
+
+  applyConditionalRequired();
+  render();
+ // ✅✅✅ 추가: 라디오 변경 즉시 재계산
+  if (f.id === 'payType') recalcDevicePricing();
+
+
+          refreshConditionalInvalid();
+        };
+
+        const hideText = (f.radioShowText === false) || /^\d+$/.test(String(o).trim());
+        if (!hideText) {
+          const s = document.createElement('span');
+          s.textContent = o;
+          it.appendChild(s);
+        }
+        it.appendChild(cb);
+        ctrl.appendChild(it);
+      });
+    }
+    else {
+      const formMatch = String(f.id || '').match(/^form:(.+)$/);
+      if (formMatch) {
+        ctrl = document.createElement('button');
+        ctrl.type = 'button';
+        ctrl.className = 'btn--ghost btn';
+        ctrl.textContent = f.label || formMatch[1] || '양식';
+        ctrl.style.width = '100%';
+        ctrl.style.height = '100%';
+        ctrl.style.justifyContent = 'center';
+        ctrl.addEventListener('click', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          openFormPopup(formMatch[1]);
+        });
+        if (f.id) elById[f.id] = ctrl;
+      } else {
+      ctrl = document.createElement('input');
+      ctrl.type = 'text';
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      ctrl.value = init;
+      f.value = init;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.placeholder) ctrl.placeholder = f.placeholder;
+      if (f.maxLength)   ctrl.maxLength  = f.maxLength;
+
+      if (f.locked || lockByPlaceholder){
+        ctrl.readOnly = true;
+        ctrl.dataset.locked = '1';
+        blockTyping(ctrl);
+      }
+
+ctrl.oninput = () => {
+  if (__programmaticUpdate) return;
+  if (f.locked || lockByPlaceholder) return;
+
+  let v = ctrl.value;
+  if (f.maxLength) v = v.slice(0, f.maxLength);
+  if (ctrl.value !== v) ctrl.value = v;
+
+  f.value = v;
+  setValueById(f.id, v);
+  applyMirror(f, v);
+
+  scheduleSave();
+  if (f.id === 'downPayment') recalcDevicePricing();
+  const shouldShrink = (f.autoShrink !== false);
+  const maxPx = Number.isFinite(f.inputHeight) ? (f.inputHeight - 4) : (f.fontSize ?? 20);
+  const minPx = isAddressField(f) ? 6 : (isNameField(f) ? 8 : 12);
+  if (shouldShrink) {
+    fitTextToWidth(ctrl, maxPx, minPx);
+  } else {
+    ctrl.classList.remove('fit-one-line');
+    ctrl.style.fontSize = maxPx + 'px';
+  }
+
+  refreshConditionalInvalid();
+};
+      }
+
+    }
+
+    if (f.color) ctrl.style.color = f.color;
+
+    if (f.textAlign) {
+      ctrl.style.textAlign = f.textAlign;
+      w.style.setProperty('--ta', f.textAlign);
+    } else {
+      w.style.removeProperty('--ta');
+      ctrl.style.textAlign = '';
+    }
+
+    if ((f.type === 'text' || f.type === 'textarea') && (f.borderColor || f.borderTransparent)) {
+      w.classList.add('hasBorder');
+      w.style.setProperty('--bdc', f.borderTransparent ? 'transparent' : (f.borderColor || '#ff3b3b'));
+      w.style.setProperty('--bdw', (f.borderWidth ?? 2) + 'px');
+    } else {
+      w.classList.remove('hasBorder');
+      w.style.removeProperty('--bdc');
+      w.style.removeProperty('--bdw');
+    }
+
+    if ((f.type === 'text' || f.type === 'textarea') && (f.bgColor || f.bgTransparent)) {
+      w.classList.add('hasBG');
+      w.style.setProperty('--bgc', f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+    } else {
+      w.classList.remove('hasBG');
+      w.style.removeProperty('--bgc');
+    }
+
+    if (ctrl && (ctrl.tagName === 'INPUT' || ctrl.tagName === 'TEXTAREA')) {
+      if (ctrl.tagName === 'INPUT') {
+        requestAnimationFrame(() => {
+          const shouldShrink = (f.autoShrink !== false);
+          const maxPx = Number.isFinite(f.inputHeight) ? (f.inputHeight - 4) : (f.fontSize ?? 20);
+          const minPx = isAddressField(f) ? 6 : (isNameField(f) ? 8 : 12);
+          if (shouldShrink) {
+            fitTextToWidth(ctrl, maxPx, minPx);
+          } else {
+            ctrl.classList.remove('fit-one-line');
+            ctrl.style.fontSize = maxPx + 'px';
+          }
+        });
+      }
+    }
+
+    if (FILL) ctrl.addEventListener('mousedown', e => e.stopPropagation());
+
+    bindAddressSearchToControl(f, w, ctrl);
+
+    if (f.id) {
+      w.setAttribute('data-fid', f.id);
+      if (ctrl && ctrl.setAttribute) {
+        ctrl.id = f.id;
+        ctrl.name = f.id;
+        ctrl.setAttribute('data-fid', f.id);
+      }
+    }
+w.appendChild(ctrl);
+bindRequiredFieldVisual(f, w, ctrl);
+overlay.appendChild(w);
+
+    if (!FILL && (f.type === 'text' || f.type === 'textarea' || f.type === 'select' || f.type === 'radio' || f.type === 'checkmark')) {
+      const rh = document.createElement('div');
+      rh.className = 'resize-handle';
+      rh.addEventListener('mousedown', ev => startResize(ev, i, w));
+      w.appendChild(rh);
+    }
+
+    if (!FILL) {
+      w.addEventListener('mousedown', e => startDrag(e, i, w));
+      w.addEventListener('click', () => select(i));
+    }
+  });
+
+  if (!FILL) updatePanel();
+  pageInfo.textContent = `${pageIndex + 1} / ${pages.length}`;
+
+  requestAnimationFrame(refitAllSelects);
+  requestAnimationFrame(() => autosizeAllTextareas(overlay));
+
+  requestAnimationFrame(() => {
+    hookDeviceRecalc();
+    recalcDevicePricing();
+    refreshConditionalInvalid();
+  });
+}
+
+/* ===== 속성 패널 ===== */
+const pLabel=document.getElementById('p_label'),
+      pRadioSize=document.getElementById('p_radioSize'),
+      pRadioGap=document.getElementById('p_radioGap'),
+      pColor=document.getElementById('p_color'),
+      pHeight=document.getElementById('p_height'),
+      pId=document.getElementById('p_id'),
+      pOptions=document.getElementById('p_options'),
+      pRequired=document.getElementById('p_required'),
+      pBorderColor=document.getElementById('p_borderColor'),
+      pBorderWidth=document.getElementById('p_borderWidth'),
+      pBorderTransparent=document.getElementById('p_borderTransparent'),
+      pBgColor=document.getElementById('p_bgColor'),
+      pBgTransparent=document.getElementById('p_bgTransparent'),
+      pFontSize=document.getElementById('p_fontSize'),
+      pTextAlign=document.getElementById('p_textAlign'),
+      pMask=document.getElementById('p_mask'),
+      pMaskRe=document.getElementById('p_maskRe'),
+      pMaxLen=document.getElementById('p_maxlen'),
+      pPlaceholder=document.getElementById('p_placeholder'),
+      pAutoDate=document.getElementById('p_autoDate'),
+      pLocked=document.getElementById('p_locked'),
+      pLockOnPh=document.getElementById('p_lockOnPh'),
+      pCheckStyle=document.getElementById('p_checkStyle'),
+      pGroupId=document.getElementById('p_groupId'),
+      pCheckValue=document.getElementById('p_checkValue');
+
+function updatePanel(){
+  const info=document.getElementById('selInfo'),
+        px=document.getElementById('p_x'),
+        py=document.getElementById('p_y'),
+        pw=document.getElementById('p_w'),
+        rowOpts=document.getElementById('row_opts'),
+        rowReq=document.getElementById('row_req'),
+        rowCheckGroup=document.getElementById('row_checkGroup'),
+        rowCheckValue=document.getElementById('row_checkValue');
+
+  if(selected<0){
+    info.textContent='없음'; px.value=py.value=pw.value='';
+    pLabel.value=''; pRadioSize.value=''; pRadioGap.value='';
+    pColor.value='#000000'; pHeight.value=''; pId.value=''; if(pGroupId) pGroupId.value=''; if(pCheckValue) pCheckValue.value='';
+    pBorderColor.value='#ff3b3b'; pBorderWidth.value=2; pBorderTransparent.checked=false;
+    pBgColor.value='#000000'; pBgTransparent.checked=false;
+    pFontSize.value=''; pMask.value=''; pMaskRe.value=''; pMaxLen.value=''; pPlaceholder.value='';
+    pAutoDate.value=''; pLocked.checked=false; pLockOnPh.checked=false;
+    if(rowOpts) rowOpts.style.display='none'; if(rowReq) rowReq.style.display='none'; if(rowCheckGroup) rowCheckGroup.style.display='none'; if(rowCheckValue) rowCheckValue.style.display='none';
+    if (pCheckStyle) pCheckStyle.value = 'tick';
+    return;
+  }
+
+  const f=cur().fields[selected];
+  info.textContent=(f.label||f.id||('필드'+(selected+1)));
+  px.value=f.x; py.value=f.y; pw.value=f.w ?? 24;
+  pLabel.value = f.label || '';
+
+  pRadioSize.value = (f.type === 'checkbox') ? (f.checkSize ?? 18) : (f.radioSize ?? 18);
+  pRadioGap.value = (f.radioGap ?? 12);
+
+  pColor.value=(f.color || '#000000');
+  pHeight.value=(f.inputHeight ?? '');
+  pId.value=f.id || '';
+  if(pGroupId) pGroupId.value = f.groupId || '';
+  if(pCheckValue) pCheckValue.value = f.checkValue || '';
+
+  pBorderColor.value=f.borderTransparent?'#000000':(f.borderColor||'#ff3b3b');
+  pBorderWidth.value=(f.borderWidth ?? 2);
+  pBorderTransparent.checked=!!f.borderTransparent;
+
+  pBgColor.value=f.bgTransparent?'#000000':(f.bgColor||'#000000');
+  pBgTransparent.checked=!!f.bgTransparent;
+
+  if(rowReq) rowReq.style.display='';
+  if(pRequired) pRequired.checked=!!f.required;
+
+  if(rowOpts) rowOpts.style.display=(f.type==='select'||f.type==='radio')?'':'none';
+  if(rowCheckGroup) rowCheckGroup.style.display=(f.type==='checkmark')?'':'none';
+  if(rowCheckValue) rowCheckValue.style.display=(f.type==='checkmark')?'':'none';
+  if(pOptions) pOptions.value=Array.isArray(f.options)? f.options.join(', ') : '';
+
+  pFontSize.value = (f.fontSize ?? 14);
+  pTextAlign.value = f.textAlign || '';
+  pMask.value = f.mask || '';
+  pMaskRe.value = (f.maskRe || '');
+  pMaxLen.value = f.maxLength || '';
+  pPlaceholder.value = f.placeholder || '';
+  pAutoDate.value = f.autoDate || '';
+  pLocked.checked = !!f.locked;
+  pLockOnPh.checked = !!f.lockOnPh;
+
+  if (pCheckStyle) {
+    if (f.type === 'checkbox') pCheckStyle.value = (f.checkStyle || 'tick');
+    else if (f.type === 'radio') pCheckStyle.value = (f.radioStyle || 'dot');
+    else pCheckStyle.value = 'tick';
+  }
+}
+const select=i=>{selected=i; render();};
+
+/* ===== 드래그 ===== */
+function startDrag(e, i, el){
+  if (FILL) return;
+  e.stopPropagation(); e.preventDefault();
+
+  const f    = cur().fields[i];
+  const rect = stage.getBoundingClientRect();
+  const fieldRect = el.getBoundingClientRect();
+  const offsetX   = e.clientX - fieldRect.left;
+  const offsetY   = e.clientY - fieldRect.top;
+
+  document.body.style.userSelect = 'none';
+  paper.style.cursor = 'move';
+
+  function move(ev){
+    const relX = ev.clientX - rect.left - offsetX;
+    const relY = ev.clientY - rect.top  - offsetY;
+
+    const nx = clamp((relX / rect.width)  * 100, 0, 100);
+    const ny = clamp((relY / rect.height) * 100, 0, 100);
+
+    f.x = nx; f.y = ny;
+    el.style.left = nx + '%';
+    el.style.top  = ny + '%';
+  }
+  function up(){
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    document.body.style.userSelect = '';
+    paper.style.cursor = '';
+    scheduleSave();
+  }
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
+/* ===== 리사이즈 ===== */
+function startResize(e, i, el){
+  e.stopPropagation(); e.preventDefault();
+
+  const f = cur().fields[i];
+  const r = stage.getBoundingClientRect();
+
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const startWpx = ((f.w ?? 24) / 100) * r.width;
+  const startHpx = f.inputHeight || el.offsetHeight;
+
+  document.body.style.userSelect = 'none';
+  paper.style.cursor = 'nwse-resize';
+
+  function mv(ev){
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+
+    const newWpx = Math.max(40, startWpx + dx);
+    const newW   = clamp((newWpx / r.width) * 100, 2, 95);
+    f.w = newW;
+    el.style.width = newW + '%';
+
+    const newH = clamp(startHpx + dy, 5, 200);
+    f.inputHeight = newH;
+    el.style.setProperty('--ih', newH + 'px');
+  }
+  function up(){
+    window.removeEventListener('mousemove', mv);
+    window.removeEventListener('mouseup', up);
+    document.body.style.userSelect = '';
+    paper.style.cursor = '';
+    scheduleSave();
+  }
+  window.addEventListener('mousemove', mv);
+  window.addEventListener('mouseup', up);
+}
+
+/* ===== 필드 추가/적용/삭제 ===== */
+document.getElementById('addField').onclick=()=>{
+  const t=document.getElementById('newType').value,
+        id=document.getElementById('newId').value.trim(),
+        label=document.getElementById('newLabel').value.trim(),
+        opts=document.getElementById('newOpts').value.split(',').map(s=>s.trim()).filter(Boolean),
+        req=document.getElementById('newReq').checked;
+  const base={id:(id||`${t}_${Date.now()}`),label,type:t,x:50,y:50,w:30,required:req};
+  if(t==='select'||t==='radio') base.options=opts;
+  if(t==='radio'){ base.radioSize=18; base.radioGap=12; }
+  if(t==='checkmark'){ base.inputHeight=18; base.fontSize=18; base.value=false; base.w=2; base.groupId=''; base.checkValue=''; }
+  cur().fields.push(base); selected=cur().fields.length-1; render(); scheduleSave();
+};
+
+document.getElementById('applyProp').onclick = () => {
+  if (selected < 0) return;
+
+  const f = cur().fields[selected];
+  const style = (pCheckStyle?.value || 'tick');
+
+  if (f.type === 'checkbox') f.checkStyle = style;
+  if (f.type === 'radio')    f.radioStyle = style;
+
+  f.x = clamp(num(document.getElementById('p_x').value, f.x), 0, 100);
+  f.y = clamp(num(document.getElementById('p_y').value, f.y), 0, 100);
+  f.w = clamp(num(document.getElementById('p_w').value, f.w ?? 24), 2, 95);
+  f.label = (pLabel?.value || '').trim();
+
+  const sizeInput = num(pRadioSize?.value, (f.checkSize ?? f.radioSize ?? 18));
+  const safeSize  = clamp(sizeInput, 8, 40);
+  f.radioSize = safeSize;
+  f.checkSize = safeSize;
+  f.radioGap  = clamp(num(pRadioGap?.value, f.radioGap ?? 12), 0, 200);
+
+  f.color = pColor?.value || '#000000';
+
+  const h = parseInt(pHeight?.value, 10);
+  f.inputHeight = Number.isFinite(h) ? clamp(h, 5, 60) : undefined;
+
+  f.wrap = !!document.getElementById('p_wrap')?.checked;
+
+  f.id = (pId?.value || '').trim() || f.id;
+  if (f.type === 'checkmark') {
+    f.groupId = (pGroupId?.value || '').trim();
+    f.checkValue = (pCheckValue?.value || '').trim();
+  }
+  f.required = !!pRequired?.checked;
+
+  f.borderTransparent = !!pBorderTransparent?.checked;
+  f.borderColor = f.borderTransparent
+    ? 'transparent'
+    : ((pBorderColor?.value || '').trim() || undefined);
+
+  const bw = parseInt(pBorderWidth?.value, 10);
+  f.borderWidth = Number.isFinite(bw) ? clamp(bw, 1, 8) : undefined;
+
+  f.bgTransparent = !!pBgTransparent?.checked;
+  f.bgColor = f.bgTransparent
+    ? 'transparent'
+    : ((pBgColor?.value || '').trim() || undefined);
+
+  const fs = parseInt(pFontSize?.value, 10);
+  const autoFs = Number.isFinite(f.inputHeight) ? (f.inputHeight - 4) : 14;
+  f.fontSize = clamp(Number.isFinite(fs) ? fs : autoFs, 5, 32);
+
+  f.textAlign = (pTextAlign?.value || '');
+  f.mask      = (pMask?.value || '');
+  f.maskRe    = (pMaskRe?.value || '').trim();
+
+  const ml = parseInt(pMaxLen?.value, 10);
+  f.maxLength = Number.isFinite(ml) ? clamp(ml, 1, 500) : undefined;
+
+  f.placeholder = (pPlaceholder?.value || '').trim();
+  f.autoDate    = (pAutoDate?.value || '');
+  f.locked      = !!pLocked?.checked;
+  f.lockOnPh    = !!pLockOnPh?.checked;
+
+  render();
+  scheduleSave();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+};
+
+document.getElementById('delField').onclick = () => {
+  if (selected < 0) {
+    alert('삭제할 필드를 먼저 클릭해서 선택해주세요.');
+    return;
+  }
+
+  const f = cur().fields[selected];
+  if (f && f.id) {
+    delete valuesById[f.id];
+    delete elById[f.id];
+  }
+
+  cur().fields.splice(selected, 1);
+  selected = -1;
+  render();
+  scheduleSave();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+};
+
+/* ===== 정렬 버튼 ===== */
+function alignSelectedX(mode){
+  if(selected<0) return;
+  const f=cur().fields[selected];
+  if(mode==='left')   f.x = 0;
+  if(mode==='center') f.x = clamp(50 - (f.w??24)/2, 0, 100);
+  if(mode==='right')  f.x = clamp(100 - (f.w??24), 0, 100);
+  render(); scheduleSave(); recalcDevicePricing(); refreshConditionalInvalid();
+}
+function alignSelectedY(mode){
+  if(selected<0) return;
+  const f=cur().fields[selected];
+  if(mode==='top')    f.y = 0;
+  if(mode==='middle') f.y = 50;
+  if(mode==='bottom') f.y = 100;
+  render(); scheduleSave(); recalcDevicePricing(); refreshConditionalInvalid();
+}
+document.getElementById('alignLeft').onclick = ()=>alignSelectedX('left');
+document.getElementById('alignCX').onclick   = ()=>alignSelectedX('center');
+document.getElementById('alignRight').onclick= ()=>alignSelectedX('right');
+document.getElementById('alignTop').onclick  = ()=>alignSelectedY('top');
+document.getElementById('alignCY').onclick   = ()=>alignSelectedY('middle');
+document.getElementById('alignBottom').onclick=()=>alignSelectedY('bottom');
+
+/* ===== 페이지 ===== */
+const changePage=d=>{
+  pageIndex=clamp(pageIndex+d,0,pages.length-1);
+  selected=-1;
+  render();
+  scheduleSave();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+};
+document.getElementById('prev').onclick=()=>changePage(-1);
+document.getElementById('next').onclick=()=>changePage(1);
+
+/* ===== 저장/초기화 ===== */
+document.getElementById('saveJson').onclick=()=>{
+  const age = getSafeAge();
+  const blob=new Blob([JSON.stringify({pages, conditionalRequired: CONDITIONAL_REQUIRED, formPopup:{ enabled: USE_FORM_POPUP, forms: FORM_POPUP_FORMS }},null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`overlay-design.device.${age}.json`; // ✅
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+document.getElementById('resetValues').onclick=()=>{
+  pages.forEach(pg=>(pg.fields||[]).forEach(f=>delete f.value));
+  Object.keys(valuesById).forEach(k=>delete valuesById[k]);
+  selected=-1;
+  clearAutosave();
+  render();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+};
+function __fieldMatchesTarget(f, targetId){
+  const t = __normKey(targetId);
+  if (!t || !f) return false;
+  const id = __normKey(f.id);
+  const label = __normKey(f.label);
+  const ph = __normKey(f.placeholder);
+  return id === t || label === t || id.includes(t) || label.includes(t) || ph.includes(t);
+}
+function setRequiredAllPages(targetId, on){
+  pages.forEach(pg => {
+    (pg.fields || []).forEach(f => {
+      if (__fieldMatchesTarget(f, targetId)) f.required = !!on;
+    });
+  });
+}
+
+function applyConditionalRequired(){
+  if (!Array.isArray(CONDITIONAL_REQUIRED) || !CONDITIONAL_REQUIRED.length) return;
+
+  const allTargets = new Set();
+  CONDITIONAL_REQUIRED.forEach(rule => {
+    (rule.requiredOn || []).forEach(tid => {
+      const v = String(tid || '').trim();
+      if (v) allTargets.add(v);
+    });
+  });
+  allTargets.forEach(tid => setRequiredAllPages(tid, false));
+
+  CONDITIONAL_REQUIRED.forEach(rule => {
+    const sourceId = String(rule.sourceId || '').trim();
+    const whenValue = String(rule.whenValue || '').trim();
+    if (!sourceId) return;
+    const curVal = String(getFieldCurrentValueById(sourceId) || '').trim();
+    if (curVal === whenValue) {
+      (rule.requiredOn || []).forEach(tid => {
+        const target = String(tid || '').trim();
+        if (target) setRequiredAllPages(target, true);
+      });
+    }
+  });
+}
+
+function isRequiredFieldFilled(f, ctrl){
+  if (!f) return true;
+  if (!ctrl) return false;
+
+  const condSet = getConditionalRequiredSet();
+  const isCondRequired = f.id && condSet.has(f.id);
+
+  if (!f.required && !isCondRequired) return true;
+
+  if (f.type === 'checkbox') return !!ctrl.checked;
+  if (f.type === 'checkmark') {
+    const g = getCheckmarkGroupId(f);
+    return g ? isCheckmarkGroupChecked(g) : !!f.value;
+  }
+  if (f.type === 'radio') return !!ctrl.querySelector('input[type="checkbox"]:checked');
+
+  return String(ctrl.value ?? '').trim() !== '';
+}
+
+function updateRequiredFieldVisual(f, wrap, ctrl){
+  if (!f || !wrap) return;
+
+  const condSet = getConditionalRequiredSet();
+  const isCondRequired = f.id && condSet.has(f.id);
+
+  if (!f.required && !isCondRequired) {
+    wrap.classList.remove('required-pending');
+    return;
+  }
+
+  const filled = isRequiredFieldFilled(f, ctrl);
+
+  if (filled) wrap.classList.remove('required-pending');
+  else wrap.classList.add('required-pending');
+}
+
+function bindRequiredFieldVisual(f, wrap, ctrl){
+  if (!f || !wrap || !ctrl) return;
+
+  const apply = () => updateRequiredFieldVisual(f, wrap, ctrl);
+
+  if (f.type === 'radio') {
+    ctrl.querySelectorAll('input[type="checkbox"]').forEach(r => {
+      r.addEventListener('change', apply);
+    });
+  } else if (f.type === 'checkbox' || f.type === 'checkmark' || f.type === 'select') {
+    ctrl.addEventListener('change', apply);
+    ctrl.addEventListener('input', apply);
+  } else {
+    ctrl.addEventListener('input', apply);
+    ctrl.addEventListener('change', apply);
+    ctrl.addEventListener('blur', apply);
+  }
+
+  apply();
+}
+
+/* ===== 필수 검증/토스트 ===== */
+function findMissingAll(){
+  const miss=[];
+  const condReq = getConditionalRequiredSet();
+
+  pages.forEach((pg,pi)=>{
+    (pg.fields||[]).forEach((f,fi)=>{
+      const fid = (f.id || '').toString();
+      const isRequired = !!f.required || (fid && condReq.has(fid));
+
+      if(!isRequired) return;
+      if (f.locked && f.lockOnPh && !f.value) return;
+
+      let v='';
+      if(f.type==='checkbox') v = !!f.value ? 'Y' : '';
+      else if(f.type==='checkmark') {
+        const g = getCheckmarkGroupId(f);
+        v = g ? getCheckmarkGroupValue(g) : (!!f.value ? 'Y' : '');
+      } else v = (f.value??'').toString().trim();
+      if(!v) miss.push({page:pi,idx:fi,label:(f.label||f.id||`필드${fi+1}`), id: fid});
+    });
+  });
+  return miss;
+}
+
+function markInvalidForPage(pIdx,list){
+  if(pIdx!==pageIndex) return;
+  overlay.querySelectorAll('.field.invalid').forEach(el=>el.classList.remove('invalid'));
+  list.forEach(m=>{
+    const el=overlay.querySelector(`.field[data-i="${m.idx}"]`);
+    if(el) el.classList.add('invalid');
+  });
+}
+function showToast(items){
+  const toast=document.getElementById('toast'), list=document.getElementById('missList');
+  list.innerHTML=items.map(m=>`<li>${m}</li>`).join('');
+  toast.style.display='flex';
+  document.getElementById('tClose').onclick=()=>toast.style.display='none';
+}
+
+/* ===== 이미지/폰트 대기 ===== */
+async function waitForImages(root){
+  const imgs=Array.from(root.querySelectorAll('img'));
+  if(!imgs.length) return;
+  await Promise.all(imgs.map(img=>{
+    if(img.complete && img.naturalWidth>0) return Promise.resolve();
+    return new Promise(res=>{
+      const done=()=>{ img.removeEventListener('load',done); img.removeEventListener('error',done); res(); };
+      img.addEventListener('load',done,{once:true});
+      img.addEventListener('error',done,{once:true});
+    });
+  }));
+}
+
+/* ===== 인쇄 DOM ===== */
+function createPrintDOM(page){
+  const wrap = document.createElement('div');
+  wrap.className = 'paper';
+
+  const st = document.createElement('div');
+  st.className = 'stage';
+  st.style.transform = 'scale(1)';
+
+  const img = document.createElement('img');
+  img.src = page.bg || '';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+
+  st.appendChild(img);
+  st.appendChild(ov);
+  wrap.appendChild(st);
+
+  (page.fields || []).forEach(f => {
+    const w = document.createElement('div');
+    w.className =
+      'field ' +
+      (f.type === 'radio' ? 'radio ' : '') +
+      (f.type === 'checkbox' ? 'checkbox ' : '') +
+      (f.type === 'checkmark' ? 'checkmark ' : '');
+
+    w.style.left = `${f.x}%`;
+    w.style.top  = `${f.y}%`;
+    w.style.width = `${(f.w ?? 24)}%`;
+
+    if (f.type === 'checkbox' || f.type === 'radio') {
+      const tickColor = (f.borderTransparent) ? 'transparent' : (f.borderColor || '#000');
+      const tickWidth = Number.isFinite(Number(f.borderWidth))
+        ? Math.max(0, Math.min(8, Number(f.borderWidth)))
+        : 1.6;
+      w.style.setProperty('--tick-bdc', tickColor);
+      w.style.setProperty('--tick-bdw', tickWidth + 'px');
+    }
+
+    if (f.fontSize) w.style.setProperty('--fs', f.fontSize + 'px');
+
+if (f.type === 'radio') {
+  const rs = (f.radioStyle || 'dot');
+  w.classList.remove('rd-dot','rd-solid','rd-tick');
+  w.classList.add('rd-' + rs);
+
+  w.style.setProperty('--rsize', (f.radioSize ?? 18) + 'px');
+  w.style.setProperty('--rgap',  (f.radioGap  ?? 12) + 'px');
+
+  if (f.radioShowText === false) w.classList.add('noText');
+
+  // ✅✅✅ 여기 추가: 라디오 "박스(.radio-item)" 테두리 변수도 인쇄 DOM에 세팅
+  const outerColor =
+    (f.radioOuterBorderTransparent || f.borderTransparent)
+      ? 'transparent'
+      : (f.radioOuterBorderColor || 'rgba(0,0,0,.25)');
+
+  const outerWidth = Number.isFinite(Number(f.radioOuterBorderWidth))
+    ? Math.max(0, Math.min(8, Number(f.radioOuterBorderWidth)))
+    : 1;
+
+  w.style.setProperty('--rbc', outerColor);
+  w.style.setProperty('--rbw', outerWidth + 'px');
+}
+
+
+    
+    if (f.color)       w.style.setProperty('--fgc', f.color);
+    if (f.inputHeight) w.style.setProperty('--ih', f.inputHeight + 'px');
+
+    const lab = document.createElement('div');
+    lab.className = 'label';
+    lab.textContent = f.label || '';
+    w.appendChild(lab);
+
+    let ctrl;
+    const lockByPlaceholder = !!f.lockOnPh && !!f.placeholder && !f.value;
+
+    const treatAsTextarea =
+      f.type === 'textarea' ||
+      (f.type === 'text' && (f.wrap) && !isAddressField(f));
+
+    if (treatAsTextarea) {
+      ctrl = document.createElement('textarea');
+      ctrl.spellcheck = false;
+      ctrl.style.resize = 'none';
+      ctrl.value = f.value ?? '';
+      if (f.placeholder && lockByPlaceholder) ctrl.placeholder = f.placeholder;
+      if (f.inputHeight) {
+        ctrl.style.minHeight = f.inputHeight + 'px';
+        ctrl.style.height    = f.inputHeight + 'px';
+      } else {
+        ctrl.style.minHeight = '5px';
+        ctrl.style.height    = 'auto';
+      }
+      if (f.locked || lockByPlaceholder) ctrl.readOnly = true;
+    }
+    else if (f.type === 'select') {
+      ctrl = document.createElement('select');
+      const phText = (f.placeholder || '').trim();
+      if (phText) {
+        const op0 = document.createElement('option');
+        op0.value = '';
+        op0.textContent = phText;
+        op0.disabled = true;
+        op0.hidden = true;
+        ctrl.appendChild(op0);
+      }
+      (f.options || []).forEach(o => {
+        const packed = String(o ?? '');
+        const { id, name } = parsePackedId(packed);
+
+        const op = document.createElement('option');
+        op.value = id || packed;
+        op.textContent = name || id || packed;
+        ctrl.appendChild(op);
+      });
+      ctrl.value = parsePackedId(f.value ?? '').id || '';
+
+      ctrl.style.color = (f.color || '#000');
+      ctrl.style.caretColor = (f.color || '#000');
+      ctrl.style.backgroundColor = (f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+      ctrl.querySelectorAll('option').forEach(op => {
+        op.style.color = '#000';
+        op.style.backgroundColor = '#fff';
+      });
+
+      if (f.locked || lockByPlaceholder) ctrl.disabled = true;
+
+      const pv = document.createElement('div');
+      pv.className = 'print-value';
+      const selText = (ctrl.options[ctrl.selectedIndex] || {}).text || ctrl.value || '';
+      pv.textContent = selText;
+      w.appendChild(pv);
+    }
+    else if (f.type === 'checkbox') {
+      ctrl = document.createElement('input');
+      ctrl.type = 'checkbox';
+      ctrl.checked = !!f.value;
+      if (f.locked || lockByPlaceholder) ctrl.disabled = true;
+    }
+    else if (f.type === 'radio') {
+      ctrl = document.createElement('div');
+      const opts = Array.isArray(f.options) ? f.options : [];
+      opts.forEach(o => {
+        const it = document.createElement('label');
+        it.className = 'radio-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = (f.value === o);
+        if (f.locked || lockByPlaceholder) cb.disabled = true;
+
+        const hideText = (f.radioShowText === false) || /^\d+$/.test(String(o).trim());
+        it.appendChild(cb);
+        if (!hideText) {
+          const s = document.createElement('span');
+          s.textContent = o;
+          it.appendChild(s);
+        }
+        ctrl.appendChild(it);
+      });
+    }
+    else {
+      ctrl = document.createElement('input');
+      ctrl.type = 'text';
+      ctrl.value = f.value ?? '';
+      if (f.placeholder && lockByPlaceholder) ctrl.placeholder = f.placeholder;
+      if (f.locked || lockByPlaceholder) ctrl.readOnly = true;
+      if (f.inputHeight) ctrl.style.height = f.inputHeight + 'px';
+    }
+
+    if (f.color) ctrl.style.color = f.color;
+    if (f.textAlign) { ctrl.style.textAlign = f.textAlign; w.style.setProperty('--ta', f.textAlign); }
+
+    w.appendChild(ctrl);
+    ov.appendChild(w);
+  });
+
+  return wrap;
+}
+
+function buildPrintAll(){
+  const container = document.getElementById('printAll');
+  container.innerHTML = '';
+
+  pages.forEach((pg) => {
+    const pageWrap = document.createElement('div');
+    pageWrap.className = 'pageWrap';
+    const printed = createPrintDOM(pg);
+    pageWrap.appendChild(printed);
+    container.appendChild(pageWrap);
+  });
+
+  requestAnimationFrame(()=>{ autosizeAllTextareas(container); });
+  return container;
+}
+
+async function printAllNow(){
+  const container=buildPrintAll();
+  if(document.fonts && document.fonts.ready){ try{ await document.fonts.ready; }catch{} }
+  await waitForImages(container);
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  setTimeout(()=>window.print(),0);
+}
+
+/* ===== 인쇄 버튼 =====
+   ✅ 빈 서식지 출력용: 필수값 검증을 하지 않고 바로 출력
+   - findMissingAll()로 막지 않음
+   - 화면에 떠 있는 필수값 토스트/invalid 표시만 지우고 출력
+*/
+document.getElementById('btnPdf').onclick = async () => {
+  await forcePrintBlankForm();
+};
+
+async function forcePrintBlankForm(){
+  try {
+    SHOW_INVALID = false;
+
+    if (overlay) {
+      overlay.querySelectorAll('.field.invalid, .field.is-missing').forEach(el => {
+        el.classList.remove('invalid', 'is-missing');
+      });
+    }
+
+    const toast = document.getElementById('toast');
+    if (toast) toast.style.display = 'none';
+  } catch (_) {}
+
+  await printAllNow();
+}
+
+/* ===== text → textarea 전환 스위치 ===== */
+function enableWrapAllTextFields(){
+  pages.forEach(pg => {
+    (pg.fields || []).forEach(f => {
+      if (f.type === 'text') {
+        f.wrap = true;
+        if (!f.inputHeight) f.inputHeight = 28;
+      }
+    });
+  });
+  render(); scheduleSave(); recalcDevicePricing(); refreshConditionalInvalid();
+}
+const wrapBtn = document.getElementById('enableWrapAll');
+if (wrapBtn) wrapBtn.onclick = enableWrapAllTextFields;
+
+
+/* =========================
+   ✅ 조건부 필수 설정 도구 + 양식 팝업
+========================= */
+let SELECTED_COND_RULE_INDEX = -1;
+
+function renderConditionalRuleList(){
+  const box = document.getElementById('condRuleList');
+  if (!box) return;
+  box.innerHTML = '';
+
+  const rules = Array.isArray(CONDITIONAL_REQUIRED) ? CONDITIONAL_REQUIRED : [];
+  if (!rules.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hint';
+    empty.textContent = '등록된 규칙 없음';
+    box.appendChild(empty);
+    return;
+  }
+
+  rules.forEach((r, i) => {
+    const item = document.createElement('div');
+    item.className = 'cond-rule-item' + (i === SELECTED_COND_RULE_INDEX ? ' active' : '');
+    item.dataset.condIndex = String(i);
+    item.textContent = `${r.sourceId || ''} = ${r.whenValue || ''} → ${(r.requiredOn || []).join(', ')}`;
+    box.appendChild(item);
+  });
+}
+
+function readCondInputs(){
+  const sourceId = (document.getElementById('cond_sourceId')?.value || '').trim();
+  const whenValue = (document.getElementById('cond_whenValue')?.value || '').trim();
+  const requiredOn = (document.getElementById('cond_requiredOn')?.value || '')
+    .split(',')
+    .map(v => v.trim())
+    .filter(Boolean);
+  return { sourceId, whenValue, requiredOn };
+}
+
+function fillCondInputs(rule){
+  const a = document.getElementById('cond_sourceId');
+  const b = document.getElementById('cond_whenValue');
+  const c = document.getElementById('cond_requiredOn');
+  if (a) a.value = rule?.sourceId || '';
+  if (b) b.value = rule?.whenValue || '';
+  if (c) c.value = Array.isArray(rule?.requiredOn) ? rule.requiredOn.join(', ') : '';
+}
+
+function initConditionalTool(){
+  renderConditionalRuleList();
+
+  document.getElementById('condRuleList')?.addEventListener('click', e => {
+    const item = e.target.closest('[data-cond-index]');
+    if (!item) return;
+    SELECTED_COND_RULE_INDEX = Number(item.dataset.condIndex);
+    fillCondInputs(CONDITIONAL_REQUIRED[SELECTED_COND_RULE_INDEX]);
+    renderConditionalRuleList();
+  });
+
+  (document.getElementById('cr_add') || document.getElementById('condAdd'))?.addEventListener('click', () => {
+    const r = readCondInputs();
+    if (!r.sourceId || !r.whenValue || !r.requiredOn.length) {
+      alert('기준 필드 ID/그룹명, 기준 값, 필수 대상 ID를 모두 입력해주세요.');
+      return;
+    }
+    CONDITIONAL_REQUIRED.push(r);
+    SELECTED_COND_RULE_INDEX = CONDITIONAL_REQUIRED.length - 1;
+    renderConditionalRuleList();
+    applyConditionalRequired();
+    render();
+  });
+
+  (document.getElementById('cr_update') || document.getElementById('condUpdate'))?.addEventListener('click', () => {
+    if (SELECTED_COND_RULE_INDEX < 0) {
+      alert('수정할 규칙을 먼저 선택해주세요.');
+      return;
+    }
+    const r = readCondInputs();
+    if (!r.sourceId || !r.whenValue || !r.requiredOn.length) {
+      alert('기준 필드 ID/그룹명, 기준 값, 필수 대상 ID를 모두 입력해주세요.');
+      return;
+    }
+    CONDITIONAL_REQUIRED[SELECTED_COND_RULE_INDEX] = r;
+    renderConditionalRuleList();
+    applyConditionalRequired();
+    render();
+  });
+
+  (document.getElementById('cr_delete') || document.getElementById('condDelete'))?.addEventListener('click', () => {
+    if (SELECTED_COND_RULE_INDEX < 0) {
+      alert('삭제할 규칙을 먼저 선택해주세요.');
+      return;
+    }
+    CONDITIONAL_REQUIRED.splice(SELECTED_COND_RULE_INDEX, 1);
+    SELECTED_COND_RULE_INDEX = -1;
+    fillCondInputs(null);
+    renderConditionalRuleList();
+    applyConditionalRequired();
+    render();
+  });
+}
+
+function openFormPopup(key){
+  if (!USE_FORM_POPUP) return;
+  const f = FORM_POPUP_FORMS[key];
+  if (!f) return;
+  const modal = document.getElementById('formModal');
+  const title = document.getElementById('formPopupTitle');
+  const text = document.getElementById('formPopupText');
+  if (!modal || !title || !text) return;
+  title.textContent = f.title || key;
+  text.textContent = f.text || '';
+  modal.setAttribute('aria-hidden','false');
+}
+function closeFormPopup(){
+  const modal = document.getElementById('formModal');
+  const text = document.getElementById('formPopupText');
+  const toast = document.getElementById('formToast');
+  if (modal) modal.setAttribute('aria-hidden','true');
+  if (text) text.textContent = '';
+  if (toast) toast.classList.remove('show');
+}
+function initFormPopupTool(){
+  const enabled = document.getElementById('formPopupEnabled');
+  if (enabled) {
+    enabled.checked = !!USE_FORM_POPUP;
+    enabled.addEventListener('change', () => { USE_FORM_POPUP = !!enabled.checked; });
+  }
+
+  document.getElementById('formSaveBtn')?.addEventListener('click', () => {
+    const key = (document.getElementById('formKey')?.value || '').trim();
+    const title = (document.getElementById('formTitleInput')?.value || '').trim();
+    const text = (document.getElementById('formTextInput')?.value || '');
+    if (!key) {
+      alert('양식 키를 입력해주세요.');
+      return;
+    }
+    FORM_POPUP_FORMS[key] = { title: title || key, text };
+    alert('양식이 저장되었습니다.');
+  });
+
+  document.getElementById('formDeleteBtn')?.addEventListener('click', () => {
+    const key = (document.getElementById('formKey')?.value || '').trim();
+    if (!key || !FORM_POPUP_FORMS[key]) {
+      alert('삭제할 양식 키를 확인해주세요.');
+      return;
+    }
+    delete FORM_POPUP_FORMS[key];
+    alert('양식이 삭제되었습니다.');
+  });
+
+  document.addEventListener('click', e => {
+    const closeTarget = e.target.closest('[data-form-close]');
+    if (closeTarget) closeFormPopup();
+  });
+  document.getElementById('formCloseX')?.addEventListener('click', closeFormPopup);
+  document.getElementById('formSelectAll')?.addEventListener('click', () => {
+    const text = document.getElementById('formPopupText');
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  document.getElementById('formCopyBtn')?.addEventListener('click', async () => {
+    const text = document.getElementById('formPopupText');
+    const toast = document.getElementById('formToast');
+    try { await navigator.clipboard.writeText(text.innerText || text.textContent || ''); }
+    catch(_) {
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('copy');
+      sel.removeAllRanges();
+    }
+    toast?.classList.add('show');
+    setTimeout(() => toast?.classList.remove('show'), 1200);
+  });
+}
+
+/* ===== 부트 ===== */
+async function boot(){
+  await loadDesign();
+
+  applyAutoDateAll();
+
+  await loadDevicePricingSeparated();
+  if (DEVICE_DB) applyDeviceDbToDesign();
+
+  if(!FRESH) tryLoadAutosave();
+applyConditionalRequired();
+render();
+recalcDevicePricing();
+refreshConditionalInvalid();
+}
+document.getElementById('reload').onclick=boot;
+
+window.addEventListener('DOMContentLoaded',()=>{ initConditionalTool(); initFormPopupTool(); boot(); applyZoom(); });
+</script>
+
+
+<script id="ml-field-print-sync-final-fix">
+/* =========================================================
+   ✅ FINAL FIX: 개발/디자인 화면의 필드 스타일을 fill/print와 동기화
+   - 색상 강제 변경 없음: JSON에 저장된 borderColor/bgColor/transparent 값을 그대로 사용
+   - text / textarea / select 모두 동일하게 높이, 테두리, 배경, 정렬 적용
+   - createPrintDOM을 재정의하여 출력 시 개발 화면과 같은 x/y/w/inputHeight/fontSize를 사용
+========================================================= */
+(function(){
+  'use strict';
+
+  function injectCss(){
+    if (document.getElementById('ml-field-print-sync-final-css')) return;
+    var css = `
+.field.hasBorder input[type="text"],
+.field.hasBorder textarea,
+.field.hasBorder select,
+.field.selectLike.hasBorder .select-display{
+  border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;
+  border-radius:8px !important;
+  background:transparent;
+  padding:0 2px !important;
+  box-sizing:border-box !important;
+  line-height:1 !important;
+}
+.field.hasBG input[type="text"],
+.field.hasBG textarea,
+.field.hasBG select,
+.field.selectLike.hasBG .select-display{
+  background:var(--bgc,transparent) !important;
+}
+#printAll .field input[type="text"],
+#printAll .field textarea,
+#printAll .field select{
+  display:none !important;
+}
+#printAll .field.checkbox input,
+#printAll .field.radio input[type="checkbox"]{
+  display:inline-block !important;
+}
+#printAll .field .label{
+  display:none !important;
+}
+#printAll .field .print-value{
+  display:flex !important;
+  position:absolute !important;
+  inset:0 !important;
+  width:100% !important;
+  height:100% !important;
+  padding:0 2px !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+  color:#000 !important;
+  font-family:system-ui,"Noto Sans KR",sans-serif !important;
+  font-weight:700 !important;
+  line-height:1 !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:clip !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  text-align:var(--ta,left) !important;
+  transform:translateY(-0.02em) !important;
+}
+#printAll .field[data-va="top"] .print-value{align-items:flex-start !important;}
+#printAll .field[data-va="middle"] .print-value{align-items:center !important;}
+#printAll .field[data-va="bottom"] .print-value{align-items:flex-end !important;}
+#printAll .field .print-value-ta{
+  white-space:pre-wrap !important;
+  line-height:1.1 !important;
+  transform:none !important;
+}
+#printAll .field.hasBorder .print-value{
+  border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;
+  border-radius:8px !important;
+  background:transparent !important;
+}
+#printAll .field.hasBG .print-value{
+  background:var(--bgc,transparent) !important;
+}
+@media print{
+  #printAll textarea{height:100% !important; min-height:0 !important; max-height:none !important;}
+}
+`;
+    var style = document.createElement('style');
+    style.id = 'ml-field-print-sync-final-css';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  function safeNum(v, fallback){
+    var n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  function isTextLike(f){
+    return f && (f.type === 'text' || f.type === 'textarea' || f.type === 'select');
+  }
+
+  function parseOpt(v){
+    if (typeof parsePackedId === 'function') return parsePackedId(v);
+    var s = String(v || '');
+    var i = s.indexOf('|');
+    if (i < 0) return { id:s.trim(), name:'' };
+    return { id:s.slice(0,i).trim(), name:s.slice(i+1).trim() };
+  }
+
+  function applyFieldBoxStyle(f, w){
+    if (!f || !w) return;
+
+    if (Number.isFinite(Number(f.fontSize))) {
+      w.style.setProperty('--fs', Number(f.fontSize) + 'px');
+    }
+
+    if (f.textAlign) w.style.setProperty('--ta', f.textAlign);
+    else w.style.removeProperty('--ta');
+
+    w.dataset.va = f.verticalAlign || 'middle';
+
+    if (Number.isFinite(Number(f.inputHeight))) {
+      w.style.setProperty('--ih', Number(f.inputHeight) + 'px');
+      w.style.height = Number(f.inputHeight) + 'px';
+    } else {
+      w.style.removeProperty('--ih');
+      w.style.height = '';
+    }
+
+    if (isTextLike(f)) {
+      if (f.borderColor || f.borderTransparent !== undefined) {
+        w.classList.add('hasBorder');
+        w.style.setProperty('--bdc', f.borderTransparent ? 'transparent' : (f.borderColor || '#ff3b3b'));
+        w.style.setProperty('--bdw', safeNum(f.borderWidth, 2) + 'px');
+      } else {
+        w.classList.remove('hasBorder');
+        w.style.removeProperty('--bdc');
+        w.style.removeProperty('--bdw');
+      }
+
+      if (f.bgColor || f.bgTransparent !== undefined) {
+        w.classList.add('hasBG');
+        w.style.setProperty('--bgc', f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+      } else {
+        w.classList.remove('hasBG');
+        w.style.removeProperty('--bgc');
+      }
+    }
+
+    if (f.type === 'checkbox' || f.type === 'radio') {
+      var tickColor = f.borderTransparent ? 'transparent' : (f.borderColor || '#000');
+      w.style.setProperty('--tick-bdc', tickColor);
+      w.style.setProperty('--tick-bdw', safeNum(f.borderWidth, 1.6) + 'px');
+    }
+    if (f.type === 'checkbox') {
+      w.style.setProperty('--cksize', safeNum(f.checkSize || f.radioSize, 18) + 'px');
+      w.classList.remove('ck-tick','ck-solid','ck-dot');
+      w.classList.add('ck-' + (f.checkStyle || 'tick'));
+    }
+    if (f.type === 'radio') {
+      w.style.setProperty('--rsize', safeNum(f.radioSize, 18) + 'px');
+      w.style.setProperty('--rgap', safeNum(f.radioGap, 12) + 'px');
+      w.classList.remove('rd-dot','rd-solid','rd-tick');
+      w.classList.add('rd-' + (f.radioStyle || 'dot'));
+      if (f.radioShowText === false) w.classList.add('noText');
+      else w.classList.remove('noText');
+
+      var outerColor = (f.radioOuterBorderTransparent || f.borderTransparent)
+        ? 'transparent'
+        : (f.radioOuterBorderColor || 'rgba(0,0,0,.25)');
+      w.style.setProperty('--rbc', outerColor);
+      w.style.setProperty('--rbw', safeNum(f.radioOuterBorderWidth, 1) + 'px');
+    }
+  }
+
+  function makePrintValue(f, text){
+    var pv = document.createElement('div');
+    pv.className = 'print-value';
+    if (f.type === 'textarea' || (f.type === 'text' && f.wrap && !(typeof isNameField === 'function' && isNameField(f)) && !(typeof isAddressField === 'function' && isAddressField(f)))) {
+      pv.classList.add('print-value-ta');
+    }
+    pv.textContent = text || '';
+    if (Number.isFinite(Number(f.fontSize))) pv.style.fontSize = Number(f.fontSize) + 'px';
+    if (f.color) pv.style.color = f.color;
+    if (f.textAlign) {
+      pv.style.textAlign = f.textAlign;
+      if (f.textAlign === 'center') pv.style.justifyContent = 'center';
+      if (f.textAlign === 'right') pv.style.justifyContent = 'flex-end';
+    }
+    return pv;
+  }
+
+  function fieldClass(f){
+    return 'field ' +
+      (f.type === 'radio' ? 'radio ' : '') +
+      (f.type === 'checkbox' ? 'checkbox ' : '') +
+      (f.type === 'checkmark' ? 'checkmark ' : '');
+  }
+
+  createPrintDOM = function(page){
+    var wrap = document.createElement('div');
+    wrap.className = 'paper';
+
+    var st = document.createElement('div');
+    st.className = 'stage';
+    st.style.transform = 'scale(1)';
+
+    var img = document.createElement('img');
+    img.src = page && page.bg ? new URL(page.bg, location.href).href : '';
+
+    var ov = document.createElement('div');
+    ov.className = 'overlay';
+
+    st.appendChild(img);
+    st.appendChild(ov);
+    wrap.appendChild(st);
+
+    (page.fields || []).forEach(function(f){
+      var hideOnPrint = !!f.locked || (!!f.lockOnPh && !!f.placeholder && !String(f.value || '').trim());
+      if (hideOnPrint) return;
+
+      var w = document.createElement('div');
+      w.className = fieldClass(f);
+      w.style.left = (f.x || 0) + '%';
+      w.style.top = (f.y || 0) + '%';
+      w.style.width = (f.w == null ? 24 : f.w) + '%';
+      applyFieldBoxStyle(f, w);
+
+      var lab = document.createElement('div');
+      lab.className = 'label';
+      lab.textContent = f.label || '';
+      w.appendChild(lab);
+
+      var ctrl;
+      if (f.type === 'select') {
+        ctrl = document.createElement('select');
+        var phText = String(f.placeholder || '').trim();
+        if (phText) {
+          var ph = document.createElement('option');
+          ph.value = '';
+          ph.textContent = phText;
+          ctrl.appendChild(ph);
+        }
+        (f.options || []).forEach(function(o){
+          var parsed = parseOpt(o);
+          var op = document.createElement('option');
+          op.value = parsed.id || String(o || '');
+          op.textContent = parsed.name || parsed.id || String(o || '');
+          ctrl.appendChild(op);
+        });
+        ctrl.value = parseOpt(f.value || '').id || '';
+        w.appendChild(ctrl);
+        var selectedText = ctrl.options[ctrl.selectedIndex] ? ctrl.options[ctrl.selectedIndex].text : (f.value || '');
+        w.appendChild(makePrintValue(f, selectedText));
+      } else if (f.type === 'textarea' || (f.type === 'text' && f.wrap && !(typeof isNameField === 'function' && isNameField(f)) && !(typeof isAddressField === 'function' && isAddressField(f)))) {
+        ctrl = document.createElement('textarea');
+        ctrl.value = f.value || '';
+        w.appendChild(ctrl);
+        w.appendChild(makePrintValue(f, ctrl.value));
+      } else if (f.type === 'text') {
+        ctrl = document.createElement('input');
+        ctrl.type = 'text';
+        ctrl.value = f.value || '';
+        w.appendChild(ctrl);
+        w.appendChild(makePrintValue(f, ctrl.value));
+      } else if (f.type === 'label') {
+        ctrl = document.createElement('div');
+        ctrl.className = 'fixed-label';
+        ctrl.textContent = String(f.value == null ? (f.id || '') : f.value);
+        w.appendChild(ctrl);
+        w.appendChild(makePrintValue(f, ctrl.textContent));
+      } else if (f.type === 'checkbox') {
+        ctrl = document.createElement('input');
+        ctrl.type = 'checkbox';
+        ctrl.checked = !!f.value;
+        w.appendChild(ctrl);
+      } else if (f.type === 'radio') {
+        ctrl = document.createElement('div');
+        var opts = (f.options && f.options.length) ? f.options : Array.from({length:f.radioCount || 2}, function(_,i){return String(i+1);});
+        opts.forEach(function(o){
+          var it = document.createElement('label');
+          it.className = 'radio-item';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.value = o;
+          cb.checked = (f.value === o);
+          it.appendChild(cb);
+          if (f.radioShowText !== false && !/^\d+$/.test(String(o).trim())) {
+            var s = document.createElement('span');
+            s.textContent = o;
+            it.appendChild(s);
+          }
+          ctrl.appendChild(it);
+        });
+        w.appendChild(ctrl);
+      } else if (f.type === 'checkmark') {
+        ctrl = document.createElement('div');
+        ctrl.className = 'checkmark-symbol';
+        ctrl.textContent = f.value ? '✓' : '';
+        lab.style.display = 'none';
+        w.appendChild(ctrl);
+      } else if (f.type === 'imagecheck') {
+        ctrl = document.createElement('div');
+        if (f.value && typeof CHECK_IMAGE_SRC !== 'undefined') {
+          var cimg = document.createElement('img');
+          cimg.src = CHECK_IMAGE_SRC;
+          cimg.alt = 'check';
+          cimg.style.width = '100%';
+          cimg.style.height = '100%';
+          cimg.style.objectFit = 'contain';
+          ctrl.appendChild(cimg);
+        }
+        w.appendChild(ctrl);
+      }
+
+      ov.appendChild(w);
+    });
+    return wrap;
+  };
+
+  function normalizeLiveFields(){
+    try {
+      var pg = (typeof cur === 'function') ? cur() : (Array.isArray(pages) ? pages[pageIndex || 0] : null);
+      if (!pg || !pg.fields) return;
+      document.querySelectorAll('#overlay .field[data-i]').forEach(function(w){
+        var idx = Number(w.dataset.i);
+        var f = pg.fields[idx];
+        if (!f) return;
+        applyFieldBoxStyle(f, w);
+      });
+    } catch(e) {
+      console.warn('[field sync normalize]', e);
+    }
+  }
+
+  function wrapRender(){
+    if (typeof render !== 'function' || render.__mlFinalFieldSyncWrapped) return;
+    var original = render;
+    render = function(){
+      var out = original.apply(this, arguments);
+      requestAnimationFrame(normalizeLiveFields);
+      return out;
+    };
+    render.__mlFinalFieldSyncWrapped = true;
+  }
+
+  injectCss();
+  wrapRender();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', normalizeLiveFields);
+  } else {
+    requestAnimationFrame(normalizeLiveFields);
+  }
+})();
+</script>
+<script id="ctrl-p-print-fix">
+/* =========================================================
+   ✅ Ctrl+P / 브라우저 인쇄창 빈 페이지 방지
+   - beforeprint: 인쇄창이 열리기 직전에 #printAll 생성
+   - Ctrl+P: PDF 생성OR인쇄 버튼과 동일한 흐름으로 실행
+========================================================= */
+
+/* ✅ 1) 인쇄창이 열리기 직전에 출력용 DOM 생성 */
+window.addEventListener('beforeprint', () => {
+  try {
+    if (typeof buildPrintAll === 'function') {
+      buildPrintAll();
+    }
+  } catch (e) {
+    console.error('[beforeprint buildPrintAll error]', e);
+  }
+});
+
+/* ✅ 2) Ctrl+P를 빈 서식지 출력 흐름으로 연결
+   - 버튼 클릭(btn.click)으로 보내지 않음
+   - 필수값 검증 없이 forcePrintBlankForm() 직접 호출
+*/
+(function bindCtrlPToCustomPrint(){
+  let printing = false;
+
+  document.addEventListener('keydown', async (e) => {
+    const isPrintShortcut =
+      (e.ctrlKey || e.metaKey) &&
+      String(e.key).toLowerCase() === 'p';
+
+    if (!isPrintShortcut) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    if (printing) return;
+    printing = true;
+
+    try {
+      if (typeof forcePrintBlankForm === 'function') {
+        await forcePrintBlankForm();
+      } else if (typeof printAllNow === 'function') {
+        await printAllNow();
+      } else {
+        window.print();
+      }
+    } catch (err) {
+      console.error('[Ctrl+P print error]', err);
+    } finally {
+      setTimeout(() => {
+        printing = false;
+      }, 1200);
+    }
+  }, true);
+})();
+</script>
+</body>
+</html>

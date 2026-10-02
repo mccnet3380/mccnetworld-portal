@@ -1,0 +1,279 @@
+{
+  "plans": {
+      "키즈 안심 2GB+": {
+      "base": 20000,
+      "discount": 14100
+    },
+      "키즈 안심 4GB+": {
+      "base": 22000,
+      "discount": 15100
+    },
+      "키즈 안심 8GB+": {
+      "base": 28000,
+      "discount": 17100
+    },
+    "M 알뜰 1.5GB 100분": {
+      "base": 15900,
+      "discount": 10400
+    },
+    "M 알뜰 안심": {
+      "base": 18900,
+      "discount": 11400
+    },
+    "M 알뜰 2.5GB": {
+      "base": 20000,
+      "discount": 13500
+    },
+    "통화 맘껏 4.5GB": {
+      "base": 47500,
+      "discount": 41100
+    },
+    "M 알뜰 안심 2.5GB": {
+      "base": 22200,
+      "discount": 12700
+    },
+    "M 라이트 4.5GB 플러스": {
+      "base": 26000,
+      "discount": 14000
+    },
+    "M 라이트 6GB 플러스": {
+      "base": 28000,
+      "discount": 15000
+    },
+    "M 라이트 10GB 플러스": {
+      "base": 32000,
+      "discount": 16000
+    },
+    "M 스페셜 2.2GB 100분": {
+      "base": 22500,
+      "discount": 8600
+    },
+    "통화 맘껏 10GB": {
+      "base": 26400,
+      "discount": 16000
+    },
+    "M 스페셜 5GB 100분": {
+      "base": 25300,
+      "discount": 9300
+    },
+    "통화 맘껏 15GB": {
+      "base": 31900,
+      "discount": 19500
+    },
+    "M 스페셜 10GB 플러스": {
+      "base": 39600,
+      "discount": 19200,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 스페셜 7GB 플러스": {
+      "base": 35200,
+      "discount": 17300,
+      "extraDataGb": 5,
+      "bundleAnyone": true
+    },
+    "M 라이트 7GB 플러스": {
+      "base": 30000,
+      "discount": 16000
+    },
+      "M 스페셜 7GB(밀리의서재)": {
+      "base": 31000,
+      "extraDataGb": 5,	
+      "discount": 12600
+    },
+    "M 스페셜 7GB(모아진)": {
+      "base": 35200,
+      "extraDataGb": 10,	
+      "discount": 16800
+    },
+      "M 스페셜 7GB(밀리의서재)": {
+      "base": 31000,
+      "extraDataGb": 10,	
+      "discount": 12600
+    },
+    "M 스페셜 7GB(지니뮤직)": {
+      "base": 31000,
+      "discount": 10700,
+      "extraDataGb": 5,
+      "bundleAnyone": true
+    },
+    "M 스페셜 10GB(모아진)": {
+      "base": 39600,
+      "discount": 18700,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+      "M 스페셜 10GB(밀리의서재)": {
+      "base": 40000,
+      "discount": 19100,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 스페셜 15GB 플러스": {
+      "base": 48400,
+      "discount": 26000,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 스페셜 15GB(CU 20%할인)": {
+      "base": 48400,
+      "discount": 25500,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+      "M 스페셜 15GB(밀리의서재)": {
+      "base": 43000,
+      "discount": 20100,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 스페셜 15GB(모아진)": {
+      "base": 48400,
+      "discount": 25500,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 15GB 100분": {
+      "base": 36300,
+      "discount": 10400,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+      "M 프리미엄 15GB 100분(밀리의서재)": {
+      "base": 37000,
+      "discount": 10600,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 15GB 100분(CU 20%할인)": {
+      "base": 47300,
+      "discount": 20900,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 15GB 100분(지니뮤직)": {
+      "base": 37000,
+      "discount": 8100,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 15GB 300분(CU 20%할인)": {
+      "base": 55000,
+      "discount": 26000,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 11GB": {
+      "base": 44900,
+      "discount": 11400,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 11GB(밀리의서재)": {
+      "base": 45900,
+      "discount": 11900,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 11GB(지니뮤직)": {
+      "base": 45900,
+      "discount": 9000,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "모두다 맘껏 11GB+(메가박스 FREE)": {
+      "base": 51000,
+      "discount": 12400,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 11GB(CU 20%할인)": {
+      "base": 51000,
+      "discount": 17000,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 일5GB": {
+      "base": 51900,
+      "discount": 12500,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 100GB": {
+      "base": 51900,
+      "discount": 12500,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 100GB(CU 20%할인)": {
+      "base": 66000,
+      "discount": 26100,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "M 프리미엄 100GB(밀리의서재)": {
+      "base": 52900,
+      "discount": 13000,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "5G M 알뜰 3GB 200분": {
+      "base": 20000,
+      "discount": 11200
+    },
+      "5G M 알뜰 6GB 200분": {
+      "base": 24000,
+      "discount": 13100
+    },
+      "5G M 알뜰 10GB 200분": {
+      "base": 30000,
+      "discount": 17100
+    },
+    "5G M 알뜰 15GB 200분": {
+      "base": 36000,
+      "discount": 20100
+    },
+    "5G M 알뜰 20GB 200분": {
+      "base": 40000,
+      "discount": 22100
+    },
+      "5G M 알뜰 3GB": {
+      "base": 28000,
+      "discount": 18100
+    },
+      "5G M 알뜰 6GB": {
+      "base": 33000,
+      "discount": 21100
+    },
+      "5G M 알뜰 10GB": {
+      "base": 42000,
+      "discount": 28100
+    },
+     "5G M 알뜰 15GB": {
+      "base": 44000,
+      "discount": 27100
+    },
+    "5G M 알뜰 20GB": {
+      "base": 46000,
+      "discount": 27100
+    },
+    "5G M 스페셜 30GB": {
+      "base": 61000,
+      "discount": 19300,
+      "extraDataGb": 10,
+      "bundleAnyone": true
+    },
+    "5G M 프리미엄 110GB": {
+      "base": 69000,
+      "discount": 22100,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    },
+    "5G M 프리미엄 200GB": {
+      "base": 77000,
+      "discount": 23100,
+      "extraDataGb": 20,
+      "bundleAnyone": true
+    }
+  }
+}

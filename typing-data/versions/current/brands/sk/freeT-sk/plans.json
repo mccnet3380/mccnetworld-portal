@@ -1,0 +1,100 @@
+{
+  "freeT음성기본7G+1M": {
+    "base": 29700,
+    "discount": 3300,
+    "final": 26400,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "음성기본1G+1M": {
+    "base": 22000,
+    "discount": 2200,
+    "final": 19800,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "freeT데이터안심10G+1M": {
+    "base": 38500,
+    "discount": 8800,
+    "final": 29700,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "freeT데이터안심100분15G+": {
+    "base": 41800,
+    "discount": 12100,
+    "final": 29700,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "freeT데이터안심300분15G+": {
+    "base": 46200,
+    "discount": 6600,
+    "final": 39600,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "freeT데이터중심11G+": {
+    "base": 49390,
+    "discount": 5500,
+    "final": 43890,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "freeT데이터팡팡100G+": {
+    "base": 53000,
+    "discount": 5500,
+    "final": 47500,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "5G더빠른200G": {
+    "base": 70000,
+    "discount": 11000,
+    "final": 59000,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "CM Link 1G+1M": {
+    "base": 27500,
+    "discount": 0,
+    "final": 27500,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "CM Link 7G+1M": {
+    "base": 35200,
+    "discount": 5500,
+    "final": 29700,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "CM Link 10G+1M": {
+    "base": 44000,
+    "discount": 12100,
+    "final": 31900,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "CM Link 15G+": {
+    "base": 47300,
+    "discount": 11000,
+    "final": 36300,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "CM Link 100G+": {
+    "base": 60500,
+    "discount": 2200,
+    "final": 58300,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "CM Link 11G+": {
+    "base": 54890,
+    "discount": 9790,
+    "final": 45100,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  }
+}

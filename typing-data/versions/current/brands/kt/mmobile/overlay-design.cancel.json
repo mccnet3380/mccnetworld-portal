@@ -1,0 +1,38 @@
+
+{
+  "pages": [
+    {
+      "bg": "images/cancel-1.jpg",
+      "fields": [
+        {
+         "id": "성함,싸인 자필기재",
+          "label": "",
+          "type": "text",
+          "x": 25.5,
+          "y": 11.446049141963353,
+          "w": 50,
+          "required": false,
+          "radioSize": 50,
+          "radioGap": 12,
+          "color": "#000000",
+          "wrap": true,
+          "borderTransparent": true,
+          "borderColor": "transparent",
+          "borderWidth": 2,
+          "bgTransparent": true,
+          "bgColor": "transparent",
+          "fontSize": 68,
+          "mask": "",
+          "maskRe": "",
+          "placeholder": "성함,생년월일,해지번호,연락받을 번호 자필기재",
+          "autoDate": "",
+          "locked": true,
+          "lockOnPh": false,
+          "checkSize": 18,
+          "textAlign": "",
+          "value": ""
+        }
+      ]
+    }
+  ]
+}

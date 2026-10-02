@@ -1,0 +1,3559 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MCCNETWORLD</title>
+
+<!-- ✅ OG 메타태그 -->
+<meta property="og:title" content="MCCNETWORLD" />
+<meta property="og:description" content="여기 글을 눌러 링크를 확인하세요." />
+<meta property="og:url" content="https://mcc-cmd.github.io/mccnetworld/index.html" />
+<meta property="og:image" content="https://mcc-cmd.github.io/mccnetworld/assets/og-mcc.png" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="MCCNETWORLD" />
+
+<link rel="icon" href="./public/favicon.ico?v=2">
+<link rel="icon" type="image/png" sizes="16x16"  href="favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32"  href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="android-chrome-512x512.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="shortcut icon" href="favicon.ico">
+
+<style>
+/* =========================================================
+  [1] 기본 테마/레이아웃
+========================================================= */
+:root{
+  --bg:#f6f8fb;
+  --card:#ffffff;
+  --line:#e5e9f2;
+  --fg:#0b1220;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font:15px/1.6 system-ui,"Noto Sans KR",sans-serif;
+}
+.wrap{max-width:1200px;margin:0 auto;padding:18px}
+.panel{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:visible;
+  box-shadow:0 10px 30px rgba(16,24,40,.04);
+}
+
+/* =========================================================
+  [2] 상단 헤더
+========================================================= */
+.hd{
+  position:relative;
+  z-index:3000;
+  overflow:visible;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:14px 220px; /* ✅ 좌우 공간 확보 (대략값) */
+  border-bottom:1px solid var(--line);
+}
+.hd strong{font-weight:900;letter-spacing:.2px}
+
+/* ✅ 왼쪽 다운로드 영역 */
+.hd-left{
+  position:absolute;
+  left:14px;
+  top:50%;
+  transform:translateY(-50%);
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+/* ✅ 안내문구(파일명 표시) */
+.hd-hint{
+  font-size:12px;
+  font-weight:800;
+  color:#64748b;
+  white-space:nowrap;
+}
+
+/* ✅ 오른쪽 구비서류 버튼 */
+.hd-actions{
+  position:absolute;
+  right:14px;
+  top:50%;
+  transform:translateY(-50%);
+  display:flex;
+  gap:8px;
+  z-index:3001;
+}
+
+/* 버튼 공통 */
+.hd-btn{
+  padding:8px 12px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:#fff;
+  cursor:pointer;
+  font-weight:800;
+  font-size:12px;
+  text-decoration:none;
+  color:inherit;
+  display:inline-flex;
+  align-items:center;
+  white-space:nowrap;
+}
+.hd-btn:hover{box-shadow:0 6px 18px rgba(2,6,23,.08)}
+.cs-box{
+  position:relative;
+  display:inline-block;
+}
+
+.cs-menu{
+  position:absolute;
+  top:46px;
+  right:0;
+  width:110px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:0 8px 24px rgba(2,6,23,.12);
+  padding:6px;
+  z-index:2000;
+}
+
+.cs-menu button{
+  width:100%;
+  height:34px;
+  border:none;
+  background:#fff;
+  border-radius:8px;
+  text-align:left;
+  padding:0 10px;
+  cursor:pointer;
+  font-weight:800;
+  font-size:12px;
+}
+
+.cs-menu button:hover{
+  background:#f3f6fb;
+}
+
+.cs-info{
+  position:absolute;
+  top:46px;
+  right:118px;
+  width:280px;
+  max-width:280px;
+  max-height:320px;
+  overflow:auto;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:0 8px 24px rgba(2,6,23,.12);
+  padding:12px 14px;
+  z-index:2000;
+}
+
+.cs-info-title{
+  font-weight:900;
+  margin-bottom:10px;
+}
+
+.cs-info-row{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:6px 0;
+  border-bottom:1px solid #eef2f7;
+}
+
+.cs-info-row:last-child{
+  border-bottom:none;
+}
+
+.cs-info-name{
+  font-weight:700;
+  color:#334155;
+}
+
+.cs-info-num{
+  font-weight:900;
+  color:#0f172a;
+  white-space:nowrap;
+}
+
+.hidden{
+  display:none !important;
+}
+
+/* ✅ 기본 모바일 */
+@media (max-width:720px){
+    .cs-box{
+    width:100%;
+  }
+
+  .cs-box > .hd-btn{
+    width:100%;
+    justify-content:center;
+  }
+
+  .cs-menu{
+    top:48px;
+    right:0;
+    width:100%;
+  }
+
+  .cs-info{
+    top:130px;
+    right:0;
+    width:100%;
+    max-width:none;
+  }
+
+  .wrap{
+    padding:10px;
+  }
+
+  .hd{
+    padding:14px 16px;
+    justify-content:center;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+
+  .hd strong{
+    width:100%;
+    text-align:center;
+  }
+
+  .hd-left{
+    position:static;
+    transform:none;
+    order:1;
+    width:100%;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+
+  .hd-actions{
+    position:static;
+    transform:none;
+    order:2;
+    width:100%;
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:8px;
+  }
+
+  .hd-actions .hd-btn,
+  .hd-left .hd-btn{
+    width:100%;
+    min-height:42px;
+    justify-content:center;
+  }
+
+  .hd-hint{
+    white-space:normal;
+    text-align:center;
+  }
+
+  .stack{
+    padding:14px;
+  }
+
+  .brand-grid{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+}
+
+/* ✅ 중간 */
+@media (max-width:600px){
+  .hd-actions{
+    grid-template-columns:repeat(2, 1fr);
+  }
+}
+
+/* ✅ 작은 화면 */
+@media (max-width:480px){
+  .hd-actions{
+    grid-template-columns:1fr;
+  }
+}
+/* =========================================================
+  [3] 섹션/탭/그리드
+========================================================= */
+.stack{padding:20px}
+.section-title{font-weight:900;margin:0 0 12px 2px;font-size:16px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tab-btn{
+  padding:8px 16px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:#fff;
+  cursor:pointer
+}
+.tab-btn.active{
+  background:#111827;
+  color:#fff;
+  border-color:#111827
+}
+.brand-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:18px;
+  margin:6px 0 20px;
+}
+
+/* =========================================================
+  [3-1] 가입서류: 통신사별 섹션
+========================================================= */
+.group-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  margin:6px 0 20px;
+}
+.group{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:18px;
+  padding:14px 14px 16px;
+  box-shadow:0 10px 30px rgba(16,24,40,.03);
+}
+.group-head{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:12px;
+}
+.group-dot{
+  width:10px;height:10px;border-radius:999px;
+  background:var(--g-accent);
+  box-shadow:0 0 0 4px rgba(0,0,0,.03);
+}
+.group-title{font-weight:900;letter-spacing:-0.2px}
+.group-sub{
+  margin-left:auto;
+  font-size:12px;
+  color:#64748b;
+}
+.group[data-carrier="sk"]{ --g-accent:#2563eb; }
+.group[data-carrier="kt"]{ --g-accent:#0ea5e9; }
+.group[data-carrier="uplus"]{ --g-accent:#8b5cf6; }
+.group[data-carrier="device"]{ --g-accent:#111827; }
+.group[data-carrier="prepaid"]{ --g-accent:#f59e0b; }
+
+/* =========================================================
+  [4] 카드(브랜드)
+========================================================= */
+.brand{
+  position:relative;
+  border-radius:18px;
+  cursor:pointer;
+  transition:transform .08s ease, box-shadow .15s ease, border-color .15s ease;
+  border:1px solid var(--line);
+  background:linear-gradient(180deg,#fff,#fafcff);
+  overflow:hidden;
+}
+.brand:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(2,6,23,.08)}
+.logo-frame{
+  width:180px;
+  height:60px;
+  margin:18px auto 10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:transparent;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  padding:0;
+}
+.logo-frame img{
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+  display:block;
+}
+.brand.long-name .name{font-size:15px;font-weight:800}
+.cap{
+  text-align:center;
+  padding:0 18px 18px;
+  color:#475467;
+  font-size:12px;
+}
+
+/* =========================================================
+  [5] 테마
+========================================================= */
+.theme-um{--chip-bg:#f3e8ff;--chip-fg:#3b0764;--chip-bd:#8b5cf6}
+.theme-mm{--chip-bg:#e0f2fe;--chip-fg:#0b4a6f;--chip-bd:#38bdf8}
+.theme-s7{--chip-bg:#d1fae5;--chip-fg:#064e3b;--chip-bd:#10b981}
+.theme-pr{--chip-bg:#dbeafe;--chip-fg:#1e40af;--chip-bd:#60a5fa}
+
+/* =========================
+   구비서류 모달(확대 지원)
+========================= */
+.modal{
+  position:fixed;
+  inset:0;
+  display:none;
+  z-index:9999;
+}
+.modal[aria-hidden="false"]{ display:block; }
+.modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.modal-panel{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(1200px, 96vw);
+  height:min(760px, 92vh);
+  background:#fff;
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+  display:flex;
+  flex-direction:column;
+}
+.modal-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 14px;
+  border-bottom:1px solid var(--line);
+}
+.modal-body{
+  flex:1;
+  overflow:auto;
+  background:#0b1220;
+  padding:12px;
+}
+#docsImg{
+  width:100%;
+  height:auto;
+  display:block;
+  transform-origin: top left;
+  cursor: zoom-in;
+}
+#docsImg.zoom{
+  transform: scale(2.5);
+  cursor: zoom-out;
+}
+.brand .name{ display:none; }
+
+/* 워터마크 */
+.group,
+.required-grid-box{
+  position: relative;
+  overflow: hidden;
+}
+
+.group::after,
+.required-grid-box::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background-image:url("./assets/brand/mcc-watermark.png");
+  background-repeat:no-repeat;
+  background-position:right 18px bottom 14px;
+  background-size:180px auto;
+  opacity:0.10;
+  pointer-events:none;
+  z-index:0;
+}
+
+.group > *,
+.required-grid-box > *{
+  position:relative;
+  z-index:1;
+}
+.group > *{position:relative;z-index:1}
+/* =========================================================
+  ✅ 동판 옆 빈칸에 "유심양식/동판양식" 2개 반반
+========================================================= */
+.form-duo-wrap{
+  border:1px solid var(--line);
+  background:linear-gradient(180deg,#fff,#fafcff);
+  border-radius:18px;
+  overflow:hidden;
+  padding:14px;
+  cursor:default;
+  transition:transform .08s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.form-duo-wrap:hover{
+  transform:translateY(-1px);
+  box-shadow:0 8px 24px rgba(2,6,23,.08);
+}
+.form-duo{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.form-duo-single{
+  grid-template-columns:1fr;
+}
+.form-duo .form-half{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:84px;
+  cursor:pointer;
+  transition:transform .08s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.form-duo .form-half:hover{
+  transform:translateY(-1px);
+  box-shadow:0 8px 24px rgba(2,6,23,.08);
+}
+.form-duo .form-text{
+  font-weight:900;
+  font-size:24px;
+  letter-spacing:-0.2px;
+  color:#0b1220;
+}
+@media (max-width:720px){
+  .form-duo{grid-template-columns:1fr;}
+  .form-duo .form-text{font-size:22px}
+}
+
+/* =========================================================
+  ✅ 양식 팝업(복사 버튼 포함)
+========================================================= */
+.form-modal{
+  position:fixed;
+  inset:0;
+  display:none;
+  z-index:11000;
+}
+.form-modal[aria-hidden="false"]{display:block}
+.form-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.form-panel{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(760px, calc(100% - 32px));
+  background:#fff;
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+.form-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 14px;
+  border-bottom:1px solid var(--line);
+}
+.form-head strong{font-weight:900}
+.form-x{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:10px;
+  padding:6px 10px;
+  cursor:pointer;
+  font-weight:800;
+  font-size:12px;
+}
+.form-body{
+  padding:14px;
+  max-height:calc(90vh - 140px);
+  overflow:auto;
+}
+.form-textarea{
+  width:100%;
+  min-height:420px;
+  max-height:calc(90vh - 220px);
+  resize:none;
+  overflow:auto;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:12px;
+  font:13px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Noto Sans KR", monospace;
+  white-space:pre;
+  outline:none;
+}
+.form-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  padding:0 14px 14px;
+}
+.form-btn{
+  border:none;
+  border-radius:10px;
+  padding:8px 14px;
+  background:#111827;
+  color:#fff;
+  font-weight:900;
+  cursor:pointer;
+}
+.form-btn.ghost{
+  background:#fff;
+  color:#111827;
+  border:1px solid var(--line);
+}
+.form-toast{
+  margin-top:8px;
+  font-size:12px;
+  font-weight:800;
+  color:#16a34a;
+  display:none;
+}
+.form-toast.show{display:block}
+
+.required-topbar{
+  display:flex;
+  justify-content:flex-end;
+  margin:0 0 12px;
+}
+
+.required-kind-tabs{
+  margin-bottom:0;
+}
+
+.required-grid-box{
+  border:1px solid #cfd8e3;
+  border-radius:18px;
+  background:#f8fafc;
+  overflow:hidden;
+}
+
+.required-grid{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+}
+
+.required-col{
+  min-width:0;
+}
+
+.required-col + .required-col{
+  border-left:1px solid #cfd8e3;
+}
+
+.required-col-head{
+  height:46px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  border-bottom:1px solid #cfd8e3;
+  font-weight:900;
+}
+
+.required-col-body{
+  padding:14px;
+}
+
+.required-dot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  display:inline-block;
+}
+
+.required-col[data-carrier="uplus"] .required-dot{
+  background:#8b5cf6;
+}
+.required-col[data-carrier="kt"] .required-dot{
+  background:#0ea5e9;
+}
+.required-col[data-carrier="sk"] .required-dot{
+  background:#2563eb;
+}
+
+.required-col-title{
+  font-weight:900;
+  letter-spacing:-0.2px;
+}
+
+.required-open-btn{
+  width:100%;
+  min-height:42px;
+  justify-content:center;
+  border-radius:12px;
+  font-size:14px;
+}
+
+.required-modal-panel{
+  width:min(1180px, 96vw);
+  height:min(860px, 94vh);
+}
+.required-modal-body{
+  flex:1;
+  overflow:auto;
+  background:#f8fafc;
+  padding:14px;
+}
+.required-modal-toolbar{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-bottom:14px;
+}
+.required-brand-tabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.required-chip{
+  padding:8px 14px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:#fff;
+  cursor:pointer;
+  font-weight:800;
+  font-size:13px;
+}
+.required-chip.active{
+  background:#111827;
+  color:#fff;
+  border-color:#111827;
+}
+.required-board{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.required-table-wrap{
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:hidden;
+  background:#fff;
+}
+.required-table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+}
+.required-table th,
+.required-table td{
+  border:1px solid #dbe2ea;
+  padding:12px;
+  vertical-align:top;
+}
+.required-table thead th{
+  background:#0f172a;
+  color:#fff;
+  font-weight:900;
+  text-align:center;
+}
+.required-table tbody th{
+  width:170px;
+  background:#0f172a;
+  color:#fff;
+  font-weight:900;
+  text-align:center;
+  vertical-align:middle !important;
+}
+.required-doc-lines{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  white-space:pre-line;
+}
+.required-doc-lines .warn{
+  color:#ef4444;
+  font-weight:800;
+}
+
+/* 👇 여기부터 추가 */
+.required-doc-lines .blue{
+  color:#2563eb;
+  font-weight:700;
+}
+
+.required-doc-lines .green{
+  color:#16a34a;
+  font-weight:700;
+}
+
+.required-doc-lines .orange{
+  color:#f97316;
+  font-weight:700;
+}
+
+.required-doc-lines .gray{
+  color:#6b7280;
+  font-weight:600;
+}
+
+.required-doc-lines .purple{
+  color:#7c3aed;
+  font-weight:700;
+}
+
+.required-images{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:flex-start;
+}
+
+.img-box{
+  position:relative;
+  flex:0 0 calc(50% - 5px);
+  max-width:calc(50% - 5px);
+  overflow:visible;
+}
+
+.required-images img{
+  width:100%;
+  height:auto;
+  display:block;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#fff;
+  object-fit:contain;
+  transition:0.2s;
+}
+
+.img-label{
+  position:absolute;
+  top:8px;
+  left:8px;
+  z-index:2;
+  background:#f97316;
+  color:#fff;
+  font-weight:800;
+  font-size:12px;
+  line-height:1.2;
+  padding:4px 8px;
+  border-radius:6px;
+  white-space:normal;
+  max-width:calc(100% - 16px);
+  word-break:keep-all;
+}
+
+.required-images img:hover{
+  transform:scale(1.05);
+}
+
+@media (max-width:720px){
+  .img-box{
+    flex:0 0 100%;
+    max-width:100%;
+  }
+}
+.form-rich{
+  white-space:pre-wrap;
+  font:13px/1.6 ui-monospace, Consolas, "Noto Sans KR", monospace;
+}
+
+.warn{
+  color:#ff3b3b;
+  font-weight:800;
+}
+@media (max-width:720px){
+  .required-topbar{
+    justify-content:flex-start;
+  }
+
+  .required-grid{
+    grid-template-columns:1fr;
+  }
+
+  .required-col + .required-col{
+    border-left:none;
+    border-top:1px solid #cfd8e3;
+  }
+
+  .required-table{
+    table-layout:auto;
+  }
+
+  .required-table tbody th{
+    width:110px;
+  }
+}
+
+
+/* =========================================================
+  ✅ eSIM 가능 여부 + 공지/안내 팝업
+========================================================= */
+.esim-badge{
+  position:absolute;
+  right:12px;
+  bottom:10px;
+  z-index:6;
+  padding:4px 9px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+  line-height:1;
+  border:1px solid transparent;
+  pointer-events:none;
+  box-shadow:0 2px 8px rgba(15,23,42,.06);
+}
+.esim-ok{background:#dcfce7;color:#166534;border-color:#86efac}
+.esim-no{background:#fee2e2;color:#991b1b;border-color:#fecaca}
+.guide-btn{
+  position:absolute;
+  left:12px;
+  bottom:8px;
+  z-index:7;
+  border:1px solid #dbe2ea;
+  background:#fff;
+  color:#0f172a;
+  border-radius:999px;
+  padding:5px 10px;
+  font-size:11px;
+  font-weight:900;
+  cursor:pointer;
+  line-height:1;
+  box-shadow:0 2px 8px rgba(15,23,42,.06);
+}
+.guide-btn:hover{background:#111827;color:#fff;border-color:#111827}
+.brand.has-meta .logo-frame{margin-bottom:22px}
+.guide-modal{position:fixed;inset:0;display:none;z-index:12000}
+.guide-modal[aria-hidden="false"]{display:block}
+.guide-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.guide-panel{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(620px, calc(100% - 32px));max-height:min(760px, 92vh);
+  background:#fff;color:#0f172a;border-radius:16px;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;
+}
+.guide-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.guide-head strong{font-weight:900}
+.guide-close{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;cursor:pointer;font-weight:800;font-size:12px}
+.guide-body{padding:16px;overflow:auto}
+.guide-list{margin:0;padding-left:22px}
+.guide-list li{margin:0 0 10px;font-weight:700}
+.guide-list a{color:#2563eb;font-weight:900;text-decoration:none;word-break:break-all}
+.guide-note{margin-top:12px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;font-weight:800;color:#334155}
+
+/* =========================================================
+  ✅ SK 링크 2행 3열 전용 구조
+========================================================= */
+.sk-link-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:18px;
+  margin:6px 0 20px;
+}
+.sk-link-card{
+  min-height:104px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:18px 12px 34px;
+}
+.sk-link-card .sk-link-title{
+  font-size:22px;
+  font-weight:900;
+  line-height:1.25;
+  letter-spacing:-0.4px;
+  color:#0b1220;
+}
+.sk-link-img-frame{
+  width:190px;
+  height:58px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin:0 auto;
+}
+.sk-link-img-frame img{
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+  display:block;
+}
+.sk-link-card.has-img .sk-link-title{display:none}
+.sk-link-card.has-meta{padding-bottom:38px}
+@media (max-width:720px){
+  .sk-link-grid{grid-template-columns:1fr;gap:12px}
+  .sk-link-card .sk-link-title{font-size:20px}
+}
+
+
+/* =========================================================
+  ✅ 가입서류: 카드 클릭 후 성인/청소년 선택 모달
+========================================================= */
+.join-choice-modal{
+  position:fixed;
+  inset:0;
+  display:none;
+  z-index:13000;
+}
+.join-choice-modal[aria-hidden="false"]{display:block}
+.join-choice-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.join-choice-panel{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(520px, calc(100% - 32px));
+  background:#fff;
+  color:#0f172a;
+  border-radius:18px;
+  overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+.join-choice-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:12px 16px;
+  border-bottom:1px solid var(--line);
+}
+.join-choice-head strong{font-weight:900}
+.join-choice-close{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:10px;
+  padding:6px 10px;
+  cursor:pointer;
+  font-weight:800;
+  font-size:12px;
+}
+.join-choice-body{padding:18px}
+.join-choice-logo{
+  min-height:74px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:10px;
+}
+.join-choice-logo img{
+  max-width:230px;
+  max-height:72px;
+  object-fit:contain;
+}
+.join-choice-name{
+  text-align:center;
+  font-weight:900;
+  font-size:18px;
+  margin-bottom:14px;
+}
+.join-choice-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.join-choice-btn{
+  min-height:48px;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background:#fff;
+  color:#111827;
+  cursor:pointer;
+  font-weight:900;
+  font-size:15px;
+}
+.join-choice-btn.primary{
+  background:#111827;
+  color:#fff;
+  border-color:#111827;
+}
+.join-choice-subactions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:10px;
+}
+.join-choice-subactions .join-choice-btn{
+  min-height:42px;
+  font-size:13px;
+  background:#f8fafc;
+}
+.required-kind-tabs-modal{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:4px;
+}
+@media (max-width:520px){
+  .join-choice-actions,
+  .join-choice-subactions{grid-template-columns:1fr}
+}
+
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <section class="panel">
+
+    <!-- ✅ 헤더 완성본 -->
+    <div class="hd">
+      <strong>MCCNETWORLD</strong>
+
+<div class="hd-left">
+  <!-- KT -->
+  <a class="hd-btn" href="./assets/files/KT_260707.xlsx" download>
+    KT 요금제 구간표
+  </a>
+
+  <!-- SK (이미지 열기) -->
+<a class="hd-btn" href="./assets/files/SK_260709.xlsx" download>
+  SK 요금제 구간표
+  </a>
+
+  <div class="hd-hint">※클릭 시 다운로드※</div>
+</div>
+
+<div class="hd-actions">
+  <!-- ✅ 180일 이내 개통조회 -->
+  <a
+    class="hd-btn"
+    href="https://www.credit.or.kr/credit/search"
+    target="_blank"
+    rel="noopener noreferrer"
+    title="180일 이내 개통조회"
+  >
+    180일 이내 개통조회
+  </a>
+
+  <div class="cs-box">
+    <button type="button" id="csToggle" class="hd-btn">통신사별 고객센터</button>
+
+    <div id="csMenu" class="cs-menu hidden">
+      <button type="button" data-net="sk">SK</button>
+      <button type="button" data-net="kt">KT</button>
+      <button type="button" data-net="lg">LG</button>
+    </div>
+
+    <div id="csInfo" class="cs-info hidden"></div>
+  </div>
+</div>
+</div>
+
+    <div class="stack">
+      <div class="section-title">가입 서류</div>
+      <div id="joinTabs">
+        <div class="group-wrap" id="joinTabsList"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:16px">선불 서류</div>
+      <div id="prepaidSection">
+        <div class="group-wrap" id="prepaidList"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:8px">변경 서류</div>
+      <div id="changeTabs">
+        <div class="tabs">
+          <button class="tab-btn active" data-target="uplus">LG U+</button>
+          <button class="tab-btn" data-target="kt">KT</button>
+          <button class="tab-btn" data-target="sk">SKT</button>
+        </div>
+        <div class="brand-grid" id="changeTabsList"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:16px">해지 서류</div>
+      <div id="cancelTabs">
+        <div class="tabs">
+          <button class="tab-btn active" data-target="uplus">LG U+</button>
+          <button class="tab-btn" data-target="kt">KT</button>
+          <button class="tab-btn" data-target="sk">SKT</button>
+        </div>
+        <div class="brand-grid" id="cancelTabsList"></div>
+      </div>
+
+    </div>
+  </section>
+
+<!-- 구비서류 모달 -->
+<div class="modal" id="docsModal" aria-hidden="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel required-modal-panel" role="dialog" aria-modal="true" aria-label="구비서류 안내">
+    <div class="modal-head">
+      <strong id="docsTitle">구비서류</strong>
+      <button class="modal-x" id="btnDocsClose" type="button">닫기</button>
+    </div>
+    <div class="required-modal-body">
+      <div class="required-modal-toolbar">
+        <div class="required-kind-tabs-modal" id="requiredKindTabsModal">
+          <button class="required-chip active" type="button" data-required-kind-modal="adult">성인</button>
+          <button class="required-chip" type="button" data-required-kind-modal="teen">청소년</button>
+          <button class="required-chip" type="button" data-required-kind-modal="corp">법인/개인사업자</button>
+        </div>
+        <div class="required-brand-tabs" id="requiredBrandTabs"></div>
+      </div>
+      <div class="required-board" id="requiredBoard"></div>
+    </div>
+  </div>
+</div>
+
+  <!-- 유심/동판 양식 팝업 -->
+  <div class="form-modal" id="formModal" aria-hidden="true">
+    <div class="form-backdrop" data-form-close="1"></div>
+    <div class="form-panel" role="dialog" aria-modal="true" aria-label="양식 복사 팝업">
+      <div class="form-head">
+        <strong id="formTitle">양식</strong>
+        <button class="form-x" id="formCloseX" type="button">닫기</button>
+      </div>
+      <div class="form-body">
+        <div class="form-textarea form-rich" id="formTextarea"></div>
+        <div class="form-toast" id="formToast">복사되었습니다.</div>
+      </div>
+      <div class="form-actions">
+        <button class="form-btn ghost" id="formSelectAll" type="button">전체선택</button>
+        <button class="form-btn" id="formCopyBtn" type="button">복사</button>
+      </div>
+    </div>
+  </div>
+
+
+<!-- eSIM/공지 안내 팝업 -->
+<div class="guide-modal" id="guideModal" aria-hidden="true">
+  <div class="guide-backdrop" data-guide-close="1"></div>
+  <div class="guide-panel" role="dialog" aria-modal="true" aria-label="공지 및 안내사항">
+    <div class="guide-head">
+      <strong id="guideTitle">공지/안내</strong>
+      <button type="button" class="guide-close" id="guideClose">닫기</button>
+    </div>
+    <div class="guide-body" id="guideBody"></div>
+  </div>
+
+</div>
+
+<!-- 가입서류 성인/청소년 선택 모달 -->
+<div class="join-choice-modal" id="joinChoiceModal" aria-hidden="true">
+  <div class="join-choice-backdrop" data-join-choice-close="1"></div>
+  <div class="join-choice-panel" role="dialog" aria-modal="true" aria-label="가입서류 선택">
+    <div class="join-choice-head">
+      <strong id="joinChoiceTitle">가입서류 선택</strong>
+      <button type="button" class="join-choice-close" id="joinChoiceClose">닫기</button>
+    </div>
+    <div class="join-choice-body">
+      <div class="join-choice-logo" id="joinChoiceLogo"></div>
+      <div class="join-choice-name" id="joinChoiceName"></div>
+      <div class="join-choice-actions">
+        <button type="button" class="join-choice-btn primary" data-join-age-choice="adult">성인 가입서류</button>
+        <button type="button" class="join-choice-btn" data-join-age-choice="teen">청소년 가입서류</button>
+      </div>
+      <div class="join-choice-subactions">
+        <button type="button" class="join-choice-btn" id="joinChoiceRequired">구비서류 보기</button>
+        <button type="button" class="join-choice-btn" id="joinChoiceGuide">공지/안내</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let JOIN_AGE = 'adult';
+function updateDeviceLogosByAge(){
+  const age = (JOIN_AGE || 'adult').toLowerCase();
+  const me = document.getElementById('deviceLogoME');
+  const mo = document.getElementById('deviceLogoMO');
+  if (me) me.src = (age === 'teen') ? './assets/logos/METEEN.png' : './assets/logos/ME.png';
+  if (mo) mo.src = (age === 'teen') ? './assets/logos/MOTEEN.png' : './assets/logos/MO.png';
+}
+
+const BRANDS = [
+  { carrier:'uplus', theme:'theme-um', name:'미디어로그', cap:'',
+    logoAdult:'./assets/logos/ME.png', logoTeen :'./assets/logos/METEEN.png' },
+  { carrier:'uplus', theme:'theme-um', name:'헬로LG', cap:'',
+    logoAdult:'./assets/logos/HELLO.png', logoTeen :'./assets/logos/HELLO TEEN.png' },
+  { carrier:'uplus', theme:'theme-pr', name:'프리티LG', cap:'',
+    logoAdult:'./assets/logos/FREE LG.png', logoTeen :'./assets/logos/FREE LG TEEN.png' },
+  { carrier:'kt', theme:'theme-mm', name:'엠모바일', cap:'',
+    logoAdult:'./assets/logos/MO.png', logoTeen :'./assets/logos/MOTEEN.png' },
+  { carrier:'kt', theme:'theme-mm', name:'스테이지파이브(KT)', cap:'',
+    logoAdult:'./assets/logos/STAGE KT.png', logoTeen :'./assets/logos/STAGE KT TEEN.png' },
+  { carrier:'kt', theme:'theme-mm', name:'스카이라이프', cap:'',
+    logoAdult:'./assets/logos/SKY.png', logoTeen :'./assets/logos/SKYTEEN.png' },
+  { carrier:'sk', theme:'theme-s7', name:'SK텔링크', cap:'',
+    logoAdult:'./assets/logos/7M.png', logoTeen :'./assets/logos/7M TEEN.png' },
+  { carrier:'sk', theme:'theme-mm', name:'스테이지파이브(SK)', cap:'',
+    logoAdult:'./assets/logos/STAGE SK.png', logoTeen :'./assets/logos/STAGE SK TEEN.png' },
+  { carrier:'sk', theme:'theme-pr', name:'프리티SK', cap:'',
+    logoAdult:'./assets/logos/FREE SK.png', logoTeen :'./assets/logos/FREE SK TEEN.png' }
+];
+
+const PREPAID_BRANDS = [
+  { theme:'theme-um', name:'스마텔LG',  cap:'', logoAdult:'./assets/logos/PREPAID_SMATEL.png',  brandKey:'smatel_lg' },
+  { theme:'theme-pr', name:'LG프리티',  cap:'', logoAdult:'./assets/logos/PREPAID_LGFREET.png', brandKey:'lgfreeT' },
+  { theme:'theme-mm', name:'밸류컴',    cap:'', logoAdult:'./assets/logos/PREPAID_VALUE.png',   brandKey:'valuecom' },
+  { theme:'theme-pr', name:'SK프리티',  cap:'', logoAdult:'./assets/logos/PREPAID_SKFREET.png', brandKey:'skfreeT' },
+  { theme:'theme-mm', name:'코드모바일', cap:'', logoAdult:'./assets/logos/PREPAID_CODE.png',    brandKey:'codemobile' },
+].map(b => ({ ...b, carrier:'prepaid', doc:'prepaid' }));
+
+const JOIN_ONLY = [
+  { carrier:'kt', theme:'theme-mm', name:'정규KT신규', cap:'', special:true,
+    logoAdult:'./assets/logos/KT010.png', logoTeen:'./assets/logos/KT010TEEN.png' },
+  { carrier:'kt', theme:'theme-mm', name:'정규KT번이', cap:'', special:true,
+    logoAdult:'./assets/logos/KTMNP.png', logoTeen:'./assets/logos/KTMNPTEEN.png' },
+  { carrier:'kt', theme:'theme-mm', name:'KT 유선 동판', cap:'', special:true,
+    logoAdult:'./assets/logos/KTINTERNET.png', logoTeen:'./assets/logos/KTINTERNET.png' },
+  { carrier:'kt', theme:'theme-mm', name:'웰컴 요금제 신규', cap:'', special:true,
+    logoAdult:'./assets/logos/WELCOME010.png', logoTeen:'./assets/logos/WELCOME010TEEN.png' },
+  { carrier:'kt', theme:'theme-mm', name:'웰컴 요금제 번이', cap:'', special:true,
+    logoAdult:'./assets/logos/WELCOMEMNP.png', logoTeen:'./assets/logos/WELCOMEMNPTEEN.png' }
+];
+const SK_LINK_ONLY = [
+  { carrier:'sk', theme:'theme-s7', name:'SK 내국인', cap:'', special:true, skLink:true,
+    logoAdult:'./assets/logos/SK_NEW.png', logoTeen:'./assets/logos/SK_NEW.png' },
+
+  { carrier:'sk', theme:'theme-s7', name:'SK 외국인', cap:'', special:true, skLink:true,
+    logoAdult:'./assets/logos/SK_MNP.png', logoTeen:'./assets/logos/SK_MNP.png' },
+];
+
+/* ✅ LG 링크 전용 카드
+   - 외국인등록증 접수를 신규 / 번호이동 2개 카드로 분리합니다.
+   - 이미지는 아래 logoAdult/logoTeen 경로에 넣으면 됩니다.
+   - URL은 아래 LG_LINK_URLS에서 교체합니다. */
+const LG_LINK_ONLY = [
+  { carrier:'uplus', theme:'theme-um', name:'LG 외국인신규', cap:'', special:true, lgLink:true,
+    logoAdult:'./assets/logos/LG_외국인등록증신규.png', logoTeen:'./assets/logos/LG_외국인등록증신규.png' },
+
+  { carrier:'uplus', theme:'theme-um', name:'LG 외국인번호이동', cap:'', special:true, lgLink:true,
+    logoAdult:'./assets/logos/LG_외국인등록증번이.png', logoTeen:'./assets/logos/LG_외국인등록증번이.png' },
+];
+const JOIN_DATA = {
+  adult: [
+    ...BRANDS.map(b => ({...b, doc:'join', age:'adult'})),
+    ...SK_LINK_ONLY.map(b => ({...b, doc:'join', age:'adult'})),
+    ...JOIN_ONLY.map(b => ({...b, doc:'join', age:'adult'})),
+    ...LG_LINK_ONLY.map(b => ({...b, doc:'join', age:'adult'})),
+  ],
+  teen : [
+    ...BRANDS.map(b => ({...b, doc:'join', age:'teen'})),
+    ...SK_LINK_ONLY.map(b => ({...b, doc:'join', age:'teen'})),
+    ...JOIN_ONLY.map(b => ({...b, doc:'join', age:'teen'})),
+    ...LG_LINK_ONLY.map(b => ({...b, doc:'join', age:'teen'})),
+  ]
+};
+
+const CHANGE_CARDS = BRANDS.map(b => ({...b, doc:'change'}));
+const CANCEL_CARDS = BRANDS.map(b => ({...b, doc:'cancel'}));
+
+/* ✅ LG 링크 실제 이동 URL 관리
+   - 주소가 확정되면 '' 안에 URL만 넣으면 됩니다.
+   - 예: local: 'https://example.com'
+*/
+const LG_LINK_URLS = {
+  // LG 외국인등록증 신규 접수 URL
+  foreignNew: 'https://onsalemobile.uplus.co.kr/open-market?formId=3130424&agentId=339276&openmktCd=20082',
+
+  // LG 외국인등록증 번호이동 접수 URL
+  foreignMnp: 'https://onsalemobile.uplus.co.kr/open-market?formId=3130423&agentId=339276&openmktCd=20082'
+};
+
+const BRAND_ROUTE = {
+  '미디어로그':     { carrier:'uplus', brand:'umobile'   },
+  '프리티LG':       { carrier:'uplus', brand:'freeT'     },
+  '헬로LG':         { carrier:'uplus', brand:'hello'     },
+  '엠모바일':       { carrier:'kt',    brand:'mmobile'   },
+  '스카이라이프':   { carrier:'kt',    brand:'skylife'   },
+  '스테이지파이브(KT)': { carrier:'kt', brand:'stagefive'   },
+  '스테이지파이브(SK)':{ carrier:'sk', brand:'stagefive-sk'},
+  '프리티SK':       { carrier:'sk',    brand:'freeT-sk'  },
+
+  '정규KT신규':     { external: 'https://online.kt.com/itg/online/index.do?prdcId=7BA3C27E-6D19-4935-B75E-BE1E04FA2BCB' },
+  '정규KT번이':     { external: 'https://online.kt.com/itg/online/index.do?prdcId=F7D71C67-08E1-4213-B81B-042609F9F083' },
+  '웰컴 요금제 신규': { external: 'https://online.kt.com/itg/online/index.do?prdcId=C689EEAE-14F5-4991-B26B-ADCB5BB7F2E0' },
+  '웰컴 요금제 번이': { external: 'https://online.kt.com/itg/online/index.do?prdcId=DC0AECBA-F1F2-4593-9F0C-4EBC96D139FF' },
+  'KT 유선 동판':  { external: 'https://online.kt.com/itg/simple/simpleCustomerInfoPop.do?prdcId=49463E6F-6396-4741-8E2B-5C9E8B40A2D6' },
+
+  'SK 내국인': { external: 'https://tgateplus.sktelecom.com/main/main.do?p=5ea5fabb48dafa78b8013f1891ea49ed801e90e8769b20206557d2f3294dcec1' },
+  'SK 외국인': { external: 'https://korea-mvno.com/register/mno/foreigners?phoneplan=2&event=149' },
+
+  'LG 외국인신규': { external: LG_LINK_URLS.foreignNew },
+  'LG 외국인번호이동': { external: LG_LINK_URLS.foreignMnp },
+
+  'SK텔링크': {
+    carrier: 'sk',
+    brand: '7mobile',
+    externalJoin: 'https://smvno.sk7mobile.com/main.do'
+  }
+};
+
+/* ✅ SK 링크 2행 3열: 실제 이동 URL 관리
+   - 아래 4개 주소만 교체하면 화면의 4개 이미지 카드 링크가 각각 변경됩니다.
+   - T-GATE 접수양식 / 여권접수양식은 팝업 양식 버튼이므로 URL을 사용하지 않습니다. */
+const SK_LINK_URLS = {
+  foreignId: 'https://tgateplus.sktelecom.com/main/main.do?p=ddd6d3e00013df63dcb2543d917fb82ef5415f2e0c93820d11d3fec6437f9136',
+  foreignApply: 'https://korea-mvno.com/register/mno/foreigners?phoneplan=2&event=149',
+  foreignPassport: 'https://korea-mvno.com/register/mno/foreigners?phoneplan=2&event=149',
+  local: 'https://tgateplus.sktelecom.com/main/main.do?p=5ea5fabb48dafa78b8013f1891ea49ed801e90e8769b20206557d2f3294dcec1'
+};
+
+/* ✅ SK 링크 공지/안내 내용 관리
+   - guideSteps 배열 안의 문구를 원하는 내용으로 수정하면 팝업 내용이 바뀝니다.
+   - 링크가 필요한 항목은 { label:'표시문구', url:'주소' } 형태로 넣으면 됩니다. */
+const SK_GUIDE_META = {
+  '외국인등록증': {
+    guideTitle: 'SK 외국인등록증 접수 안내',
+    guideSteps: [
+      { label:'외국인등록증 접수 페이지 작성', url: SK_LINK_URLS.foreignId },
+      '외국인 접수 신청 페이지 추가 작성',
+      'T-GATE 양식 카톡 접수 + 외국인등록증 앞/뒷면 발송',
+      `<span class="warn"><strong>★참고 사항<br>
+        일반 USIM과 eSIM은 단말기 선택 항목의 "모델명"이 다르므로 접수 시 아래 내용을 확인하여 선택해 주시기 바랍니다.<br>
+        일반 USIM 개통: SKT-USIM4 선택<br>
+        eSIM 개통: SKT-ESIM1 선택</strong></span>`
+
+
+    ]
+  },
+  '외국인접수신청': {
+    guideTitle: 'SK 외국인 접수신청 안내',
+    guideSteps: [
+      { label:'외국인등록증 접수 페이지 작성', url: SK_LINK_URLS.foreignId },
+      '외국인 접수 신청 페이지 추가 작성',
+      'T-GATE 양식 카톡 접수 + 외국인등록증 앞/뒷면 발송',
+      `<span class="warn"><strong>★참고 사항<br>
+        일반 USIM과 eSIM은 단말기 선택 항목의 "모델명"이 다르므로 접수 시 아래 내용을 확인하여 선택해 주시기 바랍니다.<br>
+        일반 USIM 개통: SKT-USIM4 선택<br>
+        eSIM 개통: SKT-ESIM1 선택</strong></span>`
+
+    ]
+  },
+  '외국인여권': {
+    guideTitle: 'SK 외국인 여권 접수 안내',
+  guideSteps: [
+    { label:' 외국인 여권 URL 작성', url: SK_LINK_URLS.local },
+    '서식지 출력',
+    '여권접수 양식 작성 카톡방 접수',
+    `<span class="warn"><strong>★필요 서류<br>
+☆여권 개통 : 여권 사본 + 신청서(URL 접수 후 출력) + 카톡접수<br>
+E7, E9, D2, D4 비자만 개통가능<br>
+★가입 서류<br>
+★유학생 : 가입신청서 & 여권 & 입학허가서(재학 증명서) 또는 사증발급확인서 스캔본<br>
+★근로자 : 가입신청서 & 여권 & 표준근로계약서(재직 증명서) 또는 사증발급확인서 스캔본<br>
+★입학허가서 또는 표준근로계약서 첨부가 어려우면 사증발급확인서 첨부 가능합니다.<br>
+★외국인등록증 발급된 고객 대상으로 여권 사본 개통을 진행할 경우 비정상영업으로 간주 정책 미적용 또는 정책 전액 환수됩니다.<br>
+★여권 개통 후, 여권→외국인등록증 명의변경 시 개통일보다 외국인등록증 발급일자가 빠를 경우 전액 환수입니다.<br>
+★※여권 3개월 이내 ID카드로 명변 필수 명변 미진행시(전액 환수)※</strong></span>`
+  ]
+
+  },
+  '내국인': {
+    guideTitle: 'SK 내국인 접수 안내',
+    guideSteps: [
+      { label:'T-GATE 작성', url: SK_LINK_URLS.local },
+      'T-GATE 접수 양식 작성',
+      '양식 작성 카톡방 접수',
+      `<span class="warn"><strong>★참고 사항<br>
+        일반 USIM과 eSIM은 단말기 선택 항목의 "모델명"이 다르므로 접수 시 아래 내용을 확인하여 선택해 주시기 바랍니다.<br>
+        일반 USIM 개통: SKT-USIM4 선택<br>
+        eSIM 개통: SKT-ESIM1 선택<br>
+        내국인 MNO MNP 진행시 별도 문의 </strong></span>`
+      
+    ]
+  }
+};
+
+
+
+/* ✅ 일반 가입 카드 eSIM/공지 내용 관리
+   - SK 2행 3열 전용 공지는 SK_GUIDE_META에서 관리합니다.
+   - 일반 카드 공지/eSIM은 아래 CARD_META에서 관리합니다. */
+const CARD_META = {
+  '미디어로그': {
+  esim: true,
+  guideTitle: '미디어로그 안내 <span class="warn"><strong>미디어로그 코드 331674</strong></span>',
+  guideSteps: [
+    '미디어로그 신청서 작성',
+    '본인확인 및 구비서류 확인',
+    '[LG알뜰폰] 미디어로그 331674 마당 접수'
+  ]
+},
+  '헬로LG': { esim: false, guideTitle: '헬로모바일 안내 <span class="warn"><strong>헬로모바일 코드 316829</strong></span>', guideSteps: ['헬로모바일 신청서 작성', '본인확인 및 구비서류 확인', '[LG알뜰폰] LG헬로 316829 마당 접수'] },
+  '프리티LG': { esim: true, guideTitle: '프리티LG 안내 <span class="warn"><strong>인스코비 332109</strong></span>', guideSteps: ['프리티LG 신청서 작성', '본인확인 및 구비서류 확인', '[LG알뜰폰] 인스코비 332109 마당 접수'] },
+  '엠모바일': { esim: true, guideTitle: '엠모바일 안내 <span class="warn"><strong>엠모바일 VKI1100</strong></span>', guideSteps: ['엠모바일 신청서 작성', '본인확인 및 구비서류 확인', '[KT알뜰폰] 엠모바일 VKI1100 케이노트 접수'] },
+  '스테이지파이브(KT)': { esim: false, guideTitle: '스테이지파이브 KT 안내 <span class="warn"><strong>스테이지파이브 VPI0001</strong></span>', guideSteps: ['스테이지파이브 KT 신청서 작성', '본인확인 및 구비서류 확인', '[KT알뜰폰] 스테이지파이브 VPI0001 케이노트 접수'] },
+  '스카이라이프': { esim: true, guideTitle: '스카이라이프 안내 <span class="warn"><strong>스카이라이프 VSK0439</strong></span>', guideSteps: ['스카이라이프 컬러 신청서 작성', '본인확인 및 구비서류 확인', '[KT알뜰폰] 스카이라이프 VSK0439 케이노트 접수'] },
+  'SK텔링크': { esim: true, guideTitle: 'SK텔링크 안내 <span class="warn"><strong>SK텔링크 STD0913</strong></span>', guideSteps: ['SK텔링크 접수 페이지 작성', '본인확인 및 구비서류 확인', '서류 카톡 스캔본 접수 ,포털신분증 [SK알뜰폰] SK텔링크 STD0913 스캔 접수'] },
+  '스테이지파이브(SK)': { esim: false, guideTitle: '스테이지파이브 SK 안내 <span class="warn"><strong>스테이지파이브 SFD0004</strong></span>', guideSteps: ['스테이지파이브 SK 신청서 작성', '본인확인 및 구비서류 확인', '서류 카톡 스캔본 접수 ,포털신분증 [SK알뜰폰] 스테이지파이브 SFD0004 스캔 접수'] },
+  '프리티SK': { esim: true, guideTitle: '프리티SK 안내 <span class="warn"><strong>프리텔레콤 FRD3204</strong></span>', guideSteps: ['프리티SK 신청서 작성', '본인확인 및 구비서류 확인', '서류 카톡 스캔본 접수 ,포털신분증 [SK알뜰폰] 프리텔레콤 FRD3204 스캔 접수'] },
+  'SK 내국인': { esim: true, guideTitle: 'SK 내국인 접수 순서', guideSteps: ['티게이트 작성', 'T-GATE 접수양식 작성' ,'양식 카톡방 접수 '] },
+  'SK 외국인': { esim: true, guideTitle: 'SK 외국인 접수 순서', guideSteps: ['티게이트 작성', '어드민 등록', '개통방에 요청서 접수(카톡접수) + 외국인등록증 앞/뒷면 발송'] },
+  '정규KT신규': { esim: true, guideTitle: '정규KT 신규 안내', guideSteps: ['KT URL 접수', '양식 작성 후 카톡 전달', '개통 진행'] },
+  '정규KT번이': { esim: true, guideTitle: '정규KT 번호이동 안내', guideSteps: ['KT URL 접수', '양식 작성 후 카톡 전달', '개통 진행'] },
+  'KT 유선 동판': { esim: null, guideTitle: 'KT 유선 동판 안내', guideSteps: ['KT 유선 접수 URL 작성', '양식 작성 후 카톡 전달', '접수 완료 확인'] },
+  '웰컴 요금제 신규': { esim: true, guideTitle: '웰컴 요금제 신규 안내', guideSteps: ['KT URL 접수', '양식 작성 후 카톡 전달', '개통 진행'] },
+  '웰컴 요금제 번이': { esim: true, guideTitle: '웰컴 요금제 번호이동 안내', guideSteps: ['KT URL 접수', '양식 작성 후 카톡 전달', '개통 진행'] },
+  '스마텔LG': { esim: null, guideTitle: '스마텔LG 선불 안내', guideSteps: [''] },
+  'LG프리티': { esim: null, guideTitle: 'LG프리티 선불 안내', guideSteps: ['선불 신청서 작성', '마당 접수'] },
+  '밸류컴': { esim: null, guideTitle: '밸류컴 안내', guideSteps: ['신청서 작성', '마당 접수'] },
+  'SK프리티': { esim: null, guideTitle: 'SK프리티 선불 안내', guideSteps: ['선불 신청서 작성', '서류 카톡 스캔본 접수', '포털신분증 스캔 접수'] },
+  '코드모바일': { esim: null, guideTitle: '코드모바일 안내', guideSteps: ['신청서 작성', '케이노트 접수'] },
+
+  /* ✅ LG 링크 카드 공지/안내 */
+  'LG 외국인신규': { esim: true, guideTitle: 'LG 외국인신규 접수 안내 <span class="warn"><strong>외국인 E/D 비자만 개통 가능</strong></span>', guideSteps: ['LG 외국인 신규 URL 접수', '외국인등록증 앞/뒷면 확인', '접수 완료 확인'] },
+  'LG 외국인번호이동': { esim: true, guideTitle: 'LG 외국인번호이동 접수 안내 <span class="warn"><strong>외국인 E/D 비자만 개통 가능</strong></span>', guideSteps: ['LG 외국인 번호이동 URL 접수', '외국인등록증 앞/뒷면 확인', '접수 완료 확인'] }
+};
+
+function escHtml(v){
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function getCardMeta(item){ return CARD_META[item.name] || null; }
+function isJoinMetaTarget(item){ return (item && (item.doc || 'join') === 'join'); }
+function cardMetaAttr(item){
+  const meta = getCardMeta(item);
+  return (meta && isJoinMetaTarget(item)) ? ` data-guide-key="${escHtml(item.name)}"` : '';
+}
+function cardBadgesHtml(item){
+  // 변경 서류 / 해지 서류에는 eSIM·공지 버튼을 표시하지 않습니다.
+  if (!isJoinMetaTarget(item)) return '';
+
+  const meta = getCardMeta(item);
+  if (!meta) return '';
+
+  const esimHtml = (typeof meta.esim === 'boolean')
+    ? `<span class="esim-badge ${meta.esim ? 'esim-ok' : 'esim-no'}">${meta.esim ? 'eSIM 가능' : 'eSIM 불가'}</span>`
+    : '';
+
+  const guideHtml = (Array.isArray(meta.guideSteps) && meta.guideSteps.length)
+    ? `<button type="button" class="guide-btn" data-guide-key="${escHtml(item.name)}">공지/안내</button>`
+    : '';
+
+  return `${guideHtml}${esimHtml}`;
+}
+
+
+function buildBrandUrl(route, doc, age){
+  if (!route || !route.carrier || !route.brand) return '#';
+  const base = `brands/${route.carrier}/${route.brand}/index.html`;
+  const abs  = new URL(base, location.href).href;
+
+  const qs = new URLSearchParams();
+  qs.set('mode','fill');
+  qs.set('doc', doc || 'join');
+  if ((doc || 'join') === 'join') qs.set('age', age || 'adult');
+
+  return `${abs}?${qs.toString()}`;
+}
+
+function pickLogo(item){
+  if (item.doc === 'join'){
+    if (item.age === 'teen') return item.logoTeen || item.logoAdult || '';
+    return item.logoAdult || item.logoTeen || '';
+  }
+  return item.logoAdult || item.logoTeen || '';
+}
+
+function card(item){
+  const {theme, name, cap, doc, age} = item;
+  const dataName = name.replace(/\(청소년\)/,'');
+  const docAttr  = doc || 'join';
+  const ageAttr  = (docAttr==='join' && age) ? ` data-age="${age}"` : '';
+  const keyAttr  = item.brandKey ? ` data-brandkey="${item.brandKey}"` : '';
+  const isLong   = name.length >= 9;
+  const meta = getCardMeta(item);
+  const longCls  = `${isLong ? 'long-name' : ''} ${meta && isJoinMetaTarget(item) ? 'has-meta' : ''}`.trim();
+  const guideAttr = cardMetaAttr(item);
+
+  const logo = pickLogo(item);
+  const logoHtml = logo
+    ? `<div class="logo-frame"><img src="${logo}" alt="${name} 로고"></div>`
+    : '';
+
+  return `
+    <div class="brand ${theme} ${longCls}" data-name="${dataName}" data-doc="${docAttr}"${ageAttr}${keyAttr}${guideAttr}>
+      ${logoHtml}
+      ${cardBadgesHtml(item)}
+      <div class="name">${name}</div>
+      ${cap ? `<div class="cap">${cap}</div>` : ``}
+    </div>
+  `;
+}
+
+/* ✅ "유심양식/동판양식" 2개를 한 칸에 */
+function formDuoCard(){
+  return `
+    <div class="form-duo-wrap" aria-label="동판 양식 묶음">
+      <div class="form-duo">
+        <div class="form-half" data-form="usim" role="button" tabindex="0" aria-label="유심양식 열기">
+          <div class="form-text">유심양식</div>
+        </div>
+        <div class="form-half" data-form="dongpan" role="button" tabindex="0" aria-label="동판양식 열기">
+          <div class="form-text">동판양식</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function formSKDualCard(){
+  return `
+    <div class="form-duo-wrap" aria-label="SK 유심양식 묶음">
+      <div class="form-duo">
+        <div class="form-half" data-form="skusim_local" role="button" tabindex="0" aria-label="T-GATE 접수양식 열기">
+          <div class="form-text">T-GATE 접수양식</div>
+        </div>
+        <div class="form-half" data-form="skusim_foreign" role="button" tabindex="0" aria-label="여권접수양식 열기">
+          <div class="form-text">여권접수양식</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ✅ LG 링크 전용 양식 버튼
+   - LG 링크 카드는 외국인신규 / 외국인번호이동 2개로 분리
+   - 양식 버튼은 1개만 유지합니다. */
+function formLGDualCard(){
+  return `
+    <div class="form-duo-wrap" aria-label="LG 외국인등록증 양식">
+      <div class="form-duo form-duo-single">
+        <div class="form-half" data-form="lgusim_foreign" role="button" tabindex="0" aria-label="LG 양식 열기">
+          <div class="form-text">LG 양식</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function skLinkCard({title, img='', url='', form='', guideKey='', esim=true}){
+  const urlAttr = url ? ` data-url="${escHtml(url)}"` : '';
+  const formAttr = form ? ` data-form="${escHtml(form)}"` : '';
+  const guideAttr = guideKey ? ` data-guide-key="${escHtml(guideKey)}"` : '';
+  const hasImg = !!String(img || '').trim();
+
+  const esimHtml = (typeof esim === 'boolean')
+    ? `<span class="esim-badge ${esim ? 'esim-ok' : 'esim-no'}">${esim ? 'eSIM 가능' : 'eSIM 불가'}</span>`
+    : '';
+
+  const guideHtml = guideKey
+    ? `<button type="button" class="guide-btn" data-guide-key="${escHtml(guideKey)}">공지/안내</button>`
+    : '';
+
+  const contentHtml = hasImg
+    ? `<div class="sk-link-img-frame"><img src="${escHtml(img)}" alt="${escHtml(title)}"></div>`
+    : `<div class="sk-link-title">${escHtml(title)}</div>`;
+
+  const metaClass = [
+    (guideHtml || esimHtml) ? 'has-meta' : '',
+    hasImg ? 'has-img' : ''
+  ].filter(Boolean).join(' ');
+
+  return `
+    <div class="brand theme-s7 sk-link-card ${metaClass}" data-name="${escHtml(title)}" data-doc="join"${urlAttr}${formAttr}${guideAttr} role="button" tabindex="0">
+      ${contentHtml}
+      ${guideHtml}
+      ${esimHtml}
+    </div>
+  `;
+}
+
+function skLinkGridCard(){
+  return `
+    <div class="sk-link-grid" aria-label="SK 링크 2행 3열">
+      ${skLinkCard({
+        title:'외국인등록증',
+        img:'./assets/logos/SK_외국인등록증.png',
+        url:SK_LINK_URLS.foreignId,
+        guideKey:'외국인등록증',
+        esim:true
+      })}
+      ${skLinkCard({
+        title:'외국인접수신청',
+        img:'./assets/logos/SK_접수.png',
+        url:SK_LINK_URLS.foreignApply,
+        guideKey:'외국인접수신청',
+        esim:true
+      })}
+      ${skLinkCard({
+        title:'외국인여권',
+        img:'./assets/logos/SK_외국인 여권.png',
+        url:SK_LINK_URLS.foreignPassport,
+        guideKey:'외국인여권',
+        esim:true
+      })}
+      ${skLinkCard({
+        title:'내국인',
+        img:'./assets/logos/SK_내국인.png',
+        url:SK_LINK_URLS.local,
+        guideKey:'내국인',
+        esim:true
+      })}
+      ${skLinkCard({
+        title:'T-GATE 접수양식',
+        form:'skusim_local',
+        guideKey:'',
+        esim:null
+      })}
+      ${skLinkCard({
+        title:'여권접수양식',
+        form:'skusim_foreign',
+        guideKey:'',
+        esim:null
+      })}
+    </div>
+  `;
+}
+
+/* ✅ 단말개통: 현재 탭(성인/청소년)에 맞춰 이동 */
+function deviceSectionHTML(){
+  return `
+    <section class="group" data-carrier="device">
+      <div class="group-head">
+        <span class="group-dot"></span>
+        <span class="group-title">단말 개통</span>
+        <span class="group-sub">카드 선택 후 성인/청소년 선택</span>
+      </div>
+
+      <div class="brand-grid">
+        <!-- ✅ LG(미디어로그) 단말 -->
+        <div class="brand theme-um device-link" data-device-carrier="uplus" data-device-brand="me" data-name="미디어로그 단말">
+          <div class="logo-frame">
+            <img id="deviceLogoME" src="./assets/logos/ME.png" alt="미디어로그 로고">
+          </div>
+          <div class="cap">단말개통</div>
+        </div>
+
+        <!-- ✅ KT(엠모바일) 단말 -->
+        <div class="brand theme-mm device-link" data-device-carrier="kt" data-device-brand="mo" data-name="엠모바일 단말">
+          <div class="logo-frame">
+            <img id="deviceLogoMO" src="./assets/logos/MO.png" alt="엠모바일 로고">
+          </div>
+          <div class="cap">단말개통</div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+
+/* 카드 클릭 시 이동 */
+
+const REQUIRED_ROUTE_BRAND_KEY = {
+  umobile:'umobile', hello:'hello', freeT:'freeT', mmobile:'mmobile', skylife:'skylife',
+  stagefive:'stagefive', 'stagefive-sk':'stagefive-sk', 'freeT-sk':'freeT-sk', '7mobile':'7mobile'
+};
+
+function getJoinCardLogo(cardEl, age){
+  // 일반 가입 카드(.logo-frame) + SK 링크 이미지 카드(.sk-link-img-frame) 모두 인식
+  const img = cardEl.querySelector('.logo-frame img, .sk-link-img-frame img');
+  const curSrc = img ? (img.getAttribute('src') || '') : '';
+  const nm = (cardEl.getAttribute('data-name') || '').replace(/\s+/g,' ').trim();
+  const source = [...BRANDS, ...JOIN_ONLY, ...SK_LINK_ONLY, ...LG_LINK_ONLY].find(x => x.name === nm);
+  if (source) return (age === 'teen' ? (source.logoTeen || source.logoAdult) : (source.logoAdult || source.logoTeen)) || curSrc;
+  if (cardEl.classList.contains('device-link')) {
+    const brand = cardEl.getAttribute('data-device-brand') || '';
+    if (brand === 'me') return age === 'teen' ? './assets/logos/METEEN.png' : './assets/logos/ME.png';
+    if (brand === 'mo') return age === 'teen' ? './assets/logos/MOTEEN.png' : './assets/logos/MO.png';
+  }
+  return curSrc;
+}
+
+function buildCardDestination(cardEl, age){
+  const safeAge = (age === 'teen') ? 'teen' : 'adult';
+
+  if (cardEl.classList.contains('device-link')) {
+    const carrier = cardEl.getAttribute('data-device-carrier') || '';
+    const brand = cardEl.getAttribute('data-device-brand') || '';
+    if (!carrier || !brand) return '#';
+    return new URL(`./brands/${carrier}/device/index.html?mode=fill&doc=device&age=${safeAge}&brand=${encodeURIComponent(brand)}`, location.href).href;
+  }
+
+  const directUrl = cardEl.getAttribute('data-url') || '';
+  if (directUrl) return new URL(directUrl, location.href).href;
+
+  const nm = (cardEl.getAttribute('data-name') || '').replace(/\s+/g,' ').trim();
+  const doc = cardEl.getAttribute('data-doc') || 'join';
+
+  if (doc === 'prepaid') {
+    const key = cardEl.getAttribute('data-brandkey') || '';
+    return key ? `./brands/prepaid/index.html?brand=${encodeURIComponent(key)}` : '#';
+  }
+
+  const route = BRAND_ROUTE[nm];
+  if (!route) return '#';
+  if (route.externalJoin && doc === 'join') return route.externalJoin;
+  if (route.external) return route.external;
+  return buildBrandUrl(route, doc, safeAge);
+}
+
+function getRequiredInfoFromCard(cardEl, age){
+  const nm = (cardEl.getAttribute('data-name') || '').replace(/\s+/g,' ').trim();
+  if (cardEl.classList.contains('device-link')) {
+    const c = cardEl.getAttribute('data-device-carrier');
+    const b = cardEl.getAttribute('data-device-brand');
+    if (c === 'uplus' && b === 'me') return { carrier:'uplus', brand:'umobile', kind: age || 'adult' };
+    if (c === 'kt' && b === 'mo') return { carrier:'kt', brand:'mmobile', kind: age || 'adult' };
+  }
+  const route = BRAND_ROUTE[nm];
+  if (!route || !route.carrier || !route.brand) return null;
+  const carrier = route.carrier;
+  const brand = REQUIRED_ROUTE_BRAND_KEY[route.brand] || route.brand;
+  return { carrier, brand, kind: age || 'adult' };
+}
+
+let __JOIN_CHOICE_CARD__ = null;
+let __JOIN_CHOICE_LAST_AGE__ = 'adult';
+
+function openJoinChoiceModal(cardEl){
+  __JOIN_CHOICE_CARD__ = cardEl;
+  __JOIN_CHOICE_LAST_AGE__ = 'adult';
+
+  const modal = document.getElementById('joinChoiceModal');
+  const title = document.getElementById('joinChoiceTitle');
+  const nameEl = document.getElementById('joinChoiceName');
+  const logoEl = document.getElementById('joinChoiceLogo');
+  const guideBtn = document.getElementById('joinChoiceGuide');
+  const requiredBtn = document.getElementById('joinChoiceRequired');
+  if (!modal || !title || !nameEl || !logoEl) return;
+
+  const nm = (cardEl.getAttribute('data-name') || '').replace(/\s+/g,' ').trim();
+  title.textContent = '가입서류 선택';
+  nameEl.textContent = nm || '가입서류';
+  const logo = getJoinCardLogo(cardEl, 'adult');
+  logoEl.innerHTML = logo ? `<img src="${escHtml(logo)}" alt="${escHtml(nm)} 로고">` : '';
+
+  const hasGuide = !!(SK_GUIDE_META[nm] || CARD_META[nm]);
+  if (guideBtn) guideBtn.style.display = hasGuide ? '' : 'none';
+  if (requiredBtn) requiredBtn.style.display = getRequiredInfoFromCard(cardEl, 'adult') ? '' : 'none';
+
+  modal.setAttribute('aria-hidden','false');
+}
+
+function closeJoinChoiceModal(){
+  const modal = document.getElementById('joinChoiceModal');
+  if (modal) modal.setAttribute('aria-hidden','true');
+  __JOIN_CHOICE_CARD__ = null;
+}
+
+function attachNavigateHandlers(scope){
+  scope.querySelectorAll('.brand').forEach(cardEl=>{
+    cardEl.addEventListener('click', (e)=>{
+      if (e.target.closest('.guide-btn')) return;
+
+      const directUrl = cardEl.getAttribute('data-url') || '';
+      const formKey = cardEl.getAttribute('data-form') || '';
+
+      // ✅ 양식 카드(T-GATE/여권접수양식)는 전역 data-form 팝업 핸들러가 처리하도록 둡니다.
+      if (formKey && !directUrl) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (cardEl.classList.contains('device-comingsoon')) return;
+
+      const doc = cardEl.getAttribute('data-doc') || 'join';
+      if (doc === 'join' || cardEl.classList.contains('device-link')) {
+        openJoinChoiceModal(cardEl);
+        return;
+      }
+
+      const url = buildCardDestination(cardEl, cardEl.getAttribute('data-age') || 'adult');
+      if (url && url !== '#') location.href = url;
+    });
+  });
+}
+function safeRender(listEl, items){
+  try{
+    listEl.innerHTML = (items && items.length)
+      ? items.map(card).join('')
+      : '<div style="opacity:.6">자료 없음</div>';
+    attachNavigateHandlers(listEl);
+  }catch(err){
+    console.error('[render error]', err);
+    listEl.innerHTML = '<div style="color:#b91c1c;font-weight:800">렌더 오류 – 콘솔을 확인하세요.</div>';
+  }
+}
+
+/* ✅ (중복 제거) 선불 섹션 렌더 */
+function prepaidSectionHTML(items){
+  return `
+    <section class="group" data-carrier="prepaid">
+      <div class="group-head">
+        <span class="group-dot"></span>
+        <span class="group-title">선불</span>
+        <span class="group-sub"></span>
+      </div>
+      <div class="brand-grid">
+        ${items.map(card).join('')}
+      </div>
+    </section>
+  `;
+}
+function renderPrepaid(listEl){
+  listEl.innerHTML = prepaidSectionHTML(PREPAID_BRANDS);
+  attachNavigateHandlers(listEl);
+}
+
+function renderJoinGrouped(listEl, items){
+  const skLinkItems = items.filter(x => x.skLink === true);
+  const ktSpecialItems = items.filter(x => x.special === true && !x.skLink && !x.lgLink);
+  const lgLinkItems = items.filter(x => x.lgLink === true);
+  const normalItems = items.filter(x => !x.special && !x.skLink && !x.lgLink);
+
+const groups = [
+  { key:'uplus', title:'LG', sub:'' },
+  { key:'kt', title:'KT', sub:'' },
+  { key:'sk', title:'SK', sub:'' }
+];
+
+const by = {
+  uplus: normalItems.filter(x => x.carrier === 'uplus'),
+  kt: normalItems.filter(x => x.carrier === 'kt'),
+  sk: normalItems.filter(x => x.carrier === 'sk')
+};
+
+  const normalHTML = groups.map(g => {
+    const arr = by[g.key] || [];
+    if (!arr.length) return '';
+    return `
+      <section class="group" data-carrier="${g.key}">
+        <div class="group-head">
+          <span class="group-dot"></span>
+          <span class="group-title">${g.title}</span>
+          <span class="group-sub"></span>
+        </div>
+        <div class="brand-grid">
+          ${arr.map(card).join('')}
+        </div>
+      </section>
+    `;
+  }).join('');
+
+const skLinkHTML = skLinkItems.length ? `
+  <section class="group" data-carrier="sk">
+    <div class="group-head">
+      <span class="group-dot"></span>
+      <span class="group-title">SK 링크</span>
+      <span class="group-sub"></span>
+    </div>
+    ${skLinkGridCard()}
+  </section>
+` : '';
+
+  const ktLinkHTML = ktSpecialItems.length ? `
+    <section class="group" data-carrier="kt">
+      <div class="group-head">
+        <span class="group-dot"></span>
+        <span class="group-title">KT 링크</span>
+        <span class="group-sub"></span>
+      </div>
+      <div class="brand-grid">
+        ${ktSpecialItems.map(card).join('')}
+        ${formDuoCard()}
+      </div>
+    </section>
+  ` : '';
+
+  const lgLinkHTML = lgLinkItems.length ? `
+    <section class="group" data-carrier="uplus">
+      <div class="group-head">
+        <span class="group-dot"></span>
+        <span class="group-title">LG 링크</span>
+      </div>
+      <div class="brand-grid">
+        ${lgLinkItems.map(card).join('')}
+        ${formLGDualCard()}
+      </div>
+    </section>
+  ` : '';
+
+  // ✅ 순서: 일반 가입서류 → 단말 개통 → SK 링크 → KT 링크 → LG 링크
+  listEl.innerHTML = normalHTML + deviceSectionHTML() + skLinkHTML + ktLinkHTML + lgLinkHTML;
+  attachNavigateHandlers(listEl);
+}
+function wireKindTabs(containerId, listId, dataObj){
+  const list = document.getElementById(listId);
+  JOIN_AGE = 'adult';
+  renderJoinGrouped(list, (dataObj || {})['adult'] || []);
+  updateDeviceLogosByAge();
+}
+function wireTabs(containerId, listId, data){
+  const container = document.getElementById(containerId);
+  const list = document.getElementById(listId);
+
+  container.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      container.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+      btn.classList.add('active');
+
+      const target = btn.dataset.target;
+      const items = (data||[]).filter(d=>d.carrier===target);
+      safeRender(list, items);
+    });
+  });
+
+  container.querySelector('.tab-btn.active').click();
+}
+
+/* =========================
+   ✅ 구비서류 NEW 시스템
+========================= */
+(function(){
+  const modal = document.getElementById('docsModal');
+  const titleEl = document.getElementById('docsTitle');
+  const closeBtn = document.getElementById('btnDocsClose');
+  const brandTabsEl = document.getElementById('requiredBrandTabs');
+  const kindTabsEl = document.getElementById('requiredKindTabsModal');
+  const boardEl = document.getElementById('requiredBoard');
+
+  let REQUIRED_KIND = 'adult';
+  let currentCarrier = 'uplus';
+  let currentBrand = '';
+
+  const COMMON_FOREIGN_MINOR_LINES = [
+    '- 법정대리인신분증',
+    '- 외국인등록증(신분증스캔필요)',
+    '- 명의자등록증(신분증스캔필요)',
+    '구비서류(아래 中 택1)',
+    '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+    '② 가족관계증명서',
+    '③ 외국인등록번호 풀기재+성명 영문',
+    '④ 대사관에서 발급한 입증서류, 한국어 번역 공증서',
+    '⑤ 건강보험증',
+    '⑥ 건강보험자격 확인서_열람용제외',
+    '(신분증과 생년월일 같고 발음이 유사한 경우 정상)',
+    '※ 60일이내 발급'
+  ];
+
+  const COMMON_MINOR_BASIC_LINES = [
+    '법정대리인신분증',
+    '- 주민등록증, 운전면허증',
+    '법대관계 미성립시 추가',
+    '① 가족관계증명서_법대기준',
+    '② 기본증명서(상세)_자녀기준',
+    '※ 60일이내 발급'
+  ];
+
+  const REQUIRED_DOCS_DATA = {
+    adult: {
+      uplus: {
+        label: 'LG',
+        brands: {
+          umobile: {
+            label: '미디어로그',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※복지카드, 여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] }
+            ],
+            images: []
+          },
+          hello: {
+            label: '헬로모바일',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※복지카드, 여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] }
+            ],
+            images: []
+          },
+          freeT: {
+            label: '프리티',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※복지카드, 여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] }
+            ],
+            images: []
+          },
+          valuecom: {
+            label: '밸류컴',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※복지카드, 여권 - 불가</span>'] },
+              { type:'외국인 성인', lines:['- 등록증','- 명의자 여권',
+                  '※ 여권개통진행시',
+                  '서류 위 여권 스캔본 필수 첨부',
+                  '<span class="warn"><strong>※예시본참조※</strong></span>',] }
+            ],
+images: [
+  {
+    src: "./assets/docs/prepaid.png?v=2",
+    label: "예시본"
+  }
+]
+          },
+          smatel_lg: {
+            label: '스마텔LG',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','여권','<span class="warn">※복지카드 불가</span>'] },
+              { type:'외국인 성인', lines:['- 여권','- 등록증'] }
+            ],
+            images: []
+          },
+          lgfreeT_prepaid: {
+            label: '프리티 선불 LG ',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">★ 내국인 여권-구여권 가능</span>','※구 여권 뒷자리 없을경우 여권정보확인서 필수 첨부 ※','<span class="warn">★ 신여권 불가 ★</span>'] },
+                { type:'외국인', lines:['외국인등록증','명의자 여권',
+                  '※ 여권개통진행시',
+                  '서류 위 여권 스캔본 필수 첨부',
+                  '<span class="warn"><strong>※예시본참조※</strong></span>',] }
+              ],
+  images: [
+  {
+    src: "./assets/docs/prepaid.png?v=2",
+    label: "예시본"
+  }
+]
+          }
+        }
+      },
+
+      kt: {
+        label: 'KT',
+        brands: {
+          mmobile: {
+            label: '엠모바일',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※복지카드, 여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] },
+            ],
+            images: []
+          },
+          skylife: {
+            label: '스카이라이프',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※복지카드, 여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] },
+            ],
+            images: []
+          },
+          stagefive: {
+            label: 'STAGE FIVE',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※복지카드, 여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] },
+            ],
+            images: []
+          },
+          ktpost: {
+            label: 'KT',
+            rows: [
+              { type:'내국인', lines:['URL 접수로 신분증 생략'] },
+              { type:'외국인', lines:['외국인등록증'] },
+            ],
+images: [
+  {
+    src: "./assets/docs/KT3.png",
+    label: "무무결합 예시본"
+  }
+]
+          },
+          codemobile: {
+            label: '코드모바일KT',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※복지카드, 여권 - 불가</span>'] },
+              { type:'외국인 성인', lines:['- 등록증','- 명의자 여권',
+                  '※ 여권개통진행시',
+                  '서류 위 여권 스캔본 필수 첨부',
+                  '<span class="warn"><strong>※예시본참조※</strong></span>'] },
+            ],
+images: [
+  {
+    src: "./assets/docs/prepaid.png?v=2",
+    label: "예시본"
+  }
+]
+          }
+        }
+      },
+
+      sk: {
+        label: 'SK',
+        brands: {
+          '7mobile': {
+            label: '7mobile',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','복지카드','<span class="warn">※여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] },
+            ],
+            images: []
+          },
+          'freeT-sk': {
+            label: '프리티SK',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','복지카드','<span class="warn">※여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] },
+            ],
+            images: []
+          },
+          'stagefive-sk': {
+            label: 'STAGE FIVE',
+            rows: [
+              { type:'내국인', lines:['주민등록증','운전면허증','임시발급증','<span class="warn">※여권 - 불가</span>'] },
+              { type:'외국인', lines:['외국인등록증'] },
+            ],
+            images: []
+          },
+          freeT_sk_prepaid: {
+            label: '프리티SK선불',
+            rows: [
+              { type:'내국인', lines:['- 주민등록증','- 운전면허증','- 임시발급증','- 여권','<span class="warn">내국인 여권-구여권만 가능</span>','<span class="warn">★신여권 불가 ★</span>'] },
+              { type:'외국인', lines:['- 외국인등록증','- 여권',
+                  '※ 여권개통진행시',
+                  '서류 위 여권 스캔본 필수 첨부',
+                  '<span class="warn"><strong>※예시본참조※</strong></span>',
+              ] },
+              
+            ],
+images: [
+  {
+    src: "./assets/docs/prepaid.png?v=2",
+    label: "예시본"
+  }
+]
+          }
+        }
+      }
+    },
+
+    teen: {
+      uplus: {
+        label: 'LG',
+        brands: {
+          umobile: {
+            label: '미디어로그',
+            rows: [
+              { type:'미성년자', lines: [
+                '- 법정대리인신분증',
+                 '(주민등록증, 운전면허증,임시발급증)',
+                '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(상세)_자녀기준',
+                    '<span class="warn">※ 60일이내 발급<span>']},
+              { type:'외국인 미성년자', lines: [
+                  '- 외국인등록증',
+                  '- 명의자등록증',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '외국인등록번호 풀기재+성명 영문',
+                  '③대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '(대사관 공증기관 직인날인)',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ] }
+            ],
+            images: []
+          },
+          hello: {
+            label: '헬로모바일',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(특정-친권,미성년 후견 전부)_자녀기준',
+                  '<span class="warn">★공동친권시★</span>',
+                  '신청서상 부,모 전부 성함 싸인 필수',
+                  '법대 신분증 미접수 법대 기준 위임장필수',
+                  '구비서류 출력한 법정대리인으로 진행해야함',
+                  '<span class="green">Ex) 아버지 기준 신청중 인입시 어머니 위임장 필수</span>',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              { type:'외국인 미성년자', lines: [
+                  '- 외국인등록증',
+                  '- 명의자등록증',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '외국인등록번호 풀기재+성명 영문',
+                  '③대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '(대사관 공증기관 직인날인)',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ] }
+            ],
+            images: []
+          },
+          freeT: {
+            label: '프리티',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '- 법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+            '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(특정-친권,미성년 후견 전부)_자녀기준',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              { type:'외국인 미성년자', lines: [
+                  '- 외국인등록증',
+                  '- 명의자등록증',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '외국인등록번호 풀기재+성명 영문',
+                  '③대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '(대사관 공증기관 직인날인)',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ] }
+            ],
+            images: []
+          },
+          valuecom: {
+            label: '밸류컴',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '- 법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                  '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(특정-친권,미성년 후견 전부)_자녀기준',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              {
+                type:'외국인 미성년자',
+                lines:[
+                  '- 명의자 여권', 
+                  '※ 여권개통진행시',
+                  '서류 위 여권 스캔본 필수 첨부',
+                  '<span class="warn"><strong>※예시본참조※</strong></span>',
+                  '<span class="blue">※ 명의자 여권 접수시 구비서류 불필요 ※</span>',                   
+                  '- 법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                  '- 명의자등록증',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '외국인등록번호 풀기재+성명 영문',
+                  '③대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '(대사관 공증기관 직인날인)',
+                  '<span class="warn">※60일이내 발급※</span>'
+              ]
+              },
+            ],
+images: [
+  {
+    src: "./assets/docs/prepaid.png?v=2",
+    label: "예시본"
+  }
+]
+          },
+          smatel_lg: {
+            label: '스마텔 LG',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '- 법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                  '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(특정-친권,미성년 후견 전부)_자녀기준',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              {
+                type:'외국인 미성년자',
+                lines:[
+                  '- 명의자 여권', 
+                  '※ 여권개통진행시',
+                  '서류 위 여권 스캔본 필수 첨부',
+                  '<span class="warn"><strong>※예시본참조※</strong></span>',
+                  '<span class="blue">※ 명의자 여권 접수시 구비서류 불필요 ※</span>',                   
+                  '- 법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                  '- 명의자등록증',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '외국인등록번호 풀기재+성명 영문',
+                  '③대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '(대사관 공증기관 직인날인)',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              }
+            ],
+            images: []
+          },
+          lgfreeT_prepaid: {
+            label: '프리티LG선불',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '- 법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(특정-친권,미성년 후견 전부)_자녀기준',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              {
+                type:'외국인 미성년자',
+                lines:[
+                  '- 명의자 여권', 
+                  '※ 여권개통진행시',
+                  '서류 위 여권 스캔본 필수 첨부',
+                  '<span class="warn"><strong>※예시본참조※</strong></span>',
+                  '<span class="blue">※ 명의자 여권 접수시 구비서류 불필요 ※</span>',                   
+                  '- 법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                  '- 명의자등록증',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '외국인등록번호 풀기재+성명 영문',
+                  '③대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '(대사관 공증기관 직인날인)',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              }
+            ],
+images: [
+  {
+    src: "./assets/docs/prepaid.png?v=2",
+    label: "예시본"
+  }
+]
+          }
+        }
+      },
+
+      kt: {
+        label: 'KT',
+        brands: {
+          mmobile: {
+            label: '엠모바일',
+            rows: [
+              { type:'미성년자', lines: [
+                '- 법정대리인신분증',
+                '(주민등록증, 운전면허증,임시발급증)',
+                '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(상세)_자녀기준',
+                    '<span class="warn">※ 60일이내 발급<span>']},
+              { type:'외국인 미성년자', lines: [
+                  '- 법정대리인신분증',
+                  '- 외국인등록증(신분증스캔필요)',
+                  '- 명의자등록증(신분증스캔필요)',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '③ 외국인등록번호 풀기재+성명 영문',
+                  '대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '④건강보험증',
+                    '건강보험자격 확인서_열람용제외',
+                    '(신분증과 생년월일 같고 발음이 유사한경우 정상)',
+                    '(법정대리인 세대주인 경우 인정)',
+                  '<span class="warn">※60일이내 발급※</span>']},
+            ],
+            images: []
+          },
+          skylife: {
+            label: '스카이라이프',
+            rows: [
+              { type:'미성년자', lines: [
+                '- 법정대리인신분증',
+                '(주민등록증, 운전면허증,임시발급증)',
+               '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(상세)_자녀기준',
+                    '<span class="warn">※ 60일이내 발급<span>']},
+              { type:'외국인 미성년자', lines: [
+                  '- 법정대리인신분증',
+                  '- 외국인등록증(신분증스캔필요)',
+                  '- 명의자등록증(신분증스캔필요)',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '③ 외국인등록번호 풀기재+성명 영문',
+                  '대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '④건강보험증',
+                    '건강보험자격 확인서_열람용제외',
+                    '(신분증과 생년월일 같고 발음이 유사한경우 정상)',
+                    '(법정대리인 세대주인 경우 인정)',
+                  '<span class="warn">※60일이내 발급※</span>']},
+            ],
+            images: []
+          },
+          stagefive: {
+            label: 'STAGE FIVE',
+            rows: [
+              { type:'미성년자', lines: [
+                  '- 법정대리인신분증',
+                 '(주민등록증, 운전면허증,임시발급증)',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(상세)_자녀기준',
+                    '<span class="warn">※ 60일이내 발급<span>']},
+              {
+                type:'외국인 미성년자',
+                lines:[
+                  '<span class="warn">■가입불가</span>'
+                ]
+              }
+            ],
+            images: []
+          },
+          ktpost: {
+            label: 'KT',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(상세)_자녀기준',
+                  '<span class="warn"><strong>※ 60일이내 발급※</strong></span>'
+                ]
+              },
+              { type:'외국인 미성년자', lines: [
+                  '- 법정대리인신분증',
+                  '- 명의자등록증',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서',
+                  '외국인등록번호 풀기재+성명 영문',
+                  '③ 대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                  '(대사관 공증기관 직인날인)',
+                  '④건강보험증',
+                    '건강보험자격 확인서_열람용제외',
+                    '(신분증과 생년월일 같고 발음이 유사한경우 정상)',
+                    '(법정대리인 세대주인 경우 인정)',
+                  '<span class="warn">※60일이내 발급※</span>']},
+            ],
+images: [
+  {
+    src: "./assets/docs/KT3.png",
+    label: "무무결합 예시본"
+  }
+]
+          },
+          codemobile: {
+            label: '코드모바일',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '법정대리인신분증',
+                  '(주민등록증,운전명허증,임시발급증)',
+                  '- 가족관계증명서_법대기준',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '기본증명서 상세(자녀기준)',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              {
+                type:'외국인 미성년자',
+                lines:[
+                  '외국인 미성년자 등록증',
+                  '- 신청서',
+                  '- 명의자 등록증(신분증 스캐너)',
+                  '- 법대 신분증(신분증 스캐너)',
+                  '※ 여권개통진행시',
+                  '서류 위 여권 스캔본 필수 첨부',
+                  '<span class="warn"><strong>※예시본참조※</strong></span>',
+                  '<span class="blue">※ 명의자 여권 접수시 구비서류 불필요 ※</span>', 
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 외국인 등록 사실증명서, 국내거소 사실 증명서(가족관계표시)',
+                  '② 가족관계증명서(외국인등록번호 풀기재+성명 영문)',
+                  '③ 대사관에서 발급한 입증서류, 한국어 번역 공증서',
+                        '(대사관 공증기관 직인날인)',
+                  '④ 건강보험증, 건강보험자격 확인서_열람용제외',
+                        '(신분증과 생년월일 같고 발음이 유사한 경우 정상)',
+                  '<span class="warn"><strong>※ 60일이내 발급</strong></span>'
+                ]
+              }
+            ],
+images: [
+  {
+    src: "./assets/docs/prepaid.png?v=2",
+    label: "예시본"
+  }
+]
+          }
+        }
+      },
+
+      sk: {
+        label: 'SK',
+        brands: {
+          '7mobile': {
+            label: '7mobile',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(특정-전부)_자녀기준',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              { type:'외국인 미성년자', lines:['<span class="warn">■ 가입불가</span>'] }
+            ],
+            images: []
+          },
+          'freeT-sk': {
+            label: '프리티SK',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류 (아래中 택①)</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(특정-전부)_자녀기준',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              { type:'외국인 미성년자', lines:['<span class="warn">■ 가입불가</span>'] }
+            ],
+            images: []
+          },
+          'stagefive-sk': {
+            label: 'STAGE FIVE',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(상세)_자녀기준',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              { type:'외국인 미성년자', lines:['<span class="warn">■ 가입불가</span>'] }
+            ],
+            images: []
+          },
+          freeT_sk_prepaid: {
+            label: '프리티SK선불',
+            rows: [
+              {
+                type:'미성년자',
+                lines:[
+                  '법정대리인신분증',
+                  '(주민등록증, 운전면허증,임시발급증)',
+                 '<span class="warn">※법대관계 미성립시 추가 구비서류</span>',
+                  '① 가족관계증명서_법대기준',
+                  '② 기본증명서(특정-전부)_자녀기준',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              { type:'외국인 미성년자', lines:['<span class="warn">■ 가입불가</span>'] }
+            ],
+            images: []
+          }
+        }
+      }
+    },
+
+    corp: {
+      uplus: {
+        label: 'LG',
+        brands: {
+          umobile: {
+            label: '미디어로그',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■ 가입불가','개인명의 개통후 ▶ 개인사업자 유형변경요청'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          hello: {
+            label: '헬로모바일',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■ 가입불가','개인명의 개통후 ▶ 개인사업자 유형변경요청'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          freeT: {
+            label: '프리티',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■ 가입불가','개인명의 개통후 ▶고객센터에 개인사업자변경요청'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          valuecom: {
+            label: '밸류컴',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          smatel_lg: {
+            label: '스마텔',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          lgfreeT_prepaid: {
+            label: '프리티LG선불',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          }
+        }
+      },
+
+      kt: {
+        label: 'KT',
+        brands: {
+          mmobile: {
+            label: '엠모바일',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■가입불가</span>','개인명의 개통후 ▶ 개인사업자 고객센터 유형변경'] },
+              { type:'법인',               lines:[
+                  '<span class="warn">법인 개설 1년 이상 사업자만 가능</span>',
+                  '<span class="warn">(최신설립불가)</span>',
+                  '① 대표자방문 기준',
+                  '- 대표자신분증',
+                  '- 사업자등록증',
+                  '- 법인인감증명서 - 원본스캔 K-note 1부',
+                  '- 법인인감증명서 - 촬영본 1부(워터마크)',
+                  '- 법인계좌 납부시 예금주싸인란 "인감도장날인"',
+                  '② 대리인방문 기준',
+                  '- 대리인신분증',
+                  '- 사업자등록증',
+                  '- 재직증명서 (법인인감날인)',
+                  '- 위임장 (법인인감날인)',
+                  '- 법인인감증명서 - 원본스캔 K-note 1부',
+                  '- 법인인감증명서 - 촬영본 1부(워터마크)',
+                  '- 법인계좌 납부시 예금주싸인란 "인감도장날인"',
+                  '',
+                  '③ 추가 필요 정보 및 서류(사업자 제출서류 外)',
+                  '- 등기부등본, 이사회결의서',
+                  '- 개통목적(디테일한 사용용도)',
+                  '- 예상 사용기간',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ] },
+              { type:'비영리법인',lines:[
+                  '<span class="warn">법인 개설 1년 이상 사업자만 가능</span>',
+                  '<span class="warn">(최신설립불가)</span>',
+                  '① 대표자 방문',
+                  '- 대표자 방문',
+                  '- 사업자등록증',
+                  '- 대표자 신분증',
+                  '- 직인 사실 증명서',
+                  '- 법인 계좌 납부 시 예금주 싸인란 "직인도장날인"',
+                  '',
+                  '② 직원(대리인) 방문',
+                  '- 사업자등록증',
+                  '- 재직증명서(직인날인)',
+                  '- 위임장(직인날인)',
+                  '- 직인 사실 증명서',
+                  '- 직원(대리인) 신분증',
+                  '- 법인 계좌 납부 시 예금주 싸인란 "직인도장날인"',
+                  '',
+                  '③ 추가 필요 정보 및 서류(사업자 제출서류 外)',
+                  '- 등기부등본, 이사회결의서',
+                  '- 개통목적(디테일한 사용용도)',
+                  '- 예상 사용기간',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ] }
+            ],
+images: [
+  {
+    src: "./assets/docs/KT1.png?v=2",
+    label: "법인인감증명서 사진본 예시본"
+  },
+  {
+    src: "./assets/docs/KT2.png?v=2",
+    label: "이사회결의서 예시본"
+  }
+]
+          },
+          skylife: {
+            label: '스카이라이프',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■가입불가</span>','개인명의 개통후 ▶ 개인사업자 고객센터 유형변경'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          stagefive: {
+            label: 'STAGE FIVE',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■가입불가</span>','개인명의 개통후 ▶ 개인사업자 유형변경'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          ktpost: {
+            label: 'KT',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■가입불가</span>','개인명의 개통후 ▶ 개인사업자 고객센터 유형변경'] },
+              {
+                type:'법인',
+                lines:[
+                  '<span class="warn">법인 개설 1년 이상 사업자만 가능</span>',
+                  '<span class="warn">(최신설립불가)</span>',
+                  '① 대표자방문 기준',
+                  '- 대표자신분증',
+                  '- 사업자등록증',
+                  '- 법인인감증명서 - 원본스캔 K-note 1부',
+                  '- 법인인감증명서 - 촬영본 1부(워터마크)',
+                  '- 법인계좌 납부시 예금주싸인란 "인감도장날인"',
+                  '',
+                  '② 대리인방문 기준',
+                  '- 대리인신분증',
+                  '- 사업자등록증',
+                  '- 재직증명서 (법인인감날인)',
+                  '- 위임장 (법인인감날인)',
+                  '- 법인인감증명서 - 원본스캔 K-note 1부',
+                  '- 법인인감증명서 - 촬영본 1부(워터마크)',
+                  '- 법인계좌 납부시 예금주싸인란 "인감도장날인"',
+                  '',
+                  '③ 추가 필요 정보 및 서류(사업자 제출서류 外)',
+                  '- 등기부등본, 이사회결의서',
+                  '- 개통목적(디테일한 사용용도)',
+                  '- 예상 사용기간',
+                  '',
+                  '애니팩스 0502-777-0108 발송 필수',
+                  '',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              },
+              {
+                type:'비영리법인',
+                lines:[
+                  '<span class="warn">법인 개설 1년 이상 사업자만 가능</span>',
+                  '<span class="warn">(최신설립불가)</span>',
+                  '① 대표자 방문',
+                  '- 대표자 방문',
+                  '- 사업자등록증',
+                  '- 대표자 신분증',
+                  '- 직원 사실 증명서',
+                  '- 법인 계좌 납부 시 예금주 싸인란 "직인도장날인"',
+                  '',
+                  '② 직원(대리인) 방문',
+                  '- 사업자등록증',
+                  '- 재직증명서(직인날인)',
+                  '- 위임장(직인날인)',
+                  '- 직원 사실 증명서',
+                  '- 직원(대리인) 신분증',
+                  '- 법인 계좌 납부 시 예금주 싸인란 "직인도장날인"',
+                  '',
+                  '③ 추가 필요 정보 및 서류(사업자 제출서류 外)',
+                  '- 등기부등본, 이사회결의서',
+                  '- 개통목적(디테일한 사용용도)',
+                  '- 예상 사용기간',
+                  '',
+                  '애니팩스 0502-777-0108 발송 필수',
+                  '',
+                  '<span class="warn">※60일이내 발급※</span>'
+                ]
+              }
+            ],
+images: [
+  {
+    src: "./assets/docs/KT1.png?v=2",
+    label: "법인인감증명서 사진본 예시본"
+  },
+  {
+    src: "./assets/docs/KT2.png?v=2",
+    label: "이사회결의서 예시본"
+  }]
+          },
+          codemobile: {
+            label: '코드모바일',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          }
+        }
+      },
+
+      sk: {
+        label: 'SK',
+        brands: {
+          '7mobile': {
+            label: '7mobile',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■ 가입불가</span>','개인명의 개통후 ▶ 사업자등록증 사본 첨부 후 변경 가능'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          'freeT-sk': {
+            label: '프리티',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■ 가입불가</span>','개인명의 개통후 ▶ 개인사업자 고객센터 유형변경'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          'stagefive-sk': {
+            label: 'STAGE FIVE',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■ 가입불가</span>','개인명의 개통후 <strong>3개월이후</strong> ▶ 개인사업자 유형변경'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          },
+          freeT_sk_prepaid: {
+            label: '프리티SK선불',
+            rows: [
+              { type:'개인사업자', lines:['<span class="warn">■ 가입불가</span>'] },
+              { type:'법인', lines:['<span class="warn">■가입불가</span>'] },
+              { type:'비영리법인', lines:['<span class="warn">■가입불가</span>'] }
+            ],
+            images: []
+          }
+        }
+      }
+    }
+  };
+
+  function getCarrierPack(){
+    return REQUIRED_DOCS_DATA?.[REQUIRED_KIND]?.[currentCarrier] || null;
+  }
+
+  function getBrandPack(){
+    const carrierPack = getCarrierPack();
+    if (!carrierPack) return null;
+    return carrierPack.brands?.[currentBrand] || null;
+  }
+
+  function ensureBrandSelected(){
+    const carrierPack = getCarrierPack();
+    if (!carrierPack) {
+      currentBrand = '';
+      return;
+    }
+    const keys = Object.keys(carrierPack.brands || {});
+    if (!keys.length) {
+      currentBrand = '';
+      return;
+    }
+    if (!carrierPack.brands[currentBrand]) currentBrand = keys[0];
+  }
+
+  function renderBrandTabs(){
+    const carrierPack = getCarrierPack();
+    if (!carrierPack) {
+      brandTabsEl.innerHTML = '';
+      return;
+    }
+    const html = Object.entries(carrierPack.brands || {}).map(([key, item]) => {
+      const active = (key === currentBrand) ? 'active' : '';
+      return `<button type="button" class="required-chip ${active}" data-required-brand="${key}">${item.label}</button>`;
+    }).join('');
+    brandTabsEl.innerHTML = html;
+  }
+
+  function renderBoard(){
+    const brandPack = getBrandPack();
+    if (!brandPack) {
+      boardEl.innerHTML = `<div class="required-empty">등록된 구비서류가 없습니다.</div>`;
+      titleEl.textContent = '구비서류';
+      return;
+    }
+
+    const rows = Array.isArray(brandPack.rows) ? brandPack.rows : [];
+    const rowHTML = rows.map(row => `
+      <tr>
+        <th scope="row">${row.type || ''}</th>
+        <td>
+          <div class="required-doc-lines">
+            ${(row.lines || []).map(line => `<div>${line}</div>`).join('')}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+
+    const images = Array.isArray(brandPack.images) ? brandPack.images : [];
+    const imageHTML = images.length
+      ? `
+<div class="required-images">
+  ${images.map(item => {
+    if (typeof item === 'string') {
+      return `<img src="${item}" alt="">`;
+    }
+
+    return `
+      <div class="img-box">
+        <img src="${item.src}" alt="">
+        ${item.label ? `<div class="img-label">${item.label}</div>` : ''}
+      </div>
+    `;
+  }).join('')}
+</div>
+      `
+      : '';
+
+    const kindLabel = REQUIRED_KIND === 'adult'
+      ? '성인'
+      : REQUIRED_KIND === 'teen'
+        ? '청소년'
+        : '법인/개인사업자';
+
+    boardEl.innerHTML = `
+      <div class="required-table-wrap">
+        <table class="required-table">
+          <thead>
+            <tr>
+              <th style="width:170px">가입유형</th>
+              <th>구비서류 항목</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowHTML}
+          </tbody>
+        </table>
+      </div>
+      ${imageHTML}
+    `;
+
+    titleEl.textContent = `${kindLabel} · ${brandPack.label} 구비서류`;
+  }
+
+  function renderAll(){
+    ensureBrandSelected();
+    renderBrandTabs();
+    renderBoard();
+  }
+
+  function openModal(carrierKey, brandKey, kindKey){
+    currentCarrier = carrierKey || 'uplus';
+    if (kindKey) REQUIRED_KIND = kindKey;
+    currentBrand = brandKey || '';
+    kindTabsEl?.querySelectorAll('[data-required-kind-modal]').forEach(x=>{
+      x.classList.toggle('active', x.dataset.requiredKindModal === REQUIRED_KIND);
+    });
+    renderAll();
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden','false');
+  }
+
+  window.openRequiredDocsModal = openModal;
+
+  function closeModal(){
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden','true');
+    boardEl.innerHTML = '';
+    brandTabsEl.innerHTML = '';
+  }
+
+  document.querySelectorAll('[data-open-required]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      openModal(btn.dataset.openRequired, '', REQUIRED_KIND);
+    });
+  });
+
+  kindTabsEl?.querySelectorAll('[data-required-kind-modal]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      kindTabsEl.querySelectorAll('[data-required-kind-modal]').forEach(x=>x.classList.remove('active'));
+      btn.classList.add('active');
+      REQUIRED_KIND = btn.dataset.requiredKindModal || 'adult';
+      renderAll();
+    });
+  });
+
+  brandTabsEl.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-required-brand]');
+    if (!btn) return;
+    currentBrand = btn.dataset.requiredBrand;
+    renderAll();
+  });
+
+  closeBtn?.addEventListener('click', closeModal);
+
+  modal?.addEventListener('click', (e)=>{
+    const t = e.target;
+    if (t && t.dataset && t.dataset.close === '1') closeModal();
+  });
+
+  window.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && modal.getAttribute('aria-hidden') === 'false') closeModal();
+  });
+})();
+
+/* 유심/동판 양식 팝업 + 복사 */
+(function(){
+  const modal = document.getElementById('formModal');
+  const title = document.getElementById('formTitle');
+  const ta    = document.getElementById('formTextarea');
+  const toast = document.getElementById('formToast');
+  const xBtn  = document.getElementById('formCloseX');
+  const copyBtn = document.getElementById('formCopyBtn');
+  const selBtn  = document.getElementById('formSelectAll');
+
+  const FORMS = {
+    usim: {
+      title: '유심 개통 양식',
+      text:
+`■ 개통채널 : 중고KT
+□ 고객명 :
+□ 생년월일 :
+□ 개통번호 :
+□ 신규/번호이동 :
+□ 기존통신사 :
+□ 희망번호 뒷4자리 :
+□ 요금제 :
+□ 유심모델명/일련번호 :
+□ 유심비용 : 비구매/후납
+□ 복지할인 :
+□ 가족/친구 결합 여부 :
+□ 선택약정 :
+□ 판매점 연락처 :
+
+※ 개통 양식 기준으로 진행됩니다. 참고 부탁드립니다. ※`
+ 
+    },
+    dongpan: {
+      title: '동판 인터넷 접수 양식',
+      text:
+`♣동판 인터넷 접수♣
+
+- 모바일 개통여부 :
+- 결합 통신사(엠모바일/KT) :
+- 결합요청 번호 :
+
+
+고객정보
+- 고객명 :
+- 설치주소(층/동/호 필수) :
+- 부재 시 비상연락처  :
+- 납부계좌(타인불가) :
+- 판매점 연락처 :
+- ★고객 이메일 : 
+
+홈 상품정보
+- 통신사  : KT
+- 상품명 :
+- WIFI 설치 여부(O/X) :
+- 월요금 :
+
+↓↓원스톱 진행 시 작성↓↓
+
+[원스톱양식]
+기존 통신사 : 
+해지할 명의자 이름 : 
+해지할 명의자 생년월일 : 
+해지할 명의자 연락처 : 
+해지할 주소 : 
+해지 회선수 :
+설치 희망일 : 
+해지 희망일 : 
+
+============================
+
+✅구비서류
+내국인- 신분증
+외국인- 외국인 등록증 앞/뒷면
+
+✅사전안내
+접수 전 고객 본인확인차 인증번호 확인 필요하며, 원스톱 진행 시에는 접수 후 원스톱 URL 인증절차까지 진행되어야 최종 접수완료됩니다.`
+    },
+
+  lgusim_foreign: {
+    title: 'LG 외국인등록증 전용 유심 개통 양식',
+    text:
+`■ LG 접수양식
+판매점명: MCC
+✔접수채널 : 온라인
+✔개통유형: mnp / 신규
+✔고객명:  
+✔희망번호:  
+✔이전통신사: 
+✔등록증번호 : 
+✔유심모델/번호 : 
+✔유심비 선납/후납 :
+✔요금제 : 
+✔프로모션할인금액: 
+✔비자: 
+✔발급일자: 
+✔은행명: 
+✔계좌번호:
+✔주소:
+✔약정 : 12개월 선택약정
+
+<span class="warn"><strong>외국인등록증 앞/뒷면 발송 필수</strong></span>`
+  },
+
+  skusim_local: {
+    title: 'SK 내국인, 외국인등록증 전용 개통 양식',
+    text:
+`★1703코드 / 개통요청 양식★
+★요청사항 : 
+1. 개통유형(전사업자) :
+2. 고객명 :
+3. 주민번호(13자리) :
+4. 개통번호 : 010-
+5. 유심일련번호/선후납선택 :
+6. 요금제/★혜택필수:
+7. 선약12 or 24 : 선약12
+8. 부가서비스 : 
+9. 메모 (1안/2안/4안/7안) : (외국인만 해당)
+9. 비고(복지):
+10. 판매자 성함/연락처 :
+
+*ESIM 개통 시 단말정보
+Model: 
+IMEI : 
+IMEI2: 
+EID : 
+<span class="warn"><strong>외국인등록증 앞/뒷면 발송 <br>유심 선/후납 미기재시 후납진행 </strong></span>
+`,
+  },
+
+  skusim_foreign: {
+    title: 'SK 외국인 전용 유심 개통 양식',
+    text:
+`★1508코드 / 개통요청 양식★
+★요청사항 : 
+1. 개통유형(전사업자) : 
+2. 고객명 :
+3. 외국인등록번호 : 
+4. 개통번호 : 010-
+5. 유심일련번호/선후납선택 : 
+6. 요금제 : 
+7. 선약12 or 24 : 선약12
+8. 부가서비스 : 국제전화 발신금지
+9. 메모 (1안/2안) : 
+
+*ESIM 개통 시 단말정보
+Model: 
+IMEI : 
+IMEI2: 
+EID : 
+
+1. 신청서 작성
+2. 신청서 출력 하여 자필 서명
+3. 개통방에 요청서 접수(카톡접수)
+<span class="warn"><strong>★필요 서류
+☆여권 개통 : 여권 사본 + 신청서(URL 접수 후 출력) +카톡접수
+  E7,E9,D2,D4비자만 개통가능
+*여권 3개월 이내 ID카드로 명변 필수
+ 명변 미진행시(전액 환수)*</strong></span>`
+  }
+};
+
+  function showToast(){
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'), 1200);
+  }
+
+function openForm(key){
+  const f = FORMS[key];
+  if (!f) return;
+  title.textContent = f.title;
+  ta.innerHTML = f.text;
+  modal.setAttribute('aria-hidden','false');
+  ta.scrollTop = 0;
+}
+
+function closeForm(){
+  modal.setAttribute('aria-hidden','true');
+  ta.innerHTML = '';
+  toast.classList.remove('show');
+}
+
+async function copyText(text){
+  try{
+    await navigator.clipboard.writeText(text);
+    showToast();
+    return;
+  }catch(_){}
+
+  try{
+    const range = document.createRange();
+    range.selectNodeContents(ta);
+
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    document.execCommand('copy');
+    sel.removeAllRanges();
+    showToast();
+  }catch(_){}
+}
+
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-form]');
+    if (btn){
+      e.preventDefault();
+      e.stopPropagation();
+      openForm(btn.getAttribute('data-form'));
+      return;
+    }
+    const t = e.target;
+    if (t && t.dataset && t.dataset.formClose === '1') closeForm();
+  });
+
+  document.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && modal.getAttribute('aria-hidden') === 'false') closeForm();
+    const active = document.activeElement;
+    if ((e.key === 'Enter' || e.key === ' ') && active && active.matches && active.matches('[data-form]')){
+      e.preventDefault();
+      openForm(active.getAttribute('data-form'));
+    }
+  });
+
+  xBtn?.addEventListener('click', closeForm);
+selBtn?.addEventListener('click', ()=>{
+  const range = document.createRange();
+  range.selectNodeContents(ta);
+
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+});
+  copyBtn?.addEventListener('click', ()=> copyText(ta.innerText));
+})();
+/* =========================
+   ✅ 인쇄 직전 검정화면 방지: 모달/오버레이 강제 닫기
+========================= */
+(function(){
+  function forceCloseOverlaysForPrint(){
+    const ids = ['docsModal','comingSoonModal','formModal'];
+    ids.forEach(id=>{
+      const el = document.getElementById(id);
+      if (el) el.setAttribute('aria-hidden','true');
+    });
+  }
+
+  window.addEventListener('beforeprint', forceCloseOverlaysForPrint);
+
+  document.addEventListener('click', (e)=>{
+    if (e.target && e.target.id === 'btnPrint'){
+      forceCloseOverlaysForPrint();
+      window.print();
+    }
+  });
+})();
+
+const CUSTOMER_CENTER_BY_NET = {
+  sk: {
+    title: 'SK망 고객센터',
+    items: [
+      { name: '정규SK/SK브로드밴드', number: '106' },
+      { name: '프리티SK', number: '1661-2207' },
+      { name: '스테이지파이브SK', number: '1668-5730' },
+      { name: '텔링크', number: '1599-0999' },
+    ]
+  },
+  kt: {
+    title: 'KT망 고객센터',
+    items: [
+      { name: '정규KT', number: '100' },
+      { name: '프리티KT', number: '1577-4551' },
+      { name: '스테이지파이브KT', number: '1668-5730' },
+      { name: '엠모바일', number: '1899-5000' },
+      { name: '헬로KT', number: '1855-1144' },
+      { name: '스카이라이프 KT', number: '1588-3002' },
+      { name: '스노우맨', number: '1688-9300' },
+      { name: '코드KT 선불', number: '1899-6120' },
+      { name: '코드KT 후불', number: '1588-6220' }
+    ]
+  },
+  lg: {
+    title: 'LG망 고객센터',
+    items: [
+      { name: '정규LG', number: '101,1544-0010' },
+      { name: '프리티LG', number: '1588-3615' },
+      { name: '스마텔LG', number: '1566-0212' },
+      { name: '미디어', number: '1644-5353' },
+      { name: '헬로LG', number: '1855-1140' },
+      { name: '코드LG 선후불', number: '1833-6886' },
+      { name: '밸류컴LG', number: '1668-3016' }
+    ]
+  }
+};
+
+function initCustomerCenter(){
+  const csToggle = document.getElementById('csToggle');
+  const csMenu = document.getElementById('csMenu');
+  const csInfo = document.getElementById('csInfo');
+
+  if (!csToggle || !csMenu || !csInfo) return;
+
+  function renderCustomerCenterByNet(net){
+    const data = CUSTOMER_CENTER_BY_NET[net];
+    if (!data) return;
+
+    csInfo.innerHTML = `
+      <div class="cs-info-title">${data.title}</div>
+      ${data.items.map(item => `
+        <div class="cs-info-row">
+          <div class="cs-info-name">${item.name}</div>
+          <div class="cs-info-num">${item.number}</div>
+        </div>
+      `).join('')}
+    `;
+
+    csInfo.classList.remove('hidden');
+  }
+
+  csToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    csMenu.classList.toggle('hidden');
+    if (!csMenu.classList.contains('hidden')) {
+      csInfo.classList.add('hidden');
+    }
+  });
+
+  csMenu.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-net]');
+    if (!btn) return;
+
+    const net = btn.dataset.net;
+    renderCustomerCenterByNet(net);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.cs-box')) {
+      csMenu.classList.add('hidden');
+      csInfo.classList.add('hidden');
+    }
+  });
+}
+
+/* =========================
+   ✅ eSIM/공지 안내 팝업
+========================= */
+(function(){
+  const modal = document.getElementById('guideModal');
+  const title = document.getElementById('guideTitle');
+  const body = document.getElementById('guideBody');
+  const closeBtn = document.getElementById('guideClose');
+
+  function closeGuide(){
+    if (!modal) return;
+    modal.setAttribute('aria-hidden','true');
+    if (body) body.innerHTML = '';
+  }
+
+  function openGuide(key){
+    const meta = SK_GUIDE_META[key] || CARD_META[key];
+    if (!modal || !title || !body || !meta) return;
+    title.innerHTML = meta.guideTitle || `${key} 안내`;
+
+    const steps = Array.isArray(meta.guideSteps) ? meta.guideSteps : [];
+    const listHtml = steps.map(step => {
+      if (step && typeof step === 'object') {
+        const label = escHtml(step.label || step.text || '');
+        const url = escHtml(step.url || '');
+        return `<li>${url ? `<a href="${url}" target="_blank" rel="noopener">${label}</a>` : label}</li>`;
+      }
+      return `<li>${step}</li>`;
+    }).join('');
+
+    body.innerHTML = `
+      <ol class="guide-list">${listHtml}</ol>
+      <div class="guide-note">접수 방식 확인하시어 순차대로 진행해주세요</div>
+    `;
+    modal.setAttribute('aria-hidden','false');
+  }
+
+  document.addEventListener('click', (e)=>{
+    const guideBtn = e.target.closest('.guide-btn');
+    if (guideBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      openGuide(guideBtn.dataset.guideKey || '');
+      return;
+    }
+
+    if (e.target && e.target.dataset && e.target.dataset.guideClose === '1') closeGuide();
+  });
+
+  closeBtn?.addEventListener('click', closeGuide);
+
+  document.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && modal?.getAttribute('aria-hidden') === 'false') closeGuide();
+  });
+})();
+
+
+/* =========================
+   ✅ 가입서류 성인/청소년 선택 모달 동작
+========================= */
+(function(){
+  const modal = document.getElementById('joinChoiceModal');
+  const closeBtn = document.getElementById('joinChoiceClose');
+  const logoEl = document.getElementById('joinChoiceLogo');
+
+  function refreshLogo(age){
+    if (!__JOIN_CHOICE_CARD__ || !logoEl) return;
+    const nm = (__JOIN_CHOICE_CARD__.getAttribute('data-name') || '').replace(/\s+/g,' ').trim();
+    const logo = getJoinCardLogo(__JOIN_CHOICE_CARD__, age);
+    logoEl.innerHTML = logo ? `<img src="${escHtml(logo)}" alt="${escHtml(nm)} 로고">` : '';
+  }
+
+  document.addEventListener('click', (e)=>{
+    const ageBtn = e.target.closest('[data-join-age-choice]');
+    if (ageBtn && __JOIN_CHOICE_CARD__) {
+      const age = ageBtn.dataset.joinAgeChoice === 'teen' ? 'teen' : 'adult';
+      __JOIN_CHOICE_LAST_AGE__ = age;
+      refreshLogo(age);
+      const url = buildCardDestination(__JOIN_CHOICE_CARD__, age);
+      if (url && url !== '#') location.href = url;
+      return;
+    }
+
+    if (e.target && e.target.dataset && e.target.dataset.joinChoiceClose === '1') {
+      closeJoinChoiceModal();
+      return;
+    }
+  });
+
+  document.getElementById('joinChoiceRequired')?.addEventListener('click', ()=>{
+    if (!__JOIN_CHOICE_CARD__) return;
+    const info = getRequiredInfoFromCard(__JOIN_CHOICE_CARD__, __JOIN_CHOICE_LAST_AGE__ || 'adult');
+    if (!info || typeof window.openRequiredDocsModal !== 'function') return;
+    closeJoinChoiceModal();
+    window.openRequiredDocsModal(info.carrier, info.brand, info.kind);
+  });
+
+  document.getElementById('joinChoiceGuide')?.addEventListener('click', ()=>{
+    if (!__JOIN_CHOICE_CARD__) return;
+    const nm = (__JOIN_CHOICE_CARD__.getAttribute('data-name') || '').replace(/\s+/g,' ').trim();
+    const btn = document.querySelector(`.guide-btn[data-guide-key="${CSS.escape(nm)}"]`);
+    closeJoinChoiceModal();
+    if (btn) btn.click();
+  });
+
+  closeBtn?.addEventListener('click', closeJoinChoiceModal);
+  document.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && modal?.getAttribute('aria-hidden') === 'false') closeJoinChoiceModal();
+  });
+})();
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  wireKindTabs('joinTabs','joinTabsList',JOIN_DATA);
+
+  // ✅ 선불 섹션 렌더
+  renderPrepaid(document.getElementById('prepaidList'));
+
+  wireTabs('changeTabs','changeTabsList',CHANGE_CARDS);
+  wireTabs('cancelTabs','cancelTabsList',CANCEL_CARDS);
+  updateDeviceLogosByAge();
+    initCustomerCenter();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,147 @@
+{
+  "plans": [
+    {
+      "id": "lte_ansim_10gb",
+      "name": "LTE 스마트 안심 10GB",
+      "voice": "기본제공",
+      "sms": "30m",
+      "data": "10gb+400kbps",
+      "baseFee": 34900,
+      "contractDiscount": 0,
+      "totalFee": 34900,
+      "discountFee": 0
+    },
+    {
+      "id": "lte_ansim_7gb",
+      "name": "LTE 스마트 안심 7GB",
+      "voice": "기본제공",
+      "sms": "30m",
+      "data": "7gb+400kbps",
+      "baseFee": 29900,
+      "contractDiscount": 0,
+      "totalFee": 29900,
+      "discountFee": 0
+    },
+    {
+      "id": "lte_ansim_4p5gb",
+      "name": "LTE 스마트 안심 4.5GB",
+      "voice": "기본제공",
+      "sms": "30m",
+      "data": "4p5gb+400kbps",
+      "baseFee": 26900,
+      "contractDiscount": 0,
+      "totalFee": 26900,
+      "discountFee": 0
+    },
+    {
+      "id": "lte_ansim_2p5gb",
+      "name": "LTE 스마트 안심 2.5GB",
+      "voice": "기본제공",
+      "sms": "30m",
+      "data": "2p5gb+400kbps",
+      "baseFee": 18900,
+      "contractDiscount": 0,
+      "totalFee": 18900,
+      "discountFee": 0
+    },
+    {
+      "id": "m_alttuel_ansim_danmal_tonghwa_mamkkeot_2gb",
+      "name": "M 알뜰 안심 단말 통화맘껏 2GB",
+      "voice": "기본제공",
+      "sms": "30m",
+      "data": "2gb+400kbps",
+      "baseFee": 28000,
+      "contractDiscount": 0,
+      "totalFee": 28000,
+      "discountFee": 0
+    },
+    {
+      "id": "m_alttuel_danmal_tonghwa_mamkkeot_2gb",
+      "name": "M 알뜰 단말 통화맘껏 2GB",
+      "voice": "기본제공",
+      "sms": "100건",
+      "data": "2gb",
+      "baseFee": 25000,
+      "contractDiscount": 0,
+      "totalFee": 25000,
+      "discountFee": 0
+    },
+    {
+      "id": "m_alttuel_danmal_300m_30mb",
+      "name": "M 알뜰 단말 300분 30MB",
+      "voice": "300m",
+      "sms": "30건",
+      "data": "30mb",
+      "baseFee": 16000,
+      "contractDiscount": 0,
+      "totalFee": 16000,
+      "discountFee": 0
+    },
+    {
+      "id": "m_alttuel_danmal_tonghwa_mamkkeot_30mb",
+      "name": "M 알뜰 단말 통화맘껏 30MB",
+      "voice": "기본제공",
+      "sms": "기본제공",
+      "data": "30mb",
+      "baseFee": 22000,
+      "contractDiscount": 0,
+      "totalFee": 22000,
+      "discountFee": 0
+    },
+    {
+      "id": "senior_save_100m_500mb",
+      "name": "시니어 세이브 100분/500MB",
+      "voice": "100m",
+      "sms": "100건",
+      "data": "500mb",
+      "baseFee": 18000,
+      "contractDiscount": 0,
+      "totalFee": 18000,
+      "discountFee": 0
+    },
+    {
+      "id": "m_alttuel_danmal_200m_30mb",
+      "name": "M 알뜰 단말 200분 30MB",
+      "voice": "200m",
+      "sms": "100건",
+      "data": "30mb",
+      "baseFee": 14000,
+      "contractDiscount": 0,
+      "totalFee": 14000,
+      "discountFee": 0
+    },
+    {
+      "id": "m_alttuel_danmal_100m_30mb",
+      "name": "M 알뜰 단말 100분 30MB",
+      "voice": "100m",
+      "sms": "30건",
+      "data": "30mb",
+      "baseFee": 11900,
+      "contractDiscount": 0,
+      "totalFee": 11900,
+      "discountFee": 0
+    },
+    {
+      "id": "m_alttuel_danmal_30m_30mb",
+      "name": "M 알뜰 단말 30분 30MB",
+      "voice": "30m",
+      "sms": "30건",
+      "data": "30mb",
+      "baseFee": 9000,
+      "contractDiscount": 0,
+      "totalFee": 9000,
+      "discountFee": 0
+    },
+    {
+      "id": "bokji_50m_0mb",
+      "name": "복지 50분/0MB",
+      "voice": "50m",
+      "sms": "-",
+      "data": "0mb",
+      "baseFee": 8800,
+      "contractDiscount": 0,
+      "totalFee": 8800,
+      "discountFee": 0
+    }
+  ]
+}

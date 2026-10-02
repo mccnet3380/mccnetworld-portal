@@ -4,6 +4,7 @@ import { createServer } from "http";
 import compression from "compression";
 import cors from "cors";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -19,6 +20,7 @@ import trainingRoutes from "./routes/training";
 import sheetViewerRoutes from "./routes/sheet-viewer";
 import activationAuditRoutes from "./routes/activation-audit";
 import settlementSheetsImportRoutes from "./routes/settlement-sheets-import";
+import typingVersionsRoutes from "./routes/typing-versions";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -188,6 +190,11 @@ app.options('*', (req, res, next) => {
 });
 
 app.use(compression());
+// MCC_TYPING_VERSION_POC_EXACT_BEHAVIOR_AUDIT_1: /typing-static/* 네비게이션(일반 브라우저
+// 이동 — Authorization 헤더를 붙일 수 없음) 전용 HttpOnly 쿠키를 읽기 위해 추가.
+// 패키지는 이미 설치되어 있었지만(package.json) 지금까지 어디서도 app.use되지 않아 쓰이지
+// 않고 있었다 — 기존 동작에 영향 없는 순수 추가. 다른 라우트는 req.cookies를 쓰지 않는다.
+app.use(cookieParser());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -260,6 +267,11 @@ app.use(activationAuditRoutes);
 
 // 정산 결과 관리 — Google Sheets(개통처리부) 정산 import Preview/Import — admin 전용
 app.use(settlementSheetsImportRoutes);
+
+// MCC_TYPING_VERSION_MANAGER_CURRENT_PREVIOUS_DRAFT_INTEGRATION_1: 타이핑(별도
+// MCCNETWORLD/public 프로젝트) CURRENT/PREVIOUS/DRAFT 버전관리 + 정적 서빙(/typing-static/*).
+// 열람: admin/sales_manager/내부 user(dealer 제외). 쓰기(버전 생성/저장/운영적용): admin 전용.
+app.use(typingVersionsRoutes);
 
 app.use(router);
 

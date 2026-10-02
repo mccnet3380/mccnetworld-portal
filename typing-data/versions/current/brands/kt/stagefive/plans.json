@@ -1,0 +1,37 @@
+{
+  "Z mini + 밀리의서재": {
+    "base": 22000,
+    "discount": 2200,
+    "final": 19800,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "핀다이렉트Z Mini(10GB)": {
+    "base": 33000,
+    "discount": 14300,
+    "final": 18700,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "Z + 밀리의서재": {
+    "base": 39600,
+    "discount": 1320,
+    "final": 38280,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "핀다이렉트Z Max(100GB)": {
+    "base": 42900,
+    "discount": 4400,
+    "final": 38500,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+    "핀다이렉트 Speed 20GB/200분": {
+    "base": 38500,
+    "discount": 18600,
+    "final": 19900,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  }
+}

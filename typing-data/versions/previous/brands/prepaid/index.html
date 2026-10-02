@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>선불</title>
+
+<style>
+:root{
+  --bg:#f6f8fb; --card:#fff; --line:#e5e9f2; --fg:#0b1220;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:15px/1.6 system-ui,"Noto Sans KR",sans-serif;
+}
+.wrap{max-width:1100px;margin:0 auto;padding:18px}
+.panel{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:0 10px 30px rgba(16,24,40,.04);
+}
+
+/* 헤더 */
+.hd{
+  position:sticky; top:0; z-index:10;
+  display:flex; align-items:center; gap:10px;
+  padding:12px 14px; background:#fff;
+  border-bottom:1px solid var(--line);
+}
+.hd strong{font-weight:900}
+.sub{margin-left:auto;display:flex;gap:8px}
+.btn{
+  padding:8px 12px; border-radius:10px;
+  border:1px solid var(--line); background:#fff;
+  cursor:pointer; font-weight:800; font-size:12px;
+}
+.btn.primary{background:#111827;color:#fff;border-color:#111827}
+
+/* 본문 */
+.content{padding:14px}
+.note{margin:0 0 10px;font-size:12px;color:#64748b;font-weight:800}
+.docs{display:flex;flex-direction:column;gap:12px}
+.doc{
+  border:1px solid var(--line);
+  border-radius:14px;
+  overflow:hidden;
+  background:#fff;
+}
+.doc img{
+  width:100%;
+  height:auto;
+  display:block;
+  background:#fff;
+}
+
+/* 에러 */
+.err{padding:14px;color:#b91c1c;font-weight:900;white-space:pre-line}
+
+/* 워터마크 */
+.wm{position:relative;overflow:hidden}
+.wm::after{
+  content:""; position:absolute; inset:0;
+  background-image:url("../../assets/brand/mcc-watermark.png");
+  background-repeat:no-repeat;
+  background-position:right 18px bottom 14px;
+  background-size:180px auto;
+  opacity:0.10;
+  pointer-events:none;
+  z-index:0;
+}
+.wm>*{position:relative;z-index:1}
+
+/* =========================
+   PRINT (빈 페이지 방지 최종)
+========================= */
+@page{ size:A4; margin:0; }
+
+@media print{
+  html, body{
+    margin:0 !important;
+    padding:0 !important;
+    background:#fff !important;
+    overflow:visible !important;
+  }
+
+  .wrap{max-width:none;padding:0;margin:0}
+  .panel{
+    border:none !important;
+    box-shadow:none !important;
+    border-radius:0 !important;
+    overflow:visible !important;
+  }
+
+  /* ✅ 인쇄 시 패딩/여백이 overflow를 만들지 않게 제거 */
+  .content{padding:0 !important; margin:0 !important;}
+  .docs{gap:0 !important; margin:0 !important; padding:0 !important;}
+
+  /* 화면용 요소 숨김 */
+  .hd,.sub,.note{display:none !important;}
+
+  /* ✅ 워터마크는 인쇄에서 제거(레이아웃 오차 방지) */
+  .wm::after{display:none !important;}
+
+  /* 문서 박스 */
+  .doc{
+    border:0 !important;
+    border-radius:0 !important;
+    margin:0 !important;
+    padding:0 !important;
+    overflow:visible !important;
+
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* ✅ 두 번째부터 새 페이지 시작 */
+  .doc + .doc{
+    break-before: page;
+    page-break-before: always;
+  }
+
+  /* ✅ 핵심: A4 너비 + 1mm 안전 마진(297mm → 296mm) */
+  .doc img{
+    width:210mm !important;
+    height:auto !important;
+    max-height:296mm !important;
+    object-fit:contain !important;
+    display:block !important;
+  }
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <section class="panel wm">
+    <div class="hd">
+      <strong id="pageTitle">선불</strong>
+      <div class="sub">
+        <button class="btn" type="button" id="btnBack">뒤로</button>
+<button class="btn primary" type="button" id="btnPrint">인쇄</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <p class="note" id="brandNote">서류를 불러오는 중입니다.</p>
+      <div class="docs" id="docs"></div>
+      <div class="err" id="err" style="display:none;"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const BRAND_LABEL = {
+  codemobile:'코드모바일',
+  lgfreeT:'LG프리티',
+  skfreeT:'SK프리티',
+  smatel_lg:'스마텔LG',
+  valuecom:'밸류컴'
+};
+const EXTS = ['jpg','jpeg','png','webp'];
+
+const qs = (name)=> new URLSearchParams(location.search).get(name);
+const setText = (id, txt)=>{ const el=document.getElementById(id); if(el) el.textContent = txt; };
+const showErr = (msg)=>{ const el=document.getElementById('err'); el.style.display='block'; el.textContent=msg; };
+
+async function exists(url){
+  try{
+    const r = await fetch(url, { method:'HEAD', cache:'no-store' });
+    return r.ok;
+  }catch(_){
+    return false;
+  }
+}
+async function findFile(base){
+  for(const ext of EXTS){
+    const u = `${base}.${ext}`;
+    if(await exists(u)) return u;
+  }
+  return null;
+}
+
+async function loadDocs(key){
+  const docs = document.getElementById('docs');
+  docs.innerHTML = '';
+
+  const label = BRAND_LABEL[key] || key;
+  setText('pageTitle', `선불 - ${label}`);
+
+  // 1장
+  const one = await findFile(`./images/${key}`);
+  if(one){
+    setText('brandNote', `${label} 서류 (1장)`);
+    docs.insertAdjacentHTML('beforeend',
+      `<div class="doc"><img src="${one}" alt="${label} 서류" loading="eager"></div>`
+    );
+    return;
+  }
+
+  // 여러 장
+  const found = [];
+  for(let i=1;i<=20;i++){
+    const f = await findFile(`./images/${key}-${i}`);
+    if(!f) break;
+    found.push(f);
+  }
+
+  if(!found.length){
+    setText('brandNote','');
+    showErr(
+`서류 파일을 찾지 못했습니다. (키: ${key})
+
+images 폴더에 아래 중 하나로 존재해야 합니다.
+- ${key}.jpg
+- ${key}-1.jpg, ${key}-2.jpg ...`
+    );
+    return;
+  }
+
+  setText('brandNote', `${label} 서류 (${found.length}장)`);
+  found.forEach(u=>{
+    docs.insertAdjacentHTML('beforeend',
+      `<div class="doc"><img src="${u}" alt="${label} 서류" loading="eager"></div>`
+    );
+  });
+}
+
+document.getElementById('btnBack').onclick = ()=>{
+  if(history.length > 1) history.back();
+  else location.href='../../index.html';
+};
+document.getElementById('btnPrint').onclick = ()=>{
+  setTimeout(()=>window.print(), 400);
+};
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  const key = (qs('brand') || '').trim();
+  if(!key){
+    showErr('brand 파라미터가 없습니다. 예) index.html?brand=valuecom');
+    return;
+  }
+  loadDocs(key);
+});
+</script>
+</body>
+</html>

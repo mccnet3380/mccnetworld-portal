@@ -21,7 +21,8 @@ import {
   FileSearch,
   TrendingUp,
   GraduationCap,
-  FileSpreadsheet
+  FileSpreadsheet,
+  LayoutTemplate
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
@@ -71,6 +72,12 @@ const navigation = [
   // dealer는 dealerAllowedMenus로 계속 제외)이라 바로 아래 배치. 실제 권한 게이트는
   // server/routes/training.ts의 requireTrainingViewer/requireTrainingAdmin.
   { name: '교육자료', href: '/training', icon: GraduationCap },
+  // MCC_TYPING_VERSION_MANAGER_CURRENT_PREVIOUS_DRAFT_INTEGRATION_1: 타이핑 — 별도
+  // MCCNETWORLD/public 프로젝트의 기존 타이핑 사이트를 CURRENT/PREVIOUS/DRAFT로
+  // 버전관리하며 그대로 재사용. LG/KT 검수·교육자료와 동일한 위상(admin/sales_manager/
+  // 내부 worker, dealer는 dealerAllowedMenus로 계속 제외). 실제 게이트는
+  // server/routes/typing-versions.ts의 requireTypingViewer/requireTypingAdmin.
+  { name: '타이핑', href: '/typing', icon: LayoutTemplate },
   // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 개통현황 조회가 개통 후
   // 자동검수 센터로 확장되면서 권한을 admin/내부 middle_manager로 좁혔다(기존: admin/
   // sales_manager/내부 worker 전원). 아래 role별 filter에서 sales_manager/일반 WORKER는

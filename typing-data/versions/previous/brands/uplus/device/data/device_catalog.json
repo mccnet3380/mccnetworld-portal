@@ -1,0 +1,9 @@
+{
+  "devices": [
+    { "id": "omd_sm_a245n", "name": "OMD-SM-A245N (갤럭시A24)","msrp": 396000 },
+    { "id": "at-m140l", "name": "AT-M140L (스타일폴더2)", "msrp": 237600 },
+    { "id": "omd_sm_a226l", "name": "SM-A266L (갤럭시 버디)","msrp": 399300 },
+    { "id": "rf-sm-g973nm", "name": "RF-SM-G973NM (갤럭시 S10 리퍼)","msrp": 352000 },
+    { "id": "rf-sm-n971n", "name": "RF-SM-N971N (갤럭시 노트10 리퍼)","msrp": 484000 }
+  ]
+}

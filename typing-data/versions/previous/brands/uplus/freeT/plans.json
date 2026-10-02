@@ -1,0 +1,44 @@
+{
+  "데이터안심무제한7G+": {
+    "base": 29700,
+    "discount": 3300,
+    "final": 26400,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "FreeT안심10G+1M": {
+    "base": 38500,
+    "discount": 8800,
+    "final": 29700,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "FreeT안심15G+1M": {
+    "base": 40700,
+    "discount": 8800,
+    "final": 31900,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "데이터안심300분15G+": {
+    "base": 46200,
+    "discount":5500,
+    "final": 40700,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "유심프리티데이터중심11G+": {
+    "base": 49390,
+    "discount":5500,
+    "final": 43890,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "데이터팡팡": {
+    "base": 56000,
+    "discount": 6600,
+    "final": 49400,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  }
+}

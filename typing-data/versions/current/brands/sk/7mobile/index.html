@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<script src="../../../app/typing-version-bridge.js" defer></script>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MCCNETWORLD 7mobile</title>
+
+<!-- ✅ GitHub Pages/폴더 배포 호환: 절대경로(/...) 금지 → 상대경로 -->
+<link rel="icon" type="image/png" sizes="16x16"  href="../../../favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32"  href="../../../favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../../../android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="../../../android-chrome-512x512.png">
+<link rel="apple-touch-icon" href="../../../apple-touch-icon.png">
+<link rel="shortcut icon" href="../../../favicon.ico">
+<meta name="theme-color" content="#0c1117"/>
+
+<style>
+  :root{
+    --bg:#0c1117;--fg:#eaf1ff;--card:#121a24;--line:#243347;
+    --pink:#e6007e;--vio:#6a35ff;--danger:#ff3b3b;
+    --zoom:1;
+    --stage-w:210mm;
+    --stage-h:297mm;
+    --phc:#c05;--phbg:#ffe08a66;
+  }
+
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,"Noto Sans KR",sans-serif}
+  .wrap{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;min-height:100vh;padding:12px}
+  html.fill .wrap{grid-template-columns:1fr}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:visible}
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .hd strong{font-weight:800}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid #ffffff1f;background:linear-gradient(90deg,var(--pink),var(--vio));color:#fff;cursor:pointer;text-decoration:none}
+  .btn--ghost{background:#182234;border-color:#2b3a54;color:#d6e4ff}
+  .stack{padding:12px;overflow:auto}
+
+  .paper{position:relative;width:min(1480px,100%);margin:auto;border:1px solid #223049;border-radius:10px;background:#0f1624;height:calc((var(--stage-h)) * var(--zoom));overflow:hidden;}
+  .stage{width:var(--stage-w);height:var(--stage-h);transform-origin:top left;transform:scale(var(--zoom));position:relative;}
+  .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none}
+  .overlay{position:absolute;inset:0}
+
+  .field{position:absolute;transform:none;cursor:move;z-index:2;--fs:14px;}
+  .field.checkbox{transform:translate(-50%,-50%)}
+  .label{position:absolute;top:-16px;left:0;font-size:12px;font-weight:800;text-shadow:0 1px 2px #0009}
+  .field input,.field textarea,.field select{
+    width:100%;background:transparent;border:none;color:var(--fgc,#fff);
+    height:var(--ih,auto);outline:none;padding:0 6px;
+    font:600 var(--fs)/1.2 system-ui;text-align:var(--ta,left);
+  }
+  .field:focus-within{
+    outline: 3px solid #e724ee83;
+    outline-offset: 0px;
+    border-radius: 0px;
+    background: rgba(37,99,235,.03);
+  }
+
+  .field input[type="text"], .field select{
+    line-height: var(--ih, 28px);
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .field .resize-handle{
+    position:absolute; right:-6px; bottom:-6px;
+    width:12px; height:12px; border-radius:3px;
+    cursor:nwse-resize; opacity:0;
+    border:1px solid transparent; background:transparent; box-shadow:none;
+  }
+  .field:hover .resize-handle, .field.sel .resize-handle{
+    opacity:1; border-color:#60a5fa; background:#1d4ed8; box-shadow:0 0 0 1px #0b1120;
+  }
+  html.fill .field .resize-handle{display:none !important;}
+
+  .paper .field select{
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
+    background-image: none !important; padding-right: 8px;
+  }
+
+  .field textarea{
+    white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;
+    overflow:hidden;resize:none !important;scrollbar-width:none;min-height:5px;max-height:none !important;
+  }
+  .field textarea::-webkit-scrollbar{display:none}
+
+  .field [data-locked="1"]{caret-color:transparent}
+  .field [data-locked="1"]::placeholder{color:var(--phc);font-weight:900;background:var(--phbg);padding:0 .25em;border-radius:6px;}
+
+  .field.checkbox input,.field.radio input[type="checkbox"]{
+    appearance:none;-webkit-appearance:none;background:transparent;
+    border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000);
+    position:relative;vertical-align:middle;display:inline-block;box-sizing:border-box;
+  }
+
+  .field.checkbox input{width:var(--cksize,18px);height:var(--cksize,18px);border-radius:2px;}
+  .field.checkbox.ck-tick input:checked::after,
+  .field.checkbox:not(.ck-solid):not(.ck-dot) input:checked::after{
+    content:""; position:absolute; left:3px; top:0px;
+    width:calc(var(--cksize,18px) - 6px);
+    height:calc(var(--cksize,18px) - 6px);
+    border-right:2px solid #000; border-bottom:2px solid #000;
+    transform:rotate(45deg) translateY(-2px);
+  }
+  .field.checkbox.ck-solid input:checked::after{
+    content:""; position:absolute; inset:2px; background:#000; border:none; transform:none;
+  }
+  .field.checkbox.ck-dot input:checked::after{
+    content:""; position:absolute; left:50%; top:50%;
+    width:calc(var(--cksize,18px) * 0.45);
+    height:calc(var(--cksize,18px) * 0.45);
+    background:#000; border-radius:999px; transform:translate(-50%,-50%); border:none;
+  }
+  .field.checkbox .label{top:0;left:24px}
+
+  .field.radio{white-space: normal;}
+  .field.radio > div{
+    display:flex; flex-wrap:wrap; gap: var(--rgap,12px);
+    align-items:center; max-width:100%;
+  }
+  .field.radio .radio-item{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:2px 6px; border-radius:8px;
+    border: var(--rbw,1px) solid var(--rbc, rgba(0,0,0,.25));
+    background: var(--rbg, transparent);
+    flex:0 1 auto; max-width:100%;
+  }
+  .field.radio .radio-item span{
+    display:inline; font-weight:700; color:#000;
+    white-space:normal; word-break:keep-all;
+  }
+  .field.radio.noText .radio-item span{display:none !important;}
+
+  .field.radio input[type="checkbox"]{
+    width:var(--rsize,18px) !important;
+    height:var(--rsize,18px) !important;
+    border-radius:999px !important;
+  }
+  .field.radio.rd-dot input[type="checkbox"]:checked::after{
+    content:""; position:absolute; inset:3px; border-radius:999px; background:#000;
+  }
+  .field.radio.rd-solid input[type="checkbox"]:checked::after{
+    content:""; position:absolute; inset:2px; border-radius:999px; background:#000;
+  }
+  .field.radio.rd-tick input[type="checkbox"]:checked::after{
+    content:""; position:absolute; left:5px; top:2px;
+    width:calc(var(--rsize,18px) - 10px);
+    height:calc(var(--rsize,18px) - 10px);
+    border-right:2px solid #000; border-bottom:2px solid #000;
+    transform:rotate(45deg);
+  }
+
+  .sel{outline:3px solid #00d2ff66;border-radius:8px}
+
+  .group{border:2px solid #2b3a54;border-radius:12px;padding:10px;margin:10px 0 14px;background:#0f1624}
+  .group h4{margin:0 0 8px;font-size:12px;color:#9fb0cc;font-weight:800;letter-spacing:.4px}
+  .row{display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+  .row input,.row select,.row textarea{width:100%;background:#0f1624;border:1px solid #2b3a54;border-radius:10px;color:#dfe9ff;outline:none;padding:8px 10px;font-weight:700}
+  .hint{color:#9fb0cc;font-size:12px}
+  .stack .paper{margin-bottom:56px}
+  .stack{padding-bottom:140px}
+  .pager{display:flex;align-items:center;gap:8px;justify-content:center;margin:6px 0 18px;flex-wrap:wrap}
+  #pageInfo{min-width:84px;text-align:center;font-weight:800}
+
+  .toast{position:fixed;left:0;right:0;bottom:16px;display:none;justify-content:center;z-index:9999}
+  .toast__card{background:#172131;border:1px solid #2b3a54;border-radius:10px;padding:10px 12px;color:#fff;max-width:680px;width:calc(100% - 32px)}
+  .invalid{outline:3px solid var(--danger)!important;background:rgba(255,59,59,.2);border-radius:8px}
+  html.fill .builder{display:none}
+
+  @page{size:A4 portrait;margin:0}
+  #printAll{display:none}
+  .print-value{display:none;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;padding:6px 6px 3px;font:600 var(--fs)/1.2 system-ui}
+
+  @media print{
+    body{background:#fff}
+    .wrap,.builder,.pager,.hint,.hd{display:none !important}
+    #printAll{display:block}
+    .pageWrap{width:210mm;height:297mm;position:relative;overflow:visible;padding:0;box-sizing:border-box;page-break-after:always;}
+    .pageWrap:last-child{page-break-after:auto}
+    #printAll .stage{transform:scale(1)}
+    #printAll .paper{border:none;height:auto}
+    #printAll .stage img{width:100%;height:100%;object-fit:fill}
+    #printAll .overlay{position:absolute;inset:0;overflow:visible !important}
+    #printAll,#printAll *{font-family:system-ui,"Noto Sans KR",sans-serif !important;letter-spacing:0 !important}
+    #printAll .field input,#printAll .field textarea,#printAll .field select{color:#000 !important;background:transparent !important;border-bottom:none !important}
+    #printAll .label{display:none !important}
+    #printAll .field.radio .radio-item span{display:inline !important;color:#000 !important}
+    #printAll .field select{display:none !important}
+    #printAll .field .print-value{display:block !important;color:#000 !important}
+
+    #printAll .field{ min-height: var(--ih, 28px) !important; }
+    #printAll .field textarea{ min-height: 5px !important; }
+
+    .field.checkbox input,.field.radio input[type="checkbox"]{
+      appearance:none !important; -webkit-appearance:none !important;
+      background:transparent !important;
+      border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000) !important;
+      position:relative !important;
+      vertical-align:middle;
+    }
+  }
+
+  .field.hasBorder input[type="text"],.field.hasBorder textarea{
+    border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;
+    border-radius:8px;background:transparent;padding:6px 8px;
+  }
+
+  .btn-back{
+    min-width: 140px;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 6px 14px;
+  }
+</style>
+
+<script>
+/* =========================
+   ✅ 7mobile(텔링크) - 변경/해지 전용
+   - doc=change/cancel만 처리
+========================= */
+const QS  = new URLSearchParams(location.search);
+let DOC = (QS.get('doc') || '').toLowerCase();   // cancel/change
+const MODE = (QS.get('mode') || '').toLowerCase();
+
+if (!DOC) DOC = 'change';
+if (DOC !== 'change' && DOC !== 'cancel') DOC = 'change';
+
+const FILL = (MODE === 'fill');
+if (FILL) document.documentElement.classList.add('fill');
+</script>
+</head>
+
+<body>
+<div class="wrap">
+  <section class="panel">
+    <div class="hd">
+      <strong>MCC 7mobile 서류 (해지/변경)</strong>
+      
+      <div style="display:flex; gap:8px; align-items:center">
+        <!-- ✅ “서류 선택 화면” : GitHub Pages / 로컬 둘 다 안전하게 -->
+        <a href="#" class="btn btn--ghost btn-back" id="backToHub">서류 선택 화면</a>
+
+        <div class="builder">
+          <button class="btn--ghost btn" id="enableWrapAll">모든 텍스트 자동 줄바꿈 켜기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="paper" id="paper">
+        <div class="stage" id="stage">
+          <img id="bg" src="" alt="">
+          <div class="overlay" id="overlay"></div>
+        </div>
+      </div>
+
+      <div class="pager">
+        <button class="btn--ghost btn" id="prev">◀ 이전</button>
+        <div id="pageInfo">1 / 1</div>
+        <button class="btn--ghost btn" id="next">다음 ▶</button>
+        <button class="btn" id="btnPdf">PDF 생성OR인쇄</button>
+      </div>
+      <p class="hint" style="text-align:center">필드를 클릭해 드래그로 이동. 입력은 컨트롤을 클릭 후 타이핑.</p>
+    </div>
+  </section>
+
+  <section class="panel builder">
+    <div class="hd">
+      <strong>기본 도구</strong>
+      <div>
+        <button class="btn--ghost btn" id="reload">설계 다시읽기</button>
+        <button class="btn--ghost btn" id="resetValues">값 초기화</button>
+        <button class="btn" id="saveJson">설계 저장(JSON)</button>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="group">
+        <h4>서류 선택</h4>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a class="btn btn--ghost" href="./index.html?doc=change">변경</a>
+          <a class="btn btn--ghost" href="./index.html?doc=cancel">해지</a>
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>안내</h4>
+        <div class="hint">
+          현재 폴더 구조 기준으로<br>
+          - images/cancel-1.jpg<br>
+          - images/change-1.jpg, images/change-2.jpg<br>
+          - overlay-design.cancel.json / overlay-design.change.json<br>
+          만 사용하도록 고정되어 있습니다.
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="printAll"></div>
+
+<script>
+/* =========================
+   ✅ 404 방지: “서류 선택 화면” 링크를 환경별로 자동 설정
+   - GitHub Pages(Project Pages): /mccnetworld/index.html
+   - 로컬/개발서버: 현재 위치 기준 ../../../index.html
+========================= */
+(function(){
+  const a = document.getElementById('backToHub');
+  if(!a) return;
+
+  const host = location.hostname;
+  const isGithub = host.endsWith('github.io');
+
+  a.href = isGithub
+    ? (location.origin + '/mccnetworld/index.html')
+    : (new URL('../../../index.html', location.href).href);
+})();
+
+/* =========================
+   ✅ 핵심 동작 로직 (cancel/change 전용)
+========================= */
+const valuesById = Object.create(null);
+const elById = Object.create(null);
+
+let selected=-1;
+let pages=[{bg:'',fields:[]}], pageIndex=0;
+
+const paper   = document.getElementById('paper');
+const stage   = document.getElementById('stage');
+const overlay = document.getElementById('overlay');
+const bg      = document.getElementById('bg');
+const pageInfo= document.getElementById('pageInfo');
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const cur=()=>pages[pageIndex];
+
+function setValueById(id, value) {
+  if (!id) return;
+  valuesById[id] = (value ?? "");
+  const el = elById[id];
+  if (!el) return;
+  if (el.type === 'checkbox') el.checked = !!value;
+  else el.value = valuesById[id];
+}
+
+function applyZoom(){
+  stage.style.transform='scale(1)';
+  const stageRect = stage.getBoundingClientRect();
+  const targetW = paper.clientWidth;
+  let z = targetW / Math.max(stageRect.width,1);
+  z = Math.max(0.4, Math.min(2, z));
+  document.documentElement.style.setProperty('--zoom', z);
+  stage.style.transform = '';
+  paper.style.height = (stage.offsetHeight * z) + 'px';
+}
+window.addEventListener('resize', applyZoom);
+
+function seedByDoc(){
+  if (DOC === 'cancel') {
+    pages = [{ bg: 'images/cancel-1.jpg', fields: [] }];
+    return;
+  }
+  pages = [
+    { bg: 'images/change-1.jpg', fields: [] },
+    { bg: 'images/change-2.jpg', fields: [] },
+  ];
+}
+
+function buildDesignUrl(){
+  if (DOC === 'cancel') return './overlay-design.cancel.json?v=' + Date.now();
+  return './overlay-design.change.json?v=' + Date.now();
+}
+
+function blockTyping(el){
+  const prevent = e=>{ if(e.key !== 'Tab') e.preventDefault(); };
+  el.addEventListener('keydown', prevent);
+  el.addEventListener('beforeinput', e=>e.preventDefault());
+  el.addEventListener('paste', e=>e.preventDefault());
+}
+
+function render(){
+  Object.keys(elById).forEach(k => delete elById[k]);
+
+  const p = cur();
+  bg.src = p.bg || '';
+  overlay.innerHTML = '';
+
+  (p.fields || []).forEach((f, i) => {
+    const w = document.createElement('div');
+    w.className = 'field ' + (f.type === 'checkbox' ? 'checkbox ' : '') + (i === selected ? ' sel' : '');
+    w.style.left  = `${f.x}%`;
+    w.style.top   = `${f.y}%`;
+    w.style.width = `${(f.w ?? 24)}%`;
+    if (f.fontSize) w.style.setProperty('--fs', f.fontSize + 'px');
+    if (f.inputHeight) w.style.setProperty('--ih', f.inputHeight + 'px');
+    w.dataset.i = i;
+    if (f.id) w.dataset.id = f.id;
+
+    const lab = document.createElement('div');
+    lab.className = 'label';
+    lab.textContent = f.label || '';
+    w.appendChild(lab);
+
+    let ctrl;
+
+    if (f.type === 'textarea') {
+      ctrl = document.createElement('textarea');
+      ctrl.value = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      f.value = ctrl.value;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.placeholder) ctrl.placeholder = f.placeholder;
+      if (f.locked) { ctrl.readOnly = true; ctrl.dataset.locked='1'; blockTyping(ctrl); }
+
+      ctrl.oninput = () => {
+        if (f.locked) return;
+        f.value = ctrl.value;
+        setValueById(f.id, ctrl.value);
+      };
+    } else if (f.type === 'checkbox') {
+      ctrl = document.createElement('input');
+      ctrl.type = 'checkbox';
+      ctrl.checked = !!(f.id ? (valuesById[f.id] ?? f.value ?? false) : (f.value ?? false));
+      f.value = ctrl.checked;
+      if (f.id) elById[f.id] = ctrl;
+
+      const style = (f.checkStyle || 'tick');
+      w.classList.remove('ck-tick','ck-solid','ck-dot');
+      w.classList.add('ck-' + style);
+
+      ctrl.onchange = () => {
+        f.value = ctrl.checked;
+        setValueById(f.id, ctrl.checked);
+      };
+      lab.style.top='0'; lab.style.left='24px';
+    } else {
+      ctrl = document.createElement('input');
+      ctrl.type = 'text';
+      ctrl.value = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      f.value = ctrl.value;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.placeholder) ctrl.placeholder = f.placeholder;
+      if (f.locked) { ctrl.readOnly = true; ctrl.dataset.locked='1'; blockTyping(ctrl); }
+
+      ctrl.oninput = () => {
+        if (f.locked) return;
+        f.value = ctrl.value;
+        setValueById(f.id, ctrl.value);
+      };
+    }
+
+    if (f.color) ctrl.style.color = f.color;
+    if (f.textAlign) { ctrl.style.textAlign = f.textAlign; w.style.setProperty('--ta', f.textAlign); }
+
+    w.appendChild(ctrl);
+    overlay.appendChild(w);
+
+    if (!FILL) {
+      w.addEventListener('click', () => { selected=i; render(); });
+    }
+  });
+
+  pageInfo.textContent = `${pageIndex + 1} / ${pages.length}`;
+  requestAnimationFrame(applyZoom);
+}
+
+async function loadDesign(){
+  seedByDoc();
+
+  try{
+    const r = await fetch(buildDesignUrl(), { cache: 'no-store' });
+    if (r.ok) {
+      const j = await r.json();
+      if (Array.isArray(j.pages) && j.pages.length) pages = j.pages;
+    }
+  }catch(_){
+    // fetch 실패면 seedByDoc 그대로 사용
+  }
+
+  pages.forEach(pg => { if (!Array.isArray(pg.fields)) pg.fields = []; });
+  pageIndex = 0;
+  selected = -1;
+  render();
+}
+
+document.getElementById('reload').onclick = loadDesign;
+
+document.getElementById('resetValues').onclick = () => {
+  pages.forEach(pg => (pg.fields||[]).forEach(f => delete f.value));
+  Object.keys(valuesById).forEach(k => delete valuesById[k]);
+  selected = -1;
+  render();
+};
+
+document.getElementById('saveJson').onclick = () => {
+  const blob=new Blob([JSON.stringify({pages},null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download = (DOC === 'cancel') ? 'overlay-design.cancel.json' : 'overlay-design.change.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+const changePage=d=>{
+  pageIndex=clamp(pageIndex+d,0,pages.length-1);
+  selected=-1;
+  render();
+};
+document.getElementById('prev').onclick=()=>changePage(-1);
+document.getElementById('next').onclick=()=>changePage(1);
+
+function createPrintDOM(page){
+  const wrap = document.createElement('div');
+  wrap.className = 'paper';
+
+  const st = document.createElement('div');
+  st.className = 'stage';
+  st.style.transform = 'scale(1)';
+
+  const img = document.createElement('img');
+  img.src = page.bg || '';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+
+  st.appendChild(img);
+  st.appendChild(ov);
+  wrap.appendChild(st);
+
+  (page.fields||[]).forEach(f=>{
+    const w=document.createElement('div');
+    w.className='field ' + (f.type==='checkbox'?'checkbox ':'');
+    w.style.left=`${f.x}%`; w.style.top=`${f.y}%`; w.style.width=`${(f.w ?? 24)}%`;
+    if (f.fontSize) w.style.setProperty('--fs', f.fontSize + 'px');
+    if (f.inputHeight) w.style.setProperty('--ih', f.inputHeight + 'px');
+
+    let ctrl;
+    if (f.type==='checkbox'){
+      ctrl=document.createElement('input'); ctrl.type='checkbox'; ctrl.checked=!!f.value;
+      const style=(f.checkStyle||'tick');
+      w.classList.add('ck-'+style);
+    } else if (f.type==='textarea'){
+      ctrl=document.createElement('textarea'); ctrl.value=f.value ?? '';
+      ctrl.readOnly=true;
+    } else {
+      ctrl=document.createElement('input'); ctrl.type='text'; ctrl.value=f.value ?? '';
+      ctrl.readOnly=true;
+    }
+    if (f.color) ctrl.style.color = f.color;
+    if (f.textAlign) { ctrl.style.textAlign = f.textAlign; w.style.setProperty('--ta', f.textAlign); }
+
+    w.appendChild(ctrl);
+    ov.appendChild(w);
+  });
+
+  return wrap;
+}
+
+function buildPrintAll(){
+  const container=document.getElementById('printAll');
+  container.innerHTML='';
+  pages.forEach(pg=>{
+    const pageWrap=document.createElement('div');
+    pageWrap.className='pageWrap';
+    pageWrap.appendChild(createPrintDOM(pg));
+    container.appendChild(pageWrap);
+  });
+  return container;
+}
+
+document.getElementById('btnPdf').onclick = async () => {
+  buildPrintAll();
+  setTimeout(()=>window.print(),0);
+};
+
+loadDesign();
+window.addEventListener('DOMContentLoaded', applyZoom);
+</script>
+</body>
+</html>

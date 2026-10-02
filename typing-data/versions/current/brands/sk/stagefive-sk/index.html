@@ -1,0 +1,3664 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<script src="../../../app/typing-version-bridge.js" defer></script>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MCCNETWORLD 스테이지파이브 SK</title>
+
+<link rel="icon" type="image/png" sizes="16x16"  href="/mccnetworld/favicon-16x16.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32"  href="/mccnetworld/favicon-32x32.png?v=2">
+<link rel="icon" type="image/png" sizes="192x192" href="/mccnetworld/android-chrome-192x192.png?v=2">
+<link rel="icon" type="image/png" sizes="512x512" href="/mccnetworld/android-chrome-512x512.png?v=2">
+<link rel="apple-touch-icon" href="/mccnetworld/apple-touch-icon.png?v=2">
+<link rel="shortcut icon" href="/mccnetworld/favicon.ico?v=2">
+<meta name="theme-color" content="#0c1117"/>
+
+<style>
+  :root{
+    --bg:#0c1117;--fg:#eaf1ff;--card:#121a24;--line:#243347;
+    --pink:#e6007e;--vio:#6a35ff;--danger:#ff3b3b;
+    --zoom:1;
+    --stage-w:210mm;
+    --stage-h:297mm;
+    --phc:#c05;--phbg:#ffe08a66;
+  }
+
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,"Noto Sans KR",sans-serif}
+  .wrap{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;min-height:100vh;padding:12px}
+  html.fill .wrap{grid-template-columns:1fr}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:visible}
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .hd strong{font-weight:800}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid #ffffff1f;background:linear-gradient(90deg,var(--pink),var(--vio));color:#fff;cursor:pointer}
+  .btn--ghost{background:#182234;border-color:#2b3a54;color:#d6e4ff}
+  .stack{padding:12px;overflow:auto}
+
+  /* 화면 캔버스 */
+  .paper{position:relative;width:min(1480px,100%);margin:auto;border:1px solid #223049;border-radius:10px;background:#0f1624;height:calc((var(--stage-h)) * var(--zoom));overflow:hidden;}
+  .stage{width:var(--stage-w);height:var(--stage-h);transform-origin:top left;transform:scale(var(--zoom));position:relative;}
+  .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none}
+  .overlay{position:absolute;inset:0}
+
+  /* 필드 */
+  .field{position:absolute;transform:none;cursor:move;z-index:2;--fs:14px;}
+  .field.checkbox{transform:translate(-50%,-50%)}
+  .label{position:absolute;top:-16px;left:0;font-size:12px;font-weight:800;text-shadow:0 1px 2px #0009}
+  .field input,.field textarea,.field select{
+    width:100%;background:transparent;border:none;color:var(--fgc,#fff);
+    height:var(--ih,auto);outline:none;padding:6px 6px 3px;font:600 var(--fs)/1.2 system-ui
+  }
+  .field:focus-within{
+    outline: 3px solid #e724ee83;
+    outline-offset: 0px;
+    border-radius: 0px;
+    background: rgba(37,99,235,.03);
+  }
+
+  /* 세로 가운데(텍스트 한 줄용) */
+  .field input[type="text"],
+  .field select{
+    line-height: var(--ih, 28px);
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  /* 리사이즈 손잡이 */
+  .field .resize-handle{
+    position:absolute;
+    right:-6px;
+    bottom:-6px;
+    width:12px;
+    height:12px;
+    border-radius:3px;
+    cursor:nwse-resize;
+    opacity:0;
+    border:1px solid transparent;
+    background:transparent;
+    box-shadow:none;
+  }
+  .field:hover .resize-handle,
+  .field.sel .resize-handle{
+    opacity:1;
+    border-color:#60a5fa;
+    background:#1d4ed8;
+    box-shadow:0 0 0 1px #0b1120;
+  }
+  html.fill .field .resize-handle{display:none !important;}
+
+  /* 서류 영역(왼쪽 캔버스) 드롭다운 화살표 숨기기 */
+  .paper .field select{
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: none !important;
+    padding-right: 8px;
+  }
+
+  .field input,.field textarea,.field select{
+    width:100%;
+    background:transparent;
+    border:none;
+    color:var(--fgc,#fff);
+    height:var(--ih,auto);
+    outline:none;
+    padding:0 6px;
+    font:600 var(--fs)/1.2 system-ui;
+    text-align:var(--ta,left);
+  }
+
+  .field textarea{
+    white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;
+    overflow:hidden;resize:none !important;scrollbar-width:none;min-height:5px;max-height:none !important;
+  }
+  .field textarea::-webkit-scrollbar{display:none}
+
+  /* 입력 잠금(시각적 안내만) */
+  .field [data-locked="1"]{caret-color:transparent}
+  .field [data-locked="1"]::placeholder{color:var(--phc);font-weight:900;background:var(--phbg);padding:0 .25em;border-radius:6px;}
+
+  /* 체크/라디오 */
+  .field.checkbox input,.field.radio input[type="checkbox"]{
+    appearance:none;-webkit-appearance:none;background:transparent;
+    border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000);
+    position:relative;vertical-align:middle;display:inline-block;box-sizing:border-box;
+  }
+  /* ===== radio 표시 스타일 3종 (dot / solid / tick) ===== */
+.field.radio.rd-dot input[type="checkbox"]:checked::after{
+  content:"";
+  position:absolute;
+  inset:3px;
+  border-radius:999px;
+  background:#000;
+}
+
+.field.radio.rd-solid input[type="checkbox"]:checked::after{
+  content:"";
+  position:absolute;
+  inset:2px;
+  border-radius:999px;
+  background:#000;
+}
+
+/* ✓ 체크 표시 (동그라미 안에 체크) */
+.field.radio.rd-tick input[type="checkbox"]:checked::after{
+  content:"";
+  position:absolute;
+  left:5px;
+  top:2px;
+  width:calc(var(--rsize,18px) - 10px);
+  height:calc(var(--rsize,18px) - 10px);
+  border-right:2px solid #000;
+  border-bottom:2px solid #000;
+  transform:rotate(45deg);
+  border-radius:0;
+}
+
+  .field.checkbox input{width:var(--cksize,18px);height:var(--cksize,18px);border-radius:2px;}
+/* ✅ PRINT: checkbox tick 기본 */
+.field.checkbox.ck-tick input:checked::after,
+.field.checkbox:not(.ck-solid):not(.ck-dot) input:checked::after{
+  content:"";
+  position:absolute;
+  left:3px;
+  top:0px;
+  width:calc(var(--cksize,18px) - 6px);
+  height:calc(var(--cksize,18px) - 6px);
+  border-right:2px solid #000;
+  border-bottom:2px solid #000;
+  transform:rotate(45deg) translateY(-2px);
+}
+
+/* ✅ PRINT: checkbox solid */
+.field.checkbox.ck-solid input:checked::after{
+  content:"";
+  position:absolute;
+  inset:2px;
+  background:#000;
+  border:none;
+  transform:none;
+}
+
+/* ✅ PRINT: checkbox dot */
+.field.checkbox.ck-dot input:checked::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:calc(var(--cksize,18px) * 0.45);
+  height:calc(var(--cksize,18px) * 0.45);
+  background:#000;
+  border-radius:999px;
+  transform:translate(-50%,-50%);
+  border:none;
+}
+
+  .field.checkbox .label{top:0;left:24px}
+  /* ===== radio 개선 ===== */
+  .field.radio{
+    white-space: normal;            /* ✅ nowrap 제거 */
+  }
+
+  .field.radio > div{
+    display:flex;
+    flex-wrap:wrap;                 /* ✅ 폭 줄이면 자동 줄바꿈 */
+    gap: var(--rgap,12px);
+    align-items:center;
+    max-width:100%;   /* ✅ field 폭 제한 */
+  }
+
+.field.radio .radio-item{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+
+  padding:2px 6px;          /* ✅ 내부 여백 축소 */
+  border-radius:8px;
+  background:transparent;
+  border:1px solid rgba(0,0,0,.25);
+
+  flex:0 1 auto;            /* ✅ 줄어들 수 있게 */
+  max-width:100%;           /* ✅ field 폭 초과 금지 */
+}
+
+.field.radio .radio-item span{
+  display:inline;
+  font-weight:700;
+  color:#000;
+
+  white-space:normal;       /* ✅ 줄바꿈 허용 */
+  word-break:keep-all;
+}
+/* ===== radio-item(겉 테두리) / 텍스트 표시 제어 ===== */
+.field.radio .radio-item{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+
+  padding:2px 6px;
+  border-radius:8px;
+
+  /* ✅ 기존 고정 border 제거 → 변수로 */
+  border: var(--rbw,1px) solid var(--rbc, rgba(0,0,0,.25));
+  background: var(--rbg, transparent);
+
+  flex:0 1 auto;
+  max-width:100%;
+}
+
+.field.radio.noText .radio-item span{
+  display:none !important; /* ✅ 1,2 표기 숨김 */
+}
+
+
+  /* ===== 체크 스타일 변형(tick/solid/dot) ===== */
+.field.checkbox.ck-solid input:checked::after{
+  content:"";
+  position:absolute;
+  inset:2px;
+  background:#000;
+  border:none;
+  transform:none;
+}
+
+.field.checkbox.ck-dot input:checked::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:calc(var(--cksize,18px) * 0.45);
+  height:calc(var(--cksize,18px) * 0.45);
+  background:#000;
+  border-radius:999px;
+  transform:translate(-50%,-50%);
+  border:none;
+}
+
+/* tick은 기존 스타일 그대로 사용 */
+
+
+  .sel{outline:3px solid #00d2ff66;border-radius:8px}
+
+  /* 우측 기본도구 */
+  .group{border:2px solid #2b3a54;border-radius:12px;padding:10px;margin:10px 0 14px;background:#0f1624}
+  .group h4{margin:0 0 8px;font-size:12px;color:#9fb0cc;font-weight:800;letter-spacing:.4px}
+  .row{display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+  .row input,.row select,.row textarea{width:100%;background:#0f1624;border:1px solid #2b3a54;border-radius:10px;color:#dfe9ff;outline:none;padding:8px 10px;font-weight:700}
+  .hint{color:#9fb0cc;font-size:12px}
+  .stack .paper{margin-bottom:56px}
+  .stack{padding-bottom:140px}
+  .pager{display:flex;align-items:center;gap:8px;justify-content:center;margin:6px 0 18px;flex-wrap:wrap}
+  #pageInfo{min-width:84px;text-align:center;font-weight:800}
+
+  .toast{position:fixed;left:0;right:0;bottom:16px;display:none;justify-content:center;z-index:9999}
+  .toast__card{background:#172131;border:1px solid #2b3a54;border-radius:10px;padding:10px 12px;color:#fff;max-width:680px;width:calc(100% - 32px)}
+  .invalid{outline:3px solid var(--danger)!important;background:rgba(255,59,59,.2);border-radius:8px}
+  .required-pending{
+  background: rgba(222, 250, 63, 0.18) !important;
+  outline: 2px solid #00b7ff !important;
+  border-radius: 6px !important;
+}
+  html.fill .builder{display:none}
+
+  /* 인쇄 공통 */
+  @page{size:A4 portrait;margin:0}
+  #printAll{display:none}
+  .print-value{display:none;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;padding:6px 6px 3px;font:600 var(--fs)/1.2 system-ui}
+
+    /* ✅ PRINT: radio (원형 유지) */
+  .field.radio input[type="checkbox"]{
+    width:var(--rsize,18px) !important;
+    height:var(--rsize,18px) !important;
+    border-radius:999px !important; /* ← 원형 */
+  }
+
+@media print{
+  body{background:#fff !important; color:#000 !important;}
+
+  .wrap,.builder,.pager,.hint,.hd,#affPopup{display:none !important}
+  #printAll{display:block}
+
+  .pageWrap{
+    width:210mm;height:297mm;position:relative;overflow:visible;
+    padding:0;box-sizing:border-box;page-break-after:always;
+    background:#fff !important;
+  }
+  .pageWrap:last-child{page-break-after:auto}
+
+  #printAll .stage{transform:scale(1)}
+  #printAll .paper{
+    border:none;height:auto;
+    background:#fff !important;
+  }
+  #printAll .stage img{width:100%;height:100%;object-fit:fill}
+
+  #printAll .overlay{position:absolute;inset:0;overflow:visible !important}
+
+  #printAll,#printAll *{
+    font-family:system-ui,"Noto Sans KR",sans-serif !important;
+    letter-spacing:0 !important;
+    box-shadow:none !important;
+    text-shadow:none !important;
+    background-image:none !important;
+  }
+
+  #printAll .field input,
+  #printAll .field textarea,
+  #printAll .field select{
+    color:#000 !important;
+    background:transparent !important;
+    border-bottom:none !important;
+  }
+
+  #printAll .label{color:#000 !important;text-shadow:none !important}
+
+  #printAll .field.radio .radio-item span{display:inline !important;color:#000 !important}
+
+  /* select는 실제 컨트롤 숨기고, print-value로 텍스트 찍기 */
+  #printAll .field select{display:none !important}
+
+  #printAll .field{min-height:var(--ih, 28px) !important;}
+
+  #printAll .field .print-value{
+    display:block !important;
+    color:#000 !important;
+    position:absolute !important;
+    inset:0 !important;
+    padding:0 6px !important;
+    height:var(--ih, 28px) !important;
+    line-height:var(--ih, 28px) !important;
+    font:600 var(--fs,14px)/1.2 system-ui !important;
+    white-space:pre-wrap;
+    word-break:break-word;
+    overflow-wrap:anywhere;
+    text-align:var(--ta, left) !important;
+  }
+
+  #printAll textarea{
+    height:auto !important;
+    resize:none !important;
+    max-height:none !important;
+  }
+
+  .field.checkbox input,.field.radio input[type="checkbox"]{
+    appearance:none !important;
+    -webkit-appearance:none !important;
+    background:transparent !important;
+    border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000) !important;
+    position:relative !important;
+    vertical-align:middle;
+  }
+
+  .field.checkbox input{
+    width:var(--cksize,18px) !important;
+    height:var(--cksize,18px) !important;
+    border-radius:2px !important
+  }
+
+  /* ✅ PRINT: checkbox tick 기본 */
+  .field.checkbox.ck-tick input:checked::after,
+  .field.checkbox:not(.ck-solid):not(.ck-dot) input:checked::after{
+    content:"";
+    position:absolute;
+    left:3px;
+    top:0px;
+    width:calc(var(--cksize,18px) - 6px);
+    height:calc(var(--cksize,18px) - 6px);
+    border-right:2px solid #000;
+    border-bottom:2px solid #000;
+    transform:rotate(45deg) translateY(-2px);
+  }
+
+  /* ✅ PRINT: checkbox solid */
+  .field.checkbox.ck-solid input:checked::after{
+    content:"";
+    position:absolute;
+    inset:2px;
+    background:#000;
+    border:none;
+    transform:none;
+  }
+
+  /* ✅ PRINT: checkbox dot */
+  .field.checkbox.ck-dot input:checked::after{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:calc(var(--cksize,18px) * 0.45);
+    height:calc(var(--cksize,18px) * 0.45);
+    background:#000;
+    border-radius:999px;
+    transform:translate(-50%,-50%);
+    border:none;
+  }
+
+  .env-badge{display:none !important;}
+
+
+/* PRINT: radio dot */
+.field.radio.rd-dot input[type="checkbox"]:checked::after{
+  content:"";
+  position:absolute;
+  inset:3px;
+  border-radius:999px;
+  background:#000;
+}
+
+/* PRINT: radio solid */
+.field.radio.rd-solid input[type="checkbox"]:checked::after{
+  content:"";
+  position:absolute;
+  inset:2px;
+  border-radius:999px;
+  background:#000;
+}
+
+/* PRINT: radio tick */
+.field.radio.rd-tick input[type="checkbox"]:checked::after{
+  content:"";
+  position:absolute;
+  left:5px;
+  top:2px;
+  width:calc(var(--rsize,18px) - 10px);
+  height:calc(var(--rsize,18px) - 10px);
+  border-right:2px solid #000;
+  border-bottom:2px solid #000;
+  transform:rotate(45deg);
+}
+
+  .field.checkbox .label{top:0;left:24px}
+}
+
+
+  .field.hasBorder input[type="text"],.field.hasBorder textarea{border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;border-radius:8px;background:transparent;padding:6px 8px;}
+  #printAll .field.hasBorder input[type="text"],#printAll .field.hasBorder textarea{border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;border-bottom:none !important;border-radius:8px;}
+  .field.hasBG input[type="text"],.field.hasBG textarea{background:var(--bgc,transparent) !important}
+  #printAll .field.hasBG input[type="text"],#printAll .field.hasBG textarea{background:var(--bgc,transparent) !important}
+
+  .affBanner{display:none;position:sticky;top:0;z-index:50;margin:6px 0 10px}
+  .affBanner__card{background:#ffe08a;color:#2a2100;border:1px solid #cfa442;border-radius:10px;padding:10px 12px;font-weight:800}
+  #affPopup{position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:99999;display:none}
+  #affPopup .card b{font-weight:900}
+
+  .extraBar{display:none;margin:6px 0 0}
+  .extraBar__card{background:#0f2036;border:1px solid #2b3a54;border-radius:10px;padding:8px 10px;font-weight:800;color:#cfe0ff}
+  .extraBar__label{opacity:.85;margin-right:8px}
+
+  html.is-staging .env-badge{
+    position:fixed;z-index:9999;top:10px;left:10px;
+    padding:6px 10px;border-radius:6px;font-weight:700;
+    background:#f59e0b;color:#111827;box-shadow:0 2px 6px rgba(0,0,0,.2);
+    user-select:none;pointer-events:none;
+  }
+  html.is-prod .builder{display:none !important;}
+  html.is-prod .hd .builder{display:none !important;}
+
+  .btn-back{
+    min-width: 140px;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 6px 14px;
+  }
+  .btn-back::before{
+    content: "←";
+    margin-right: 4px;
+    font-size: 14px;
+  }
+  /* =========================
+   ✅ PRINT FIX (검정화면 출력 방지)
+========================= */
+@media print {
+
+  /* 1) 전체 배경/글자색 강제 고정 */
+  html, body{
+    background:#fff !important;
+    color:#000 !important;
+  }
+
+  /* 2) 박스 그림자/그라데이션 등 프린터 충돌 요소 제거 */
+  *{
+    box-shadow:none !important;
+    text-shadow:none !important;
+    filter:none !important;
+    -webkit-filter:none !important;
+  }
+
+  /* 3) 카드/패널 배경도 흰색으로 */
+  .panel, .group, .brand, .form-duo-wrap, .form-duo .form-half{
+    background:#fff !important;
+    background-image:none !important;
+  }
+
+  /* 4) 워터마크(배경이미지) 제거 */
+  .group::after{
+    display:none !important;
+    content:none !important;
+  }
+
+  /* 5) 모달/백드롭(검정 오버레이) 전부 숨김 */
+  .modal, .cs-modal, .form-modal,
+  .modal-backdrop, .cs-backdrop, .form-backdrop{
+    display:none !important;
+  }
+
+  /* 6) 모달 안쪽에 어두운 배경(#0b1220)도 방지 */
+  .modal-body{
+    background:#fff !important;
+  }
+
+  /* 7) 링크 색/밑줄 정리(선택) */
+  a, a:visited{
+    color:#000 !important;
+    text-decoration:none !important;
+  }
+
+  /* 8) 인쇄 시 화면 너비/여백 안정화(선택) */
+  .wrap{max-width:none !important; padding:0 !important;}
+}
+
+
+/* =========================================================
+   ✅ 체크표시 그룹화 / checkmark / 조건부필수 / 양식팝업
+========================================================= */
+.field.checkmark{
+  transform:translate(-50%,-50%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+.field.checkmark .checkmark-symbol{
+  width:100%;
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:var(--fs,18px);
+  font-weight:900;
+  color:var(--fgc,#000);
+  line-height:1;
+  pointer-events:none;
+}
+.field.checkmark .label{display:none}
+html:not(.fill) .field.checkmark{
+  outline:1px dashed rgba(255,59,59,.7);
+  background:rgba(255,59,59,.08);
+  min-height:16px;
+}
+.cond-rule-list{
+  min-height:106px;
+  max-height:106px;
+  overflow:auto;
+  white-space:normal;
+  background:#0f1624;
+  border:1px solid #2b3a54;
+  border-radius:10px;
+  color:#dfe9ff;
+  padding:8px 10px;
+  font-weight:800;
+  line-height:1.55;
+}
+.cond-rule-item{
+  display:block;
+  padding:0;
+  margin:0 0 4px 0;
+  border:0;
+  background:transparent;
+  cursor:pointer;
+  font-size:12px;
+  color:#dfe9ff;
+}
+.cond-rule-item.active{color:#fff;text-decoration:underline;text-underline-offset:3px}
+.form-modal{position:fixed;inset:0;display:none;z-index:11000}
+.form-modal[aria-hidden="false"]{display:block}
+.form-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.form-panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px, calc(100% - 32px));background:#fff;color:#111827;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.form-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e5e7eb}
+.form-head strong{font-weight:900}.form-x{border:1px solid #d1d5db;background:#fff;border-radius:10px;padding:6px 10px;cursor:pointer;font-weight:800;font-size:12px}
+.form-body{padding:14px;max-height:calc(90vh - 140px);overflow:auto}
+.form-textarea{width:100%;min-height:420px;resize:none;overflow:auto;border:1px solid #d1d5db;border-radius:12px;padding:12px;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Noto Sans KR",monospace;white-space:pre-wrap;outline:none;background:#fff;color:#111827}
+.form-actions{display:flex;justify-content:flex-end;gap:8px;padding:0 14px 14px}
+.form-btn{border:none;border-radius:10px;padding:8px 14px;background:#111827;color:#fff;font-weight:900;cursor:pointer}.form-btn.ghost{background:#fff;color:#111827;border:1px solid #d1d5db}
+.form-toast{margin-top:8px;font-size:12px;font-weight:800;color:#16a34a;display:none}.form-toast.show{display:block}
+@media print{.form-modal,.form-backdrop{display:none !important}#printAll .field.checkmark .checkmark-symbol{color:#000 !important}#printAll .field.checkmark .label{display:none !important}}
+
+
+/* =========================
+   주소 검색 팝업
+========================= */
+#addressSearchModal{
+  position:fixed;
+  inset:0;
+  z-index:120000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(3,10,22,.58);
+}
+#addressSearchModal.open{display:flex;}
+#addressSearchModal .asm-card{
+  width:min(94vw,620px);
+  max-height:94vh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  background:#fff;
+  color:#111827;
+  border:1px solid #d1d5db;
+  border-radius:16px;
+  box-shadow:0 24px 70px rgba(0,0,0,.34);
+}
+#addressSearchModal .asm-hd{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border-bottom:1px solid #e5e7eb;
+}
+#addressSearchModal .asm-title{font-size:17px;font-weight:900;}
+#addressSearchModal .asm-close,
+#addressSearchModal .asm-btn{
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:9px 14px;
+  background:#f1f5f9;
+  color:#0f172a;
+  font-weight:800;
+  cursor:pointer;
+}
+#addressSearchModal .asm-btn--primary{
+  border-color:#111827;
+  background:#111827;
+  color:#fff;
+}
+#addressSearchModal .asm-search{
+  min-height:430px;
+  height:min(58vh,520px);
+  background:#fff;
+}
+#addressSearchModal .asm-loading{
+  min-height:430px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  color:#475569;
+  font-weight:700;
+}
+#addressSearchModal .asm-detail{
+  padding:12px 14px;
+  border-top:1px solid #e5e7eb;
+  background:#fff;
+}
+#addressSearchModal .asm-label{
+  display:block;
+  margin-bottom:6px;
+  font-size:12px;
+  font-weight:900;
+  color:#334155;
+}
+#addressSearchModal .asm-selected,
+#addressSearchModal .asm-detail-input{
+  width:100%;
+  min-height:42px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:10px 12px;
+  background:#fff;
+  color:#111827;
+  font:700 14px/1.4 system-ui,"Noto Sans KR",sans-serif;
+}
+#addressSearchModal .asm-selected{
+  margin-bottom:10px;
+  background:#f8fafc;
+}
+#addressSearchModal .asm-selected:empty::before{
+  content:"주소 검색 결과를 선택해 주세요.";
+  color:#94a3b8;
+}
+#addressSearchModal .asm-error{
+  min-height:20px;
+  margin-top:7px;
+  color:#dc2626;
+  font-size:12px;
+  font-weight:800;
+}
+#addressSearchModal .asm-ft{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  padding:0 14px 14px;
+  background:#fff;
+}
+.field.address-search-enabled{cursor:pointer !important;}
+.field.address-search-enabled input,
+.field.address-search-enabled textarea{cursor:pointer;}
+html.fill .field.address-search-enabled::after{
+  display:none !important;
+  content:none !important;
+}
+@media (max-width:640px){
+  #addressSearchModal{padding:6px;}
+  #addressSearchModal .asm-card{width:100%;max-height:98vh;border-radius:12px;}
+  #addressSearchModal .asm-search,
+  #addressSearchModal .asm-loading{height:55vh;min-height:360px;}
+}
+@media print{
+  #addressSearchModal{display:none !important;visibility:hidden !important;}
+}
+
+</style>
+
+<script>
+(function(){
+  const host = location.hostname;
+  const IS_LOCAL   = /^(localhost|127\.0\.0\.1)$/i.test(host);
+  const IS_STAGING = host.startsWith('staging.') || IS_LOCAL;
+  document.documentElement.classList.toggle('is-staging', IS_STAGING);
+  document.documentElement.classList.toggle('is-prod', !IS_STAGING);
+
+  const fav = document.querySelector('link[rel="icon"][sizes="32x32"]') || document.querySelector('link[rel="icon"]');
+  if (IS_STAGING) {
+    document.title = 'STAGING · ' + document.title.replace(/^STAGING ·\s*/,'');
+    if (fav) fav.href = '/favicon-32x32.png?v=stg';
+    const b = document.createElement('div');
+    b.className = 'env-badge';
+    b.textContent = 'STAGING (개발/테스트)';
+    window.addEventListener('DOMContentLoaded', ()=>document.body.appendChild(b));
+  } else {
+    document.title = document.title.replace(/^STAGING ·\s*/,'');
+    if (fav) fav.href = '/favicon-32x32.png?v=prod';
+    const url = new URL(location.href);
+    if (!url.searchParams.has('mode')) { url.searchParams.set('mode','fill'); history.replaceState(null,'',url.toString()); }
+  }
+})();
+/* =========================
+   ✅ 인쇄 직전: 모달/검정 백드롭 강제 종료 (서식지 검정 출력 방지)
+   - 주의: 이 페이지의 서식 레이어가 class="overlay"라서
+           querySelector에 .overlay를 넣으면 서식 레이어가 숨겨집니다.
+========================= */
+(function(){
+  function closeAllOverlays(){
+    // ✅ 메시지 모달 강제 종료
+    const msg = document.getElementById('msgModal');
+    if (msg){
+      msg.style.display = 'none';
+      msg.setAttribute('aria-hidden','true');
+    }
+
+    // ✅ 혹시 다른 모달이 있으면 닫기(서식 레이어 .overlay는 절대 건드리지 않음)
+    document.querySelectorAll('.modal, .popup, .dim, .backdrop, .modal-backdrop, #addressSearchModal')
+      .forEach(el=>{
+        el.style.display = 'none';
+        el.setAttribute?.('aria-hidden','true');
+        el.classList?.remove('open');
+      });
+
+    document.body.classList.remove('modal-open','open','locked','no-scroll');
+  }
+
+  window.addEventListener('beforeprint', closeAllOverlays);
+})();
+/* ✅ 모든 입력에서 Enter 줄바꿈/제출 방지(동적 생성 포함) */
+(function blockEnterEverywhere(){
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+
+    const t = e.target;
+    if (!t) return;
+
+    // 입력 요소에서만 막기
+    const isInputLike =
+      t.tagName === 'TEXTAREA' ||
+      (t.tagName === 'INPUT' && (t.type === 'text' || t.type === 'search' || t.type === 'tel' || t.type === 'number')) ||
+      t.isContentEditable;
+
+    if (!isInputLike) return;
+
+    // (선택) Shift+Enter도 막기: 현재는 Enter면 전부 막음
+    e.preventDefault();
+  }, true);
+})();
+
+</script>
+</head>
+
+<body>
+<div class="wrap">
+  <section class="panel">
+    <div class="hd">
+      <strong id="topTitle">MCC 스테이지파이브 SK</strong>
+
+      <div style="display:flex; gap:8px; align-items:center">
+        <a href="../../../index.html" class="btn btn--ghost btn-back" id="backToHub">서류 선택 화면</a>
+        <div class="builder">
+          <button class="btn--ghost btn" id="enableWrapAll">모든 텍스트 자동 줄바꿈 켜기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div id="affBanner" class="affBanner"><div class="affBanner__card">제휴 요금제 진행 시 <b> C-1 성함·동의 체크</b>가 필요합니다.</div></div>
+
+      <div id="extraBar" class="extraBar">
+        <div class="extraBar__card"><span class="extraBar__label">추가 데이터</span><span id="extraBarText"></span></div>
+      </div>
+
+      <div class="paper" id="paper">
+        <div class="stage" id="stage">
+          <img id="bg" src="" alt="">
+          <div class="overlay" id="overlay"></div>
+        </div>
+      </div>
+
+      <div class="pager">
+        <button class="btn--ghost btn" id="prev">◀ 이전</button>
+        <div id="pageInfo">1 / 7</div>
+        <button class="btn--ghost btn" id="next">다음 ▶</button>
+        <button class="btn" id="btnPdf">PDF 생성OR인쇄</button>
+      </div>
+      <p class="hint" style="text-align:center">필드를 클릭해 드래그로 이동. 입력은 컨트롤을 클릭 후 타이핑.</p>
+    </div>
+  </section>
+
+  <section class="panel builder">
+    <div class="hd">
+      <strong>기본 도구</strong>
+      <div>
+        <button class="btn--ghost btn" id="reload">설계 다시읽기</button>
+        <button class="btn--ghost btn" id="resetValues">값 초기화</button>
+        <button class="btn" id="saveJson">설계 저장(JSON)</button>
+
+        <button class="btn--ghost btn" id="bulkPlansBtn">요금 일괄 입력</button>
+        <button class="btn--ghost btn" id="savePlans">요금표 저장(plans.json)</button>
+        <label class="btn--ghost btn" style="cursor:pointer">
+          <input type="file" id="loadPlansFile" accept="application/json" hidden>요금표 불러오기(plans.json)
+        </label>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="group">
+        <h4>새 필드</h4>
+        <div class="row"><div>새 필드 타입</div>
+          <select id="newType">
+            <option value="text">텍스트박스</option>
+            <option value="textarea">텍스트영역</option>
+            <option value="select">드롭다운</option>
+            <option value="radio">라디오(단일선택)</option>
+            <option value="checkbox">체크박스</option>
+            <option value="checkmark">체크표시(✓)</option>
+          </select>
+        </div>
+        <div class="row"><div>새 필드 ID</div><input id="newId" placeholder="예: applyYear / applyMonth / applyDay 등"></div>
+        <div class="row"><div>라벨</div><input id="newLabel" placeholder="예: 성명"></div>
+        <div class="row"><div>옵션(콤마)</div><input id="newOpts" placeholder="라디오·드롭다운: 예) 남, 여"></div>
+        <div class="row"><div>필수</div><label><input type="checkbox" id="newReq"> 필수값</label></div>
+        <div class="row"><button class="btn" id="addField">필드 추가</button></div>
+      </div>
+
+
+      <div class="group" id="conditionalTool">
+        <h4>조건부 필수 설정</h4>
+        <div class="row"><div>기준 필드/그룹</div><input id="cond_sourceId" type="text" placeholder="예: 신규/번이 / 전통신사 / 성별"></div>
+        <div class="row"><div>기준 값</div><input id="cond_whenValue" type="text" placeholder="예: 신규 / 번이 / MVNO / 남"></div>
+        <div class="row"><div>필수 대상 ID</div><input id="cond_requiredOn" type="text" placeholder="예: 희망번호, 번호이동, 통신사명"></div>
+        <div class="row"><div>규칙 목록</div><div class="cond-rule-list" id="condRuleList"></div></div>
+        <div class="row"><div></div><div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn--ghost btn" id="condAdd" type="button">규칙 추가</button>
+          <button class="btn--ghost btn" id="condUpdate" type="button">선택 수정</button>
+          <button class="btn--ghost btn" id="condDelete" type="button">선택 삭제</button>
+        </div></div>
+        <p class="hint">체크표시 그룹도 기준 필드로 사용할 수 있습니다. 예: 신규/번이=신규 → 희망번호 필수</p>
+      </div>
+
+      <div class="group" id="formPopupTool">
+        <h4>양식 팝업 설정</h4>
+        <div class="row"><div>팝업 사용</div><label><input type="checkbox" id="formPopupEnabled"> 사용</label></div>
+        <div class="row"><div>양식 키</div><input id="formKey" type="text" placeholder="예: usim"></div>
+        <div class="row"><div>양식 제목</div><input id="formTitleInput" type="text" placeholder="예: 유심 개통 양식"></div>
+        <div class="row"><div>양식 내용</div><textarea id="formTextInput" rows="6" placeholder="팝업에 표시할 양식 내용을 입력"></textarea></div>
+        <div class="row"><div></div><div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn--ghost btn" id="formSaveBtn" type="button">양식 저장</button>
+          <button class="btn--ghost btn" id="formDeleteBtn" type="button">양식 삭제</button>
+        </div></div>
+        <div class="hint">기본값은 비활성(false)입니다. 필드 ID를 form:양식키 형태로 만들면 팝업 버튼으로 사용할 수 있습니다.</div>
+      </div>
+
+      <div id="propBox" class="group">
+        <h4>선택한 필드 속성</h4>
+        <div class="row"><div>선택된 항목</div><div id="selInfo" class="hint">없음</div></div>
+
+        <div class="row"><div>라벨(선택)</div><input id="p_label" type="text" placeholder="라벨"></div>
+        <div class="row"><div>필드 ID</div><input id="p_id" type="text" placeholder="예: plan / baseFee / applyYear 등"></div>
+        <div class="row" id="row_checkGroup"><div>체크 그룹명</div><input id="p_groupId" type="text" placeholder="예: 신규/번이 / 전통신사 / 성별"></div>
+        <div class="row" id="row_checkValue"><div>체크 값</div><input id="p_checkValue" type="text" placeholder="예: 신규 / 번이 / MVNO / 남 / 여"></div>
+
+        <div class="row" id="row_opts"><div>옵션(콤마)</div><input id="p_options" type="text" placeholder="예: 남, 여 / 또는 옵션 목록"></div>
+        <div class="row" id="row_req"><div>필수</div><label><input type="checkbox" id="p_required"> 반드시 작성</label></div>
+
+        <div class="row"><div>X(%)</div><input id="p_x" type="number" step="0.1"></div>
+        <div class="row"><div>Y(%)</div><input id="p_y" type="number" step="0.1"></div>
+        <div class="row"><div>폭(%)</div><input id="p_w" type="number" step="0.1"></div>
+
+        <div class="row"><div>라디오 크기(px)</div><input id="p_radioSize" type="number" min="10" max="32" step="1" placeholder="18"></div>
+        <div class="row"><div>라디오 간격(px)</div><input id="p_radioGap" type="number" min="0" max="200" step="1" placeholder="12"></div>
+        <div class="row" id="row_checkStyle">
+        <div>체크 스타일</div>
+        <select id="p_checkStyle">
+        <option value="tick">✓ 체크</option>
+        <option value="solid">■ 꽉찬</option>
+        <option value="dot">● 점</option>
+          </select>
+        </div>
+
+        <div class="row"><div>텍스트 색상</div><input id="p_color" type="color" value="#000000"></div>
+        <div class="row"><div>입력 높이(px)</div><input id="p_height" type="number" min="5" max="60" step="1" placeholder="auto"></div>
+        <div class="row"><div>글자 크기(px)</div><input id="p_fontSize" type="number" min="5" max="32" step="1" placeholder="14"></div>
+
+        <div class="row"><div>정렬</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn--ghost btn" id="alignLeft">좌</button>
+            <button class="btn--ghost btn" id="alignCX">가운데</button>
+            <button class="btn--ghost btn" id="alignRight">우</button>
+            <button class="btn--ghost btn" id="alignTop">상</button>
+            <button class="btn--ghost btn" id="alignCY">중앙</button>
+            <button class="btn--ghost btn" id="alignBottom">하</button>
+
+            <div class="row"><div>텍스트 정렬</div>
+              <select id="p_textAlign">
+                <option value="">기본(좌측)</option>
+                <option value="left">좌측</option>
+                <option value="center">가운데</option>
+                <option value="right">우측</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row"><div>입력 잠금</div>
+          <label><input type="checkbox" id="p_locked"> 화면에서 타이핑 금지</label>
+        </div>
+        <div class="row"><div>placeholder 잠금</div>
+          <label><input type="checkbox" id="p_lockOnPh"> placeholder만 표시(값 없으면 읽기전용)</label>
+        </div>
+
+        <div class="group" style="margin:8px 0 0;padding-top:8px">
+          <h4>입력 제한(마스크)</h4>
+          <div class="row"><div>패턴 선택</div>
+            <select id="p_mask">
+              <option value="">없음</option>
+              <option value="number">숫자만</option>
+              <option value="tel">전화번호(숫자-)</option>
+              <option value="alpha">영문</option>
+              <option value="alnum">영문+숫자</option>
+              <option value="hangul">한글만</option>
+              <option value="custom">사용자정의(정규식)</option>
+            </select>
+          </div>
+          <div class="row"><div>허용 패턴(정규식)</div><input id="p_maskRe" type="text" placeholder="예: [0-9-], [A-Za-z], [가-힣0-9 ]"></div>
+        </div>
+
+        <div class="group" style="margin-top:8px">
+          <h4>콘텐츠 설정</h4>
+          <div class="row"><div>최대 글자 수</div><input id="p_maxlen" type="number" min="1" max="500" step="1"></div>
+          <div class="row"><div>안내 문구(placeholder)</div><input id="p_placeholder" type="text" placeholder="예: 판매점 이름을 입력하세요"></div>
+          <div class="row"><div>자동 줄바꿈</div><label><input id="p_wrap" type="checkbox" checked> 사용</label></div>
+          <div class="row"><div>자동 날짜</div>
+            <select id="p_autoDate">
+              <option value="">없음</option>
+              <option value="year">년(YYYY)</option>
+              <option value="month">월(MM)</option>
+              <option value="day">일(DD)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="group" style="margin-top:8px">
+          <h4>테두리/배경</h4>
+          <div class="row"><div>테두리 색상</div><input id="p_borderColor" type="color" value="#ff3b3b"></div>
+          <div class="row"><div>테두리 굵기(px)</div><input id="p_borderWidth" type="number" min="1" max="8" step="1" placeholder="2"></div>
+          <div class="row"><div>테두리 투명</div><label><input type="checkbox" id="p_borderTransparent"> 사용</label></div>
+          <div class="row"><div>배경 색상</div><input id="p_bgColor" type="color" value="#000000"></div>
+          <div class="row"><div>배경 투명</div><label><input type="checkbox" id="p_bgTransparent"> 사용</label></div>
+        </div>
+
+        <div class="row" style="margin-top:8px">
+          <button class="btn--ghost btn" id="applyProp">적용</button>
+          <button class="btn--ghost btn" id="delField" style="margin-left:8px">삭제</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="printAll"></div>
+
+<div class="toast" id="toast"><div class="toast__card">
+  <b>작성되지 않은 필수 항목이 있습니다</b>
+  <ul id="missList" style="margin:8px 0 0 18px;padding:0"></ul>
+  <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn--ghost btn" id="tClose">확인</button></div>
+</div></div>
+
+<div id="affPopup"><div class="card">⚠️ <b>제휴 요금제</b>입니다. <b> C-1 성함·동의 체크</b>가 모두 완료되어야 진행됩니다.</div></div>
+
+
+
+<div id="addressSearchModal" aria-hidden="true">
+  <div class="asm-card" role="dialog" aria-modal="true" aria-labelledby="addressSearchTitle">
+    <div class="asm-hd">
+      <div class="asm-title" id="addressSearchTitle">주소 검색</div>
+      <button type="button" class="asm-close" id="addressSearchClose">닫기</button>
+    </div>
+    <div id="addressSearchLayer" class="asm-search">
+      <div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>
+    </div>
+    <div class="asm-detail">
+      <label class="asm-label">선택한 주소</label>
+      <div id="addressSearchSelected" class="asm-selected"></div>
+      <label class="asm-label" for="addressSearchDetail">상세주소</label>
+      <input id="addressSearchDetail" class="asm-detail-input" type="text"
+             maxlength="100" autocomplete="off"
+             placeholder="동/호수 등 상세주소를 입력해 주세요">
+      <div id="addressSearchError" class="asm-error" aria-live="polite"></div>
+    </div>
+    <div class="asm-ft">
+      <button type="button" class="asm-btn" id="addressSearchReset">다시 검색</button>
+      <button type="button" class="asm-btn asm-btn--primary" id="addressSearchApply">주소 적용</button>
+    </div>
+  </div>
+</div>
+
+<div class="form-modal" id="formModal" aria-hidden="true">
+  <div class="form-backdrop" data-form-close="1"></div>
+  <div class="form-panel" role="dialog" aria-modal="true" aria-label="양식 복사 팝업">
+    <div class="form-head">
+      <strong id="formPopupTitle">양식</strong>
+      <button class="form-x" id="formCloseX" type="button">닫기</button>
+    </div>
+    <div class="form-body">
+      <div class="form-textarea" id="formPopupText"></div>
+      <div class="form-toast" id="formToast">복사되었습니다.</div>
+    </div>
+    <div class="form-actions">
+      <button class="form-btn ghost" id="formSelectAll" type="button">전체선택</button>
+      <button class="form-btn" id="formCopyBtn" type="button">복사</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================
+   ✅ 전역 값 저장/동기화
+========================= */
+const valuesById = Object.create(null);
+const elById = Object.create(null);
+let USE_FORM_POPUP = false;
+let FORM_POPUP_FORMS = Object.create(null);
+let CONDITIONAL_REQUIRED = [
+  { sourceId: '신규/번이', whenValue: '신규', requiredOn: ['희망번호'] },
+  { sourceId: '신규/번이', whenValue: '번이', requiredOn: ['번호이동', '전통신사'] },
+  { sourceId: '전통신사', whenValue: 'MVNO', requiredOn: ['통신사명'] },
+];
+
+function setValueById(id, value) {
+  if (!id) return;
+
+  // 1) 전역 값 저장
+  valuesById[id] = (value ?? "");
+
+  // 2) ✅ 설계 데이터(pages의 모든 동일 id 필드)도 같이 갱신
+  try {
+    const key = String(id).toLowerCase();
+    pages.forEach(pg => {
+      (pg.fields || []).forEach(f => {
+        if (String(f.id || '').toLowerCase() === key) {
+          // checkbox는 boolean, 나머지는 string로
+          if (f.type === 'checkbox') f.value = !!value;
+          else if (f.type === 'checkmark') f.value = !!value;
+          else f.value = (value ?? "");
+        }
+      });
+    });
+  } catch (_) {}
+
+  // 3) 현재 화면에 떠 있는 컨트롤이 있으면 그것도 갱신
+  const el = elById[id];
+  if (!el) return;
+
+  if (el.type === 'checkbox') {
+    el.checked = !!value;
+  } else {
+    // radio 더미(객체)일 수도 있으니 안전 처리
+    if (typeof el === 'object' && el.type === 'radio') {
+      el.value = (value ?? "");
+    } else {
+      el.value = valuesById[id];
+    }
+  }
+}
+
+
+function applyMirror(sourceField, value) {
+  const targets = sourceField.mirrorTo || [];
+  targets.forEach(tid => setValueById(tid, value));
+}
+
+
+/* ✅ 체크표시(checkmark) 그룹화 */
+function __normKey(v){ return String(v || '').toLowerCase().replace(/\s+/g,'').trim(); }
+function getCheckmarkGroupId(f){
+  if (!f || f.type !== 'checkmark') return '';
+  if (f.groupId) return String(f.groupId).trim();
+  const text = [f.id, f.label, f.checkValue].map(v => String(v || '')).join(' ');
+  if (/신규|번호\s*이동|번이|mnp|new/i.test(text)) return '신규/번이';
+  if (/전통신사|통신사|skt|\bsk\b|kt|lg|lgu|별정|mvno/i.test(text)) return '전통신사';
+  if (/성별|남|여|male|female/i.test(text)) return '성별';
+  return '';
+}
+function getCheckmarkValue(f){
+  if (!f || f.type !== 'checkmark') return '';
+  if (f.checkValue) return String(f.checkValue).trim();
+  const text = [f.id, f.label].map(v => String(v || '')).join(' ');
+  if (/번호\s*이동|번이|mnp/i.test(text)) return '번이';
+  if (/신규|new/i.test(text)) return '신규';
+  if (/별정|mvno/i.test(text)) return 'MVNO';
+  if (/lgu|lg\+|\blg\b/i.test(text)) return 'LG';
+  if (/\bkt\b/i.test(text)) return 'KT';
+  if (/skt|\bsk\b/i.test(text)) return 'SK';
+  if (/남|male/i.test(text)) return '남';
+  if (/여|female/i.test(text)) return '여';
+  return f.id || 'Y';
+}
+function getCheckmarkGroupValue(groupId){
+  const gid = String(groupId || '').trim();
+  const key = __normKey(gid);
+  if (!key) return '';
+  const direct = valuesById[gid] ?? valuesById[key] ?? valuesById[String(gid).toLowerCase()];
+  if (direct != null && String(direct).trim() !== '') return String(direct).trim();
+  try{
+    for (const pg of pages){
+      for (const f of (pg.fields || [])){
+        if (f.type !== 'checkmark') continue;
+        if (__normKey(getCheckmarkGroupId(f)) === key && !!f.value) return getCheckmarkValue(f);
+      }
+    }
+  }catch(_){ }
+  return '';
+}
+function isCheckmarkGroupChecked(groupId){ return !!getCheckmarkGroupValue(groupId); }
+function setCheckmarkGroupValue(groupId, checkValue){
+  const gid = String(groupId || '').trim();
+  const key = __normKey(gid);
+  const wanted = String(checkValue || '').trim();
+  if (!key) return;
+  pages.forEach(pg => {
+    (pg.fields || []).forEach(f => {
+      if (f.type !== 'checkmark') return;
+      if (__normKey(getCheckmarkGroupId(f)) !== key) return;
+      f.value = (getCheckmarkValue(f) === wanted);
+      if (f.id) {
+        valuesById[f.id] = !!f.value;
+        valuesById[String(f.id).toLowerCase()] = !!f.value;
+      }
+    });
+  });
+  valuesById[gid] = wanted;
+  valuesById[key] = wanted;
+  valuesById[String(gid).toLowerCase()] = wanted;
+}
+function getValueById(id){
+  if (!id) return '';
+  const raw = String(id);
+  const key = raw.toLowerCase();
+  const norm = __normKey(raw);
+  const direct = valuesById[raw] ?? valuesById[key] ?? valuesById[norm];
+  if (direct != null && String(direct).trim() !== '') return String(direct).trim();
+  const groupValue = getCheckmarkGroupValue(raw);
+  if (groupValue) return groupValue;
+  try{
+    for (const pg of pages){
+      for (const f of (pg.fields || [])){
+        if (__normKey(f.id) === norm || __normKey(f.label) === norm){
+          if (f.type === 'checkbox') return f.value ? 'Y' : '';
+          if (f.type === 'checkmark') return f.value ? getCheckmarkValue(f) : '';
+          return (f.value ?? '').toString();
+        }
+      }
+    }
+  }catch(_){ }
+  return '';
+}
+function getValueByIdSafe(id){ return getValueById(id); }
+function handleCheckmarkToggle(f){
+  const groupId = getCheckmarkGroupId(f);
+  const checkValue = getCheckmarkValue(f);
+  if (groupId) {
+    setCheckmarkGroupValue(groupId, checkValue);
+    f.value = true;
+    if (f.id) valuesById[f.id] = true;
+  } else {
+    f.value = !f.value;
+    if (f.id) valuesById[f.id] = !!f.value;
+  }
+  applyConditionalRequired();
+  render();
+  scheduleSave();
+  evaluateAffBanner();
+  evaluateExtraDataAndBar();
+}
+
+/* ===== 모드/상태 ===== */
+const FILL  = new URLSearchParams(location.search).get('mode')==='fill';
+const FRESH = new URLSearchParams(location.search).get('fresh')==='1';
+if(FILL) document.documentElement.classList.add('fill');
+
+let selected=-1;
+let pages=[{bg:'images/adult-1.jpg',fields:[]}], pageIndex=0;
+
+const paper   = document.getElementById('paper');
+const stage   = document.getElementById('stage');
+const overlay = document.getElementById('overlay');
+const bg      = document.getElementById('bg');
+const pageInfo= document.getElementById('pageInfo');
+const affBanner=document.getElementById('affBanner');
+const affPopup = document.getElementById('affPopup');
+
+const extraBar = document.getElementById('extraBar');
+const extraBarText = document.getElementById('extraBarText');
+
+let LAST_EXTRA_TXT = '';
+let __MIRRORING__ = false;
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const num=(v,d)=>{const n=parseFloat(v);return isNaN(n)?d:n;};
+const cur=()=>pages[pageIndex];
+
+/* ===== 화면 줌 ===== */
+function applyZoom(){
+  stage.style.transform='scale(1)';
+  const stageRect = stage.getBoundingClientRect();
+  const targetW = paper.clientWidth;
+  let z = targetW / Math.max(stageRect.width,1);
+  z = Math.max(0.4, Math.min(2, z));
+  document.documentElement.style.setProperty('--zoom', z);
+  stage.style.transform = '';
+  paper.style.height = (stage.offsetHeight * z) + 'px';
+}
+window.addEventListener('resize', applyZoom);
+
+/* ===== 자동 저장 비활성 ===== */
+const AUTOSAVE_KEY=null;
+function scheduleSave(){ }
+function tryLoadAutosave(){ }
+const clearAutosave = () => { try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_) {} };
+
+/* ===== 드롭다운 글자 자동 축소 ===== */
+function fitSelectText(sel, maxPx = 16, minPx = 8, arrowPx) {
+  try {
+    const text = (sel.options[sel.selectedIndex] || {}).text || sel.value || '';
+    const style = getComputedStyle(sel);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padR = parseFloat(style.paddingRight) || 0;
+    const ARROW_W = (typeof arrowPx === 'number') ? arrowPx : 17;
+    const inner = sel.clientWidth - padL - padR - ARROW_W;
+    if (inner <= 0 || !text) return;
+
+    let meas = document.getElementById('__measure_span__');
+    if (!meas) {
+      meas = document.createElement('span');
+      meas.id = '__measure_span__';
+      meas.style.position = 'fixed';
+      meas.style.visibility = 'hidden';
+      meas.style.whiteSpace = 'nowrap';
+      meas.style.left = '-9999px';
+      document.body.appendChild(meas);
+    }
+    meas.style.fontFamily = style.fontFamily;
+    meas.style.fontWeight = style.fontWeight;
+    meas.style.fontStyle = style.fontStyle;
+    meas.style.letterSpacing = style.letterSpacing;
+    meas.style.textTransform = style.textTransform;
+
+    for (let px = maxPx; px >= minPx; px -= 0.5) {
+      meas.style.fontSize = px + 'px';
+      meas.textContent = text;
+      if (meas.getBoundingClientRect().width <= inner) {
+        sel.style.fontSize = px + 'px';
+        return;
+      }
+    }
+    sel.style.fontSize = minPx + 'px';
+  } catch (_) {}
+}
+const refitAllSelects=()=>overlay.querySelectorAll('select').forEach(fitSelectText);
+
+/* ===== textarea 자동 높이 ===== */
+function autosizeTA(el){
+  try{
+    if (el.dataset.fixedH) {
+      el.style.height = el.dataset.fixedH + 'px';
+      return;
+    }
+    const minH = parseFloat(el.dataset.minH || '') || 5;
+    el.style.height = 'auto';
+    el.style.height = Math.max(el.scrollHeight, minH) + 'px';
+  }catch(_){}
+}
+function autosizeAllTextareas(root){
+  (root || document).querySelectorAll('textarea').forEach(autosizeTA);
+}
+
+/* ===== 설계 로드 ===== */
+function seed7(){
+  pages = [...Array(7)].map((_,i)=>({ bg:`images/page${i+1}.jpg`, fields:[] }));
+}
+const QS  = new URLSearchParams(location.search);
+const DOC = (QS.get('doc') || 'join').toLowerCase();
+const AGE = (QS.get('age') || 'adult').toLowerCase();
+function designFileOf(doc, age){
+  if (doc === 'change') return 'overlay-design.change.json';
+  if (doc === 'cancel') return 'overlay-design.cancel.json';
+  return (age === 'teen') ? 'overlay-design.teen.json' : 'overlay-design.adult.json';
+}
+function buildDesignUrl(){
+  return `./${designFileOf(DOC, AGE)}?v=${Date.now()}`;
+}
+async function loadDesign(){
+  try{
+    const url = buildDesignUrl();
+    const r = await fetch(url, { cache: 'no-store' });
+    if (r.ok) {
+      const j = await r.json();
+      if (Array.isArray(j.pages) && j.pages.length) {
+        pages = j.pages;
+        if (Array.isArray(j.conditionalRequired)) CONDITIONAL_REQUIRED = j.conditionalRequired;
+        if (j.formPopup && typeof j.formPopup === 'object') {
+          USE_FORM_POPUP = !!j.formPopup.enabled;
+          FORM_POPUP_FORMS = j.formPopup.forms || Object.create(null);
+        }
+      }
+      else seed7();
+    } else seed7();
+  } catch (err) {
+    console.error('[loadDesign] fetch 실패:', err);
+    seed7();
+  }
+  pages.forEach(pg => { if (!Array.isArray(pg.fields)) pg.fields = []; });
+  pageIndex = 0;
+}
+
+/* ===== 유틸 ===== */
+const PLAN_LABEL_RE = /(요금제|요금.?상품)/i;
+const PLAN_ID_RE    = /^(plan|planselect|plan_name)$/i;
+
+const findFieldsAllPages=id=>{const a=[]; pages.forEach(pg=>(pg.fields||[]).forEach(f=>{if(f.id===id)a.push(f);})); return a;};
+const getFieldsByIdAll=id=>{
+  id=String(id||'').toLowerCase();
+  const out=[];
+  pages.forEach((pg,pi)=>(pg.fields||[]).forEach((f,idx)=>{
+    if(String(f.id||'').toLowerCase()===id) out.push({f,pi,idx});
+  }));
+  return out;
+};
+
+/* ===== 자필(잠금) 키 입력 방지 ===== */
+function blockTyping(el){
+  const prevent = e=>{ if(e.key !== 'Tab') e.preventDefault(); };
+  el.addEventListener('keydown', prevent);
+  el.addEventListener('beforeinput', e=>e.preventDefault());
+  el.addEventListener('paste', e=>e.preventDefault());
+}
+
+/* ===== 자동 날짜 입력 ===== */
+function fillAutoDates(){
+  const now = new Date();
+  const yyyy = String(now.getFullYear());
+  const mm   = String(now.getMonth()+1).padStart(2,'0');
+  const dd   = String(now.getDate()).padStart(2,'0');
+  pages.forEach(pg=>{
+    (pg.fields||[]).forEach(f=>{
+      if(!f || !f.autoDate) return;
+      if(f.value && String(f.value).trim()) return;
+      if(f.autoDate==='year')  f.value = yyyy;
+      if(f.autoDate==='month') f.value = mm;
+      if(f.autoDate==='day')   f.value = dd;
+    });
+  });
+}
+
+/* ======== 요금제(plans.json) ======== */
+let PLANS = [];
+let PLANS_MAP = new Map();
+
+function parseMoney(v){
+  if(v==null || v==='') return null;
+  const n = Number(String(v).replace(/[^\d.-]/g,''));
+  return isFinite(n) ? n : null;
+}
+function moneyToString(n){ return (n==null) ? '' : String(n); }
+
+function normalizePlans(json){
+  const names = [];
+  const map = new Map();
+
+  if(Array.isArray(json)){
+    json.forEach(item=>{
+      if(item && typeof item==='object'){
+        const name = String(item.name ?? item.plan ?? '').trim();
+        if(!name) return;
+        const base = parseMoney(item.baseFee ?? item.base ?? item.base_fee);
+        const disc = parseMoney(item.discountFee ?? item.discount ?? item.discount_fee);
+        let total  = parseMoney(item.totalFee ?? item.total ?? item.total_fee);
+        if(total==null && base!=null && disc!=null) total = base - disc;
+
+        const extra = parseMoney(item.extraDataGb);
+        const bundleAnyone = !!item.bundleAnyone;
+
+        names.push(name);
+        map.set(name,{baseFee:base, discountFee:disc, totalFee:total, extraDataGb:extra, bundleAnyone});
+      }else{
+        const name = String(item).trim();
+        if(!name) return;
+        names.push(name);
+        map.set(name,{baseFee:null, discountFee:null, totalFee:null, extraDataGb:null, bundleAnyone:false});
+      }
+    });
+  }else if(json && typeof json==='object'){
+    Object.entries(json).forEach(([k,v])=>{
+      const name = String(k).trim();
+      let base=null, disc=null, total=null, extra=null, bundleAnyone=false;
+      if(v && typeof v==='object'){
+        base = parseMoney(v.baseFee ?? v.base);
+        disc = parseMoney(v.discountFee ?? v.discount);
+        total= parseMoney(v.totalFee ?? v.total);
+        if(total==null && base!=null && disc!=null) total = base - disc;
+        extra = parseMoney(v.extraDataGb);
+        bundleAnyone = !!v.bundleAnyone;
+      }
+      names.push(name);
+      map.set(name,{baseFee:base, discountFee:disc, totalFee:total, extraDataGb:extra, bundleAnyone});
+    });
+  }
+
+  const uniq = Array.from(new Set(names));
+  return {names:uniq, map};
+}
+
+function getPlanSelectTargets(){
+  const targets=[];
+  pages.forEach((pg,pi)=> (pg.fields||[]).forEach((f,idx)=>{
+    if(f.type!=='select') return;
+    const byId    = PLAN_ID_RE.test(String(f.id||''));
+    const byLabel = PLAN_LABEL_RE.test(String(f.label||''));
+    if(byId||byLabel) targets.push({f,pi,idx});
+  }));
+  return targets;
+}
+
+function applyPlansToDesign(){
+  const list = Array.isArray(PLANS)?[...PLANS]:[];
+  const targets = getPlanSelectTargets();
+  targets.forEach(({f})=>{
+    f.options = list;
+    if(f.value && !list.includes(f.value)) f.value='';
+  });
+  render(); scheduleSave(); refitAllSelects();
+}
+
+function getFeeFieldsAll(){
+  const base = getFieldsByIdAll('basefee').map(x=>x.f);
+  const disc = getFieldsByIdAll('discountfee').map(x=>x.f);
+  const tot  = getFieldsByIdAll('totalfee').map(x=>x.f);
+  return {base, disc, tot};
+}
+function updateFeesFromPlan(planName, doRender=true){
+  const info = PLANS_MAP.get(planName);
+  if(!info) return;
+
+  const {base, disc, tot} = getFeeFieldsAll();
+
+  const baseVal = moneyToString(info.baseFee);
+
+  let discVal = '';
+  if (info.discountFee != null) {
+    const n = Math.abs(info.discountFee);
+    discVal = (n === 0) ? '0' : '-' + moneyToString(n);
+  }
+
+  let totVal = moneyToString(info.totalFee);
+  if (!totVal && info.baseFee != null && info.discountFee != null) {
+    totVal = moneyToString(info.baseFee - Math.abs(info.discountFee));
+  }
+
+  base.forEach(f => { f.value = baseVal; setValueById(f.id, baseVal); });
+  disc.forEach(f => { f.value = discVal; setValueById(f.id, discVal); });
+  tot.forEach(f => { f.value = totVal; setValueById(f.id, totVal); });
+
+  if (doRender) { render(); scheduleSave(); }
+}
+
+async function loadPlansJson(){
+  const tryUrls = ['./plans.json?v=2','/public/plans.json?v=2','/plans.json?v=2'];
+  for (const url of tryUrls){
+    try{
+      const r = await fetch(url,{cache:'no-store'});
+      if (!r.ok) continue;
+      const json = await r.json();
+      const root = (json && typeof json === 'object' && json.plans) ? json.plans : json;
+      const {names,map} = normalizePlans(root);
+      PLANS = names; PLANS_MAP = map;
+      applyPlansToDesign();
+      syncFeesFromExistingPlan();
+      mirrorPlanNameIntoBoxes(getSelectedPlanName());
+      return;
+    }catch(_){}
+  }
+}
+function syncFeesFromExistingPlan(){
+  const tars = getPlanSelectTargets();
+  tars.forEach(({f})=>{
+    if(f.value) updateFeesFromPlan(f.value,false);
+  });
+  render(); scheduleSave();
+}
+
+/* ===== 이름칸 자동 축소 ===== */
+function autoShrinkTextareaFont(el, minPx = 8, maxPx) {
+  try {
+    const cs = getComputedStyle(el);
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padR = parseFloat(cs.paddingRight) || 0;
+    const innerW = el.clientWidth - padL - padR;
+    if (innerW <= 0) return;
+
+    const base = parseFloat(el.dataset.baseFs || cs.fontSize || '14') || 14;
+    const max = maxPx || base;
+    const min = minPx;
+
+    el.dataset.baseFs = String(base);
+
+    const text = (el.value || el.textContent || '').trim();
+    if (!text) {
+      el.style.fontSize = base + 'px';
+      return;
+    }
+
+    let span = document.getElementById('__name_measure_span__');
+    if (!span) {
+      span = document.createElement('span');
+      span.id = '__name_measure_span__';
+      span.style.position = 'fixed';
+      span.style.visibility = 'hidden';
+      span.style.whiteSpace = 'nowrap';
+      span.style.left = '-9999px';
+      document.body.appendChild(span);
+    }
+
+    span.style.fontFamily = cs.fontFamily;
+    span.style.fontWeight = cs.fontWeight;
+    span.style.fontStyle  = cs.fontStyle;
+    span.style.letterSpacing = cs.letterSpacing;
+    span.style.textTransform = cs.textTransform;
+
+    for (let px = max; px >= min; px -= 0.5) {
+      span.style.fontSize = px + 'px';
+      span.textContent = text;
+      if (span.getBoundingClientRect().width <= innerW) {
+        el.style.fontSize = px + 'px';
+        return;
+      }
+    }
+    el.style.fontSize = min + 'px';
+  } catch (_) {}
+}
+const AUTO_SHRINK_NAME_RE = /(가입자명|성명|이름|예금주 성함|주소|거주지|도로명|상세주소|배송지|수령지)/;
+function isNameField(f){
+  const label = String(f.label || '');
+  const id    = String(f.id || '');
+  const ph    = String(f.placeholder || '');
+  if (AUTO_SHRINK_NAME_RE.test(label)) return true;
+  if (AUTO_SHRINK_NAME_RE.test(ph))    return true;
+  if (AUTO_SHRINK_NAME_RE.test(id))    return true;
+  if (/name|custname/i.test(id))       return true;
+  return false;
+}
+function setupNameAutoShrink(ctrl, f){
+  if (!isNameField(f) && !isAddressField(f)) return;
+  ctrl.dataset.autofit = '1';
+  const run = () => {
+    const cs = getComputedStyle(ctrl);
+    const baseFs = f.fontSize || parseFloat(cs.fontSize) || 14;
+    autoShrinkTextareaFont(ctrl, 5, baseFs);
+  };
+  requestAnimationFrame(run);
+  ctrl.addEventListener('input', run);
+}
+
+
+function isAddressField(f){
+  const text = [
+    String(f?.id || ''),
+    String(f?.label || ''),
+    String(f?.placeholder || '')
+  ].join(' ');
+  return /(주소|거주지|도로명|상세주소|배송지|수령지|addr|address)/i.test(text);
+}
+function isAddressDetailField(f){
+  return /(상세\s*주소|상세주소|address.?detail|detail.?address|addr.?detail)/i.test([
+    f?.id, f?.label, f?.placeholder
+  ].join(' '));
+}
+function isAddressZipField(f){
+  return /(우편\s*번호|우편번호|zonecode|zip.?code|postcode)/i.test([
+    f?.id, f?.label, f?.placeholder
+  ].join(' '));
+}
+function isAddressBaseField(f){
+  return isAddressField(f) && !isAddressDetailField(f) && !isAddressZipField(f);
+}
+
+const ADDRESS_POSTCODE_SCRIPT =
+  'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+
+let __addressScriptPromise = null;
+let __addressTargetField = null;
+let __addressTargetControl = null;
+let __addressResult = null;
+let __addressPostcodeInstance = null;
+
+function loadAddressPostcodeScript(){
+  if (window.daum?.Postcode) return Promise.resolve();
+  if (__addressScriptPromise) return __addressScriptPromise;
+
+  __addressScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-address-postcode="1"]');
+    if (existing) {
+      existing.addEventListener('load', resolve, {once:true});
+      existing.addEventListener('error', () => reject(new Error('주소 검색 스크립트를 불러오지 못했습니다.')), {once:true});
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = ADDRESS_POSTCODE_SCRIPT;
+    script.async = true;
+    script.dataset.addressPostcode = '1';
+    script.onload = resolve;
+    script.onerror = () => {
+      __addressScriptPromise = null;
+      reject(new Error('주소 검색 서비스를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'));
+    };
+    document.head.appendChild(script);
+  });
+
+  return __addressScriptPromise;
+}
+
+function findAddressFields(predicate){
+  const found = [];
+  pages.forEach((pg, pi) => {
+    (pg.fields || []).forEach((f, fi) => {
+      if (predicate(f)) found.push({f, pi, fi});
+    });
+  });
+  return found;
+}
+
+function setAddressFieldValue(f, value){
+  if (!f) return;
+  f.value = value ?? '';
+  if (f.id) setValueById(f.id, f.value);
+}
+
+function normalizeSelectedAddress(data){
+  const road = String(data?.roadAddress || '').trim();
+  const jibun = String(data?.jibunAddress || '').trim();
+  const base = road || jibun;
+  const extras = [];
+
+  if (data?.bname && /[동|로|가]$/.test(data.bname)) extras.push(data.bname);
+  if (data?.buildingName && data?.apartment === 'Y') extras.push(data.buildingName);
+
+  return {
+    zonecode: String(data?.zonecode || '').trim(),
+    base,
+    extra: extras.length ? ` (${extras.join(', ')})` : ''
+  };
+}
+
+function resetAddressSearchResult(){
+  __addressResult = null;
+  const selected = document.getElementById('addressSearchSelected');
+  const detail = document.getElementById('addressSearchDetail');
+  const error = document.getElementById('addressSearchError');
+  if (selected) selected.textContent = '';
+  if (detail) detail.value = '';
+  if (error) error.textContent = '';
+}
+
+function closeAddressSearch(){
+  const modal = document.getElementById('addressSearchModal');
+  if (!modal) return;
+
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open','no-scroll');
+
+  const layer = document.getElementById('addressSearchLayer');
+  if (layer) {
+    layer.style.height = '';
+    layer.innerHTML = '<div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>';
+  }
+
+  __addressPostcodeInstance = null;
+  __addressResult = null;
+}
+
+function renderAddressPostcode(){
+  const layer = document.getElementById('addressSearchLayer');
+  const error = document.getElementById('addressSearchError');
+  if (!layer || !window.daum?.Postcode) return;
+
+  layer.innerHTML = '';
+  if (error) error.textContent = '';
+
+  __addressPostcodeInstance = new daum.Postcode({
+    width:'100%',
+    height:'100%',
+    animation:true,
+    autoClose:false,
+    oncomplete(data){
+      __addressResult = normalizeSelectedAddress(data);
+
+      const selected = document.getElementById('addressSearchSelected');
+      const detail = document.getElementById('addressSearchDetail');
+
+      if (selected) {
+        selected.textContent =
+          `${__addressResult.zonecode ? `[${__addressResult.zonecode}] ` : ''}` +
+          __addressResult.base +
+          __addressResult.extra;
+      }
+
+      if (error) error.textContent = '';
+      requestAnimationFrame(() => detail?.focus());
+    },
+    onresize(size){
+      if (size?.height && window.innerWidth > 640) {
+        layer.style.height = Math.min(Math.max(size.height,430),520) + 'px';
+      }
+    }
+  });
+
+  __addressPostcodeInstance.embed(layer, {autoClose:false});
+}
+
+async function openAddressSearch(f, ctrl){
+  if (!FILL || !f || !ctrl || f.locked) return;
+
+  __addressTargetField = f;
+  __addressTargetControl = ctrl;
+  resetAddressSearchResult();
+
+  const modal = document.getElementById('addressSearchModal');
+  const layer = document.getElementById('addressSearchLayer');
+  if (!modal || !layer) return;
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open','no-scroll');
+  layer.innerHTML = '<div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>';
+
+  try {
+    await loadAddressPostcodeScript();
+    renderAddressPostcode();
+  } catch (err) {
+    layer.innerHTML = `<div class="asm-loading">${String(err?.message || err)}</div>`;
+  }
+}
+
+function applySelectedAddress(){
+  const error = document.getElementById('addressSearchError');
+  const detailEl = document.getElementById('addressSearchDetail');
+
+  if (!__addressResult?.base) {
+    if (error) error.textContent = '검색 결과에서 기본 주소를 먼저 선택해 주세요.';
+    return;
+  }
+
+  const detail = String(detailEl?.value || '').trim();
+  if (!detail) {
+    if (error) error.textContent = '동/호수 등 상세주소를 입력해 주세요.';
+    detailEl?.focus();
+    return;
+  }
+
+  const baseAddress = (__addressResult.base + __addressResult.extra).trim();
+  const fullAddress = `${baseAddress} ${detail}`.replace(/\s+/g,' ').trim();
+
+  setAddressFieldValue(__addressTargetField, fullAddress);
+
+  findAddressFields(isAddressZipField).forEach(({f}) => {
+    if (f !== __addressTargetField) setAddressFieldValue(f, __addressResult.zonecode);
+  });
+  findAddressFields(isAddressDetailField).forEach(({f}) => {
+    if (f !== __addressTargetField) setAddressFieldValue(f, detail);
+  });
+
+  if (__addressTargetControl) {
+    __addressTargetControl.value = fullAddress;
+    const baseFs = __addressTargetField?.fontSize ||
+      parseFloat(getComputedStyle(__addressTargetControl).fontSize) || 14;
+    autoShrinkTextareaFont(__addressTargetControl, 5, baseFs);
+  }
+
+  scheduleSave();
+  evaluateAffBanner();
+  evaluateExtraDataAndBar();
+  closeAddressSearch();
+  render();
+
+  requestAnimationFrame(() => {
+    const id = String(__addressTargetField?.id || '');
+    if (!id) return;
+    const live = overlay.querySelector(
+      `.field[data-id="${CSS.escape(id)}"] input[type="text"],` +
+      `.field[data-id="${CSS.escape(id)}"] textarea`
+    );
+    if (!live) return;
+    const baseFs = __addressTargetField?.fontSize ||
+      parseFloat(getComputedStyle(live).fontSize) || 14;
+    autoShrinkTextareaFont(live, 5, baseFs);
+  });
+}
+
+function wireAddressSearchModal(){
+  const modal = document.getElementById('addressSearchModal');
+  const close = document.getElementById('addressSearchClose');
+  const reset = document.getElementById('addressSearchReset');
+  const apply = document.getElementById('addressSearchApply');
+  const detail = document.getElementById('addressSearchDetail');
+
+  close?.addEventListener('click', closeAddressSearch);
+  reset?.addEventListener('click', () => {
+    resetAddressSearchResult();
+    renderAddressPostcode();
+  });
+  apply?.addEventListener('click', applySelectedAddress);
+
+  detail?.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    e.stopPropagation();
+    applySelectedAddress();
+  });
+
+  modal?.addEventListener('click', e => {
+    if (e.target === modal) closeAddressSearch();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && modal?.classList.contains('open')) {
+      e.preventDefault();
+      closeAddressSearch();
+    }
+  }, true);
+}
+
+function bindAddressSearchToControl(f, w, ctrl){
+  if (!FILL || !isAddressBaseField(f) || f.locked || !ctrl?.addEventListener) return;
+
+  w.classList.add('address-search-enabled');
+  w.setAttribute('role','button');
+  w.setAttribute('tabindex','0');
+  w.setAttribute('aria-haspopup','dialog');
+  w.title = '주소 입력칸을 클릭하면 주소 검색창이 열립니다.';
+
+  ctrl.readOnly = true;
+  ctrl.setAttribute('aria-haspopup','dialog');
+  ctrl.title = '클릭하면 주소 검색창이 열립니다.';
+
+  let opening = false;
+  const open = async e => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+
+    if (opening) return;
+    if (document.getElementById('addressSearchModal')?.classList.contains('open')) return;
+
+    opening = true;
+    try {
+      await openAddressSearch(f, ctrl);
+    } finally {
+      setTimeout(() => { opening = false; }, 250);
+    }
+  };
+
+  ctrl.addEventListener('click', open);
+  w.addEventListener('click', open);
+
+  const onKey = e => {
+    if (e.key === 'Enter' || e.key === ' ') open(e);
+  };
+  ctrl.addEventListener('keydown', onKey);
+  w.addEventListener('keydown', onKey);
+}
+
+window.addEventListener('DOMContentLoaded', wireAddressSearchModal);
+
+/* ===== 제휴/추가데이터 ===== */
+function getSelectedPlanName(){
+  const tars = getPlanSelectTargets();
+  const sel = tars.find(t => t.f.value)?.f;
+  return sel ? sel.value : '';
+}
+function isAffiliatePlan(planName){
+  const name = String(planName || '');
+  const AFF_RE = /(밀리의\s*서재|밀리의서재|지니\s*뮤직|지니뮤직|cu\s*20%?\s*할인|메가박스\s*free|제휴)/i;
+  if (AFF_RE.test(name)) return true;
+  const info = PLANS_MAP.get(planName);
+  return !!(info && info.bundleAnyone);
+}
+
+/* =========================
+   ✅ render() 오류 수정 완성본
+========================= */
+function render(){
+  Object.keys(elById).forEach(k => delete elById[k]);
+
+  const p = cur();
+  bg.src = p.bg || '';
+  overlay.innerHTML = '';
+
+  (p.fields || []).forEach((f, i) => {
+    if (Number.isFinite(f.fontSize))     f.fontSize     = clamp(f.fontSize, 5, 32);
+    if (Number.isFinite(f.inputHeight))  f.inputHeight  = clamp(f.inputHeight, 5, 60);
+
+    const w = document.createElement('div');
+    w.className = 'field '
+      + (f.type === 'radio'    ? 'radio '    : '')
+      + (f.type === 'checkbox' ? 'checkbox ' : '')
+      + (f.type === 'checkmark' ? 'checkmark ' : '')
+      + (i === selected        ? ' sel'      : '');
+
+    const _w = (f.w ?? 24);
+    w.style.left  = `${f.x}%`;
+    w.style.top   = `${f.y}%`;
+    w.style.width = `${_w}%`;
+    if (f.fontSize) w.style.setProperty('--fs', f.fontSize + 'px');
+    w.dataset.i = i;
+    if (f.id) w.dataset.id = f.id;
+
+    if (f.type === 'radio') {
+      w.style.setProperty('--rsize', (f.radioSize ?? 18) + 'px');
+      w.style.setProperty('--rgap',  (f.radioGap  ?? 12) + 'px');
+
+      const rs = (f.radioStyle || 'dot'); // dot/solid/tick
+      w.classList.remove('rd-dot','rd-solid','rd-tick');
+      w.classList.add('rd-' + rs);
+    }
+    if (f.type === 'radio') {
+  w.style.setProperty('--rsize', (f.radioSize ?? 18) + 'px');
+  w.style.setProperty('--rgap',  (f.radioGap  ?? 12) + 'px');
+
+  const rs = (f.radioStyle || 'dot'); // dot/solid/tick
+  w.classList.remove('rd-dot','rd-solid','rd-tick');
+  w.classList.add('rd-' + rs);
+
+  /* ✅ (추가) 1,2 표기 숨김 옵션 */
+  if (f.radioShowText === false) w.classList.add('noText');
+  else w.classList.remove('noText');
+
+  /* ✅ (추가) 겉 테두리(.radio-item) 제어 */
+  const outerColor = (f.radioOuterBorderTransparent || f.borderTransparent) ? 'transparent'
+                    : (f.radioOuterBorderColor || 'rgba(0,0,0,.25)');
+
+  const outerWidth = Number.isFinite(Number(f.radioOuterBorderWidth))
+    ? Math.max(0, Math.min(8, Number(f.radioOuterBorderWidth)))
+    : 1;
+
+  w.style.setProperty('--rbc', outerColor);
+  w.style.setProperty('--rbw', outerWidth + 'px');
+}
+
+    if (f.color) w.style.setProperty('--fgc', f.color);
+    if (f.inputHeight) w.style.setProperty('--ih', f.inputHeight + 'px');
+
+    if (f.type === 'checkbox' || f.type === 'radio') {
+      const tickColor = f.borderTransparent ? 'transparent' : '#000';
+      const tickWidth = Number.isFinite(Number(f.borderWidth))
+        ? Math.max(1, Math.min(8, Number(f.borderWidth)))
+        : 1.6;
+      w.style.setProperty('--tick-bdc', tickColor);
+      w.style.setProperty('--tick-bdw', tickWidth + 'px');
+    }
+
+    const lab = document.createElement('div');
+    lab.className   = 'label';
+    lab.textContent = f.label || '';
+    w.appendChild(lab);
+
+    let ctrl;
+
+    const isName = isNameField(f);
+    const treatAsTextarea =
+      (f.type === 'textarea') ||
+      (f.type === 'text' && (f.wrap || isName) && !isAddressField(f));
+
+    const lockByPlaceholder = !!f.lockOnPh && !!f.placeholder && !f.value;
+
+    /* ===== textarea (text+wrap 포함) ===== */
+    if (treatAsTextarea) {
+      ctrl = document.createElement('textarea');
+      ctrl.spellcheck = false;
+      ctrl.style.resize = 'none';
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      ctrl.value = init;
+      f.value = init;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.placeholder) ctrl.placeholder = f.placeholder;
+      if (f.maxLength)   ctrl.maxLength = f.maxLength;
+
+      if (f.inputHeight) {
+        ctrl.dataset.fixedH = f.inputHeight;
+        ctrl.style.height = f.inputHeight + 'px';
+      }
+
+      if (f.locked || lockByPlaceholder) {
+        ctrl.readOnly = true;
+        ctrl.dataset.locked = '1';
+        blockTyping(ctrl);
+      }
+
+      ctrl.oninput = () => {
+        if (f.locked || lockByPlaceholder) return;
+
+        let v = ctrl.value;
+        v = applyMask(v, f.mask, f.maskRe);
+        if (f.maxLength) v = v.slice(0, f.maxLength);
+        if (ctrl.value !== v) ctrl.value = v;
+
+        f.value = v;
+        setValueById(f.id, v);
+        applyMirror(f, v);
+
+        autosizeTA(ctrl);
+        scheduleSave();
+        evaluateAffBanner();
+        evaluateExtraDataAndBar();
+      };
+    }
+
+    /* ===== ✅ select (오류났던 부분 전면 복구) ===== */
+    else if (f.type === 'select') {
+      const sel = document.createElement('select');
+
+      // 전역 값 우선 적용
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      f.value = init;
+
+      // placeholder 옵션
+      const phText = (f.placeholder || '').trim();
+      if (phText) {
+        const op0 = document.createElement('option');
+        op0.value = '';
+        op0.textContent = phText;
+        op0.disabled = true;
+        op0.hidden = true;
+        sel.appendChild(op0);
+      }
+
+      (f.options || []).forEach(o => {
+        const op = document.createElement('option');
+        op.value = op.textContent = o;
+        sel.appendChild(op);
+      });
+
+      sel.value = (init ?? '');
+      if (f.id) elById[f.id] = sel;
+
+      if (f.inputHeight) sel.style.height = f.inputHeight + 'px';
+
+      if (f.locked || lockByPlaceholder) {
+        sel.disabled = true;
+        sel.dataset.locked = '1';
+      }
+
+      sel.onchange = () => {
+        if (sel.value === '') return; // placeholder 상태 방지
+
+        f.value = sel.value;
+        setValueById(f.id, sel.value);
+        applyMirror(f, sel.value);
+
+        const isPlan =
+          PLAN_ID_RE.test(String(f.id || '')) ||
+          PLAN_LABEL_RE.test(String(f.label || ''));
+
+        if (isPlan) {
+          updateFeesFromPlan(f.value);
+          mirrorPlanNameIntoBoxes(f.value);
+        }
+
+        scheduleSave();
+        fitSelectText(sel, (f.fontSize ?? 16), 5);
+        evaluateAffBanner();
+        evaluateExtraDataAndBar();
+      };
+
+      requestAnimationFrame(() => fitSelectText(sel, (f.fontSize ?? 16), 5));
+      ctrl = sel;
+    }
+
+
+    else if (f.type === 'checkmark') {
+      ctrl = document.createElement('div');
+      ctrl.className = 'checkmark-symbol';
+      ctrl.dataset.type = 'checkmark';
+      const init = !!(f.id ? (valuesById[f.id] ?? f.value ?? false) : (f.value ?? false));
+      f.value = init;
+      ctrl.textContent = f.value ? '✓' : '';
+      ctrl.style.width = '100%';
+      ctrl.style.height = '100%';
+      if (f.id) elById[f.id] = ctrl;
+      lab.style.display = 'none';
+      w.style.setProperty('--cksize', (f.checkSize ?? f.radioSize ?? 18) + 'px');
+      w.addEventListener(FILL ? 'click' : 'dblclick', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCheckmarkToggle(f);
+      });
+    }
+
+/* ===== checkbox ===== */
+else if (f.type === 'checkbox') {
+  ctrl = document.createElement('input');
+  ctrl.type = 'checkbox';
+
+  const init = (f.id ? (valuesById[f.id] ?? f.value ?? false) : (f.value ?? false));
+  ctrl.checked = !!init;
+  f.value = !!init;
+  if (f.id) elById[f.id] = ctrl;
+
+  if (f.locked || lockByPlaceholder){
+    ctrl.disabled = true;
+    ctrl.dataset.locked = '1';
+  }
+
+  w.style.setProperty('--cksize', (f.checkSize ?? f.radioSize ?? 18) + 'px');
+
+  // ✅ 체크 스타일 클래스 적용 (tick/solid/dot)
+  const style = (f.checkStyle || 'tick');
+  w.classList.remove('ck-tick','ck-solid','ck-dot');
+  w.classList.add('ck-' + style);
+
+  ctrl.onchange = () => {
+    f.value = ctrl.checked;
+    setValueById(f.id, ctrl.checked);
+    applyMirror(f, ctrl.checked);
+
+    scheduleSave();
+    evaluateAffBanner();
+    evaluateExtraDataAndBar();
+  };
+
+  lab.style.top  = '0';
+  lab.style.left = '24px';
+}
+
+
+    /* ===== radio ===== */
+    else if (f.type === 'radio') {
+      ctrl = document.createElement('div');
+      const opts = (f.options && f.options.length)
+        ? f.options
+        : Array.from({ length: (f.radioCount || 2) }, (_, k) => String(k + 1));
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? '') : (f.value ?? ''));
+      f.value = init;
+if (f.id) elById[f.id] = { type:'radio', value:init }; // 더미 등록(미러/저장용)
+      opts.forEach(o => {
+        const it = document.createElement('label');
+        it.className = 'radio-item';
+
+        const cb = document.createElement('input');
+        cb.type  = 'checkbox';
+        cb.value = o;
+        cb.checked = (f.value === o);
+        if (f.locked || lockByPlaceholder) cb.disabled = true;
+
+        cb.onchange = () => {
+          if (!cb.checked) return;
+          ctrl.querySelectorAll('input[type="checkbox"]').forEach(x => {
+            if (x !== cb) x.checked = false;
+          });
+          f.value = o;
+          setValueById(f.id, o);
+          applyMirror(f, o);
+          scheduleSave();
+          evaluateAffBanner();
+          evaluateExtraDataAndBar();
+        };
+
+        const s = document.createElement('span');
+const hideText = (f.radioShowText === false) || /^\d+$/.test(String(o).trim());
+
+if (!hideText) {
+  s.textContent = o;
+  it.appendChild(s);
+  } else {
+  // span을 아예 붙이지 않음(=무조건 숨김)
+}
+it.appendChild(cb);
+ctrl.appendChild(it);
+      });
+    }
+
+    /* ===== 일반 input(text) ===== */
+    else {
+      ctrl = document.createElement('input');
+      ctrl.type = 'text';
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      ctrl.value = init;
+      f.value = init;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.placeholder) ctrl.placeholder = f.placeholder;
+      if (f.maxLength)   ctrl.maxLength  = f.maxLength;
+
+      if (f.locked || lockByPlaceholder){
+        ctrl.readOnly = true;
+        ctrl.dataset.locked = '1';
+        blockTyping(ctrl);
+      }
+
+      ctrl.oninput = () => {
+        if (f.locked || lockByPlaceholder) return;
+        let v = ctrl.value;
+        v = applyMask(v, f.mask, f.maskRe);
+        if (f.maxLength) v = v.slice(0, f.maxLength);
+        if (ctrl.value !== v) ctrl.value = v;
+
+        f.value = v;
+        setValueById(f.id, v);
+        applyMirror(f, v);
+
+        scheduleSave();
+        evaluateAffBanner();
+        evaluateExtraDataAndBar();
+      };
+    }
+
+    if (f.color) ctrl.style.color = f.color;
+
+    if (f.textAlign) {
+      ctrl.style.textAlign = f.textAlign;
+      w.style.setProperty('--ta', f.textAlign);
+    } else {
+      w.style.removeProperty('--ta');
+      ctrl.style.textAlign = '';
+    }
+
+    if ((f.type === 'text' || f.type === 'textarea') && (f.borderColor || f.borderTransparent)) {
+      w.classList.add('hasBorder');
+      w.style.setProperty('--bdc', f.borderTransparent ? 'transparent' : (f.borderColor || '#ff3b3b'));
+      w.style.setProperty('--bdw', (f.borderWidth ?? 2) + 'px');
+    } else {
+      w.classList.remove('hasBorder');
+      w.style.removeProperty('--bdc');
+      w.style.removeProperty('--bdw');
+    }
+
+    if ((f.type === 'text' || f.type === 'textarea') && (f.bgColor || f.bgTransparent)) {
+      w.classList.add('hasBG');
+      w.style.setProperty('--bgc', f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+    } else {
+      w.classList.remove('hasBG');
+      w.style.removeProperty('--bgc');
+    }
+
+    if (FILL) {
+      ctrl.addEventListener('mousedown', e => e.stopPropagation());
+    }
+
+    bindAddressSearchToControl(f, w, ctrl);
+
+if (String(f.id || '').startsWith('form:')) {
+  w.dataset.formKey = String(f.id).slice(5);
+  if (ctrl && ctrl.tagName === 'INPUT') {
+    ctrl.readOnly = true;
+    ctrl.value = f.label || String(f.id).slice(5);
+  }
+}
+w.appendChild(ctrl);
+bindRequiredFieldVisual(f, w, ctrl);
+overlay.appendChild(w);
+
+    if (isNameField(f) || isAddressField(f)) setupNameAutoShrink(ctrl, f);
+
+if (!FILL && (f.type === 'text' || f.type === 'textarea' || f.type === 'select' || f.type === 'radio' || f.type === 'checkmark')) {
+  const rh = document.createElement('div');
+  rh.className = 'resize-handle';
+  rh.addEventListener('mousedown', ev => startResize(ev, i, w));
+  w.appendChild(rh);
+}
+
+    if (!FILL) {
+      w.addEventListener('mousedown', e => startDrag(e, i, w));
+      w.addEventListener('click', () => select(i));
+    }
+  });
+
+  if (!FILL) updatePanel();
+  pageInfo.textContent = `${pageIndex + 1} / ${pages.length}`;
+
+  requestAnimationFrame(refitAllSelects);
+  requestAnimationFrame(() => autosizeAllTextareas(overlay));
+  requestAnimationFrame(() => {
+    evaluateAffBanner();
+    evaluateExtraDataAndBar();
+    forceMirrorPlan();
+  });
+}
+
+/* ===== 입력 마스크 ===== */
+function maskFilterByRegex(value, allowPattern){
+  try{
+    const re = new RegExp(allowPattern);
+    let out = '';
+    for (const ch of String(value)) if (re.test(ch)) out += ch;
+    return out;
+  }catch(_){ return value; }
+}
+function formatPhone(digits){
+  if (!digits) return '';
+  if (digits.startsWith('02')) {
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return digits.slice(0,2) + '-' + digits.slice(2);
+    if (digits.length <= 9) return digits.slice(0,2) + '-' + digits.slice(2,5) + '-' + digits.slice(5,9);
+    return digits.slice(0,2) + '-' + digits.slice(2,6) + '-' + digits.slice(6,10);
+  }
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return digits.slice(0,3) + '-' + digits.slice(3);
+  if (digits.length <= 11) return digits.slice(0,3) + '-' + digits.slice(3,7) + '-' + digits.slice(7,11);
+  return digits.slice(0,3) + '-' + digits.slice(3,7) + '-' + digits.slice(7,11);
+}
+function applyMask(value, mask, maskRe){
+  if(mask==='custom' && maskRe) return maskFilterByRegex(value, maskRe);
+  switch(mask){
+    case 'number': return String(value).replace(/[^\d]/g,'');
+    case 'tel':    return formatPhone(String(value).replace(/[^\d]/g,''));
+    case 'alpha':  return String(value).replace(/[^A-Za-z\s]/g,'');
+    case 'alnum':  return String(value).replace(/[^A-Za-z0-9\s]/g,'');
+    case 'hangul': return String(value).replace(/[^\u3131-\u318E\uAC00-\uD7A3\s]/g,'');
+    default:       return value;
+  }
+}
+
+/* ===== 속성 패널 ===== */
+const pLabel=document.getElementById('p_label'),
+      pRadioSize=document.getElementById('p_radioSize'),
+      pRadioGap=document.getElementById('p_radioGap'),
+      pColor=document.getElementById('p_color'),
+      pHeight=document.getElementById('p_height'),
+      pWrap=document.getElementById('p_wrap'),
+      pId=document.getElementById('p_id'),
+      pGroupId=document.getElementById('p_groupId'),
+      pCheckValue=document.getElementById('p_checkValue'),
+      pOptions=document.getElementById('p_options'),
+      pRequired=document.getElementById('p_required'),
+      pBorderColor=document.getElementById('p_borderColor'),
+      pBorderWidth=document.getElementById('p_borderWidth'),
+      pBorderTransparent=document.getElementById('p_borderTransparent'),
+      pBgColor=document.getElementById('p_bgColor'),
+      pBgTransparent=document.getElementById('p_bgTransparent'),
+      pFontSize=document.getElementById('p_fontSize'),
+      pTextAlign=document.getElementById('p_textAlign'),
+      pMask=document.getElementById('p_mask'),
+      pMaskRe=document.getElementById('p_maskRe'),
+      pMaxLen=document.getElementById('p_maxlen'),
+      pPlaceholder=document.getElementById('p_placeholder'),
+      pAutoDate=document.getElementById('p_autoDate'),
+      pLocked=document.getElementById('p_locked'),
+      pLockOnPh=document.getElementById('p_lockOnPh'),
+      pCheckStyle=document.getElementById('p_checkStyle');
+
+function updatePanel(){
+  const info=document.getElementById('selInfo'),
+        px=document.getElementById('p_x'),
+        py=document.getElementById('p_y'),
+        pw=document.getElementById('p_w'),
+        rowOpts=document.getElementById('row_opts'),
+        rowReq=document.getElementById('row_req'),
+        rowCheckGroup=document.getElementById('row_checkGroup'),
+        rowCheckValue=document.getElementById('row_checkValue'),
+        rowCheckStyle=document.getElementById('row_checkStyle');
+
+  if(selected<0){
+    info.textContent='없음'; px.value=py.value=pw.value='';
+    pLabel.value=''; pRadioSize.value=''; pRadioGap.value='';
+    pColor.value='#000000'; pHeight.value=''; pWrap.checked=true; pId.value='';
+    if(pGroupId) pGroupId.value=''; if(pCheckValue) pCheckValue.value='';
+    pBorderColor.value='#ff3b3b'; pBorderWidth.value=2; pBorderTransparent.checked=false;
+    pBgColor.value='#000000'; pBgTransparent.checked=false;
+    pFontSize.value=''; pMask.value=''; pMaskRe.value=''; pMaxLen.value=''; pPlaceholder.value='';
+    pAutoDate.value=''; pLocked.checked=false; pLockOnPh.checked=false;
+    if(rowOpts) rowOpts.style.display='none'; if(rowReq) rowReq.style.display='none';
+    if(rowCheckGroup) rowCheckGroup.style.display='none'; if(rowCheckValue) rowCheckValue.style.display='none';
+    if(rowCheckStyle) rowCheckStyle.style.display='none';
+    if (pCheckStyle) pCheckStyle.value = 'tick';  // ✅ 추가
+    return;
+  }
+
+  const f=cur().fields[selected];
+  info.textContent=(f.label||f.id||('필드'+(selected+1)));
+  px.value=f.x; py.value=f.y; pw.value=f.w ?? 24;
+  pLabel.value = f.label || '';
+
+  pRadioSize.value = (f.type === 'checkbox') ? (f.checkSize ?? 18) : (f.radioSize ?? 18);
+  pRadioGap.value = (f.radioGap ?? 12);
+
+  pColor.value=(f.color || '#000000');
+  pHeight.value=(f.inputHeight ?? '');
+  pWrap.checked=true;
+  pId.value=f.id || '';
+  if(pGroupId) pGroupId.value = f.groupId || '';
+  if(pCheckValue) pCheckValue.value = f.checkValue || '';
+
+  pBorderColor.value=f.borderTransparent?'#000000':(f.borderColor||'#ff3b3b');
+  pBorderWidth.value=(f.borderWidth ?? 2);
+  pBorderTransparent.checked=!!f.borderTransparent;
+
+  pBgColor.value=f.bgTransparent?'#000000':(f.bgColor||'#000000');
+  pBgTransparent.checked=!!f.bgTransparent;
+
+  if(rowReq) rowReq.style.display='';
+  if(pRequired) pRequired.checked=!!f.required;
+
+  if(rowOpts) rowOpts.style.display=(f.type==='select'||f.type==='radio')?'':'none';
+  if(rowCheckGroup) rowCheckGroup.style.display=(f.type==='checkmark') ? '' : 'none';
+  if(rowCheckValue) rowCheckValue.style.display=(f.type==='checkmark') ? '' : 'none';
+  if(rowCheckStyle) rowCheckStyle.style.display=(f.type==='checkbox'||f.type==='radio'||f.type==='checkmark') ? '' : 'none';
+  if(pOptions) pOptions.value=Array.isArray(f.options)? f.options.join(', ') : '';
+  if (pCheckStyle) pCheckStyle.value = f.type === 'radio' ? (f.radioStyle || 'tick') : (f.checkStyle || 'tick');
+
+  pFontSize.value = (f.fontSize ?? 14);
+  pTextAlign.value = f.textAlign || '';
+  pMask.value = f.mask || '';
+  pMaskRe.value = f.maskRe || '';
+  pMaxLen.value = f.maxLength || '';
+  pPlaceholder.value = f.placeholder || '';
+  pAutoDate.value = f.autoDate || '';
+  pLocked.checked = !!f.locked;
+  pLockOnPh.checked = !!f.lockOnPh;
+}
+const select=i=>{selected=i; render();};
+
+/* ===== 드래그 ===== */
+function startDrag(e, i, el){
+  if (FILL) return;
+  e.stopPropagation(); e.preventDefault();
+
+  const f    = cur().fields[i];
+  const rect = stage.getBoundingClientRect();
+  const fieldRect = el.getBoundingClientRect();
+  const offsetX   = e.clientX - fieldRect.left;
+  const offsetY   = e.clientY - fieldRect.top;
+
+  document.body.style.userSelect = 'none';
+  paper.style.cursor = 'move';
+
+  function move(ev){
+    const relX = ev.clientX - rect.left - offsetX;
+    const relY = ev.clientY - rect.top  - offsetY;
+
+    const nx = clamp((relX / rect.width)  * 100, 0, 100);
+    const ny = clamp((relY / rect.height) * 100, 0, 100);
+
+    f.x = nx; f.y = ny;
+    el.style.left = nx + '%';
+    el.style.top  = ny + '%';
+  }
+  function up(){
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    document.body.style.userSelect = '';
+    paper.style.cursor = '';
+    scheduleSave();
+  }
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
+/* ===== 리사이즈 ===== */
+function startResize(e, i, el){
+  e.stopPropagation(); e.preventDefault();
+
+  const f = cur().fields[i];
+  const r = stage.getBoundingClientRect();
+
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const startWpx = ((f.w ?? 24) / 100) * r.width;
+  const startHpx = f.inputHeight || el.offsetHeight;
+
+  document.body.style.userSelect = 'none';
+  paper.style.cursor = 'nwse-resize';
+
+  function mv(ev){
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+
+    const newWpx = Math.max(40, startWpx + dx);
+    const newW   = clamp((newWpx / r.width) * 100, 2, 95);
+    f.w = newW;
+    el.style.width = newW + '%';
+
+    const newH = clamp(startHpx + dy, 5, 200);
+    f.inputHeight = newH;
+    el.style.setProperty('--ih', newH + 'px');
+  }
+  function up(){
+    window.removeEventListener('mousemove', mv);
+    window.removeEventListener('mouseup', up);
+    document.body.style.userSelect = '';
+    paper.style.cursor = '';
+    scheduleSave();
+  }
+  window.addEventListener('mousemove', mv);
+  window.addEventListener('mouseup', up);
+}
+
+/* ===== 필드 추가/적용/삭제 ===== */
+document.getElementById('addField').onclick=()=>{
+  const t=document.getElementById('newType').value,
+        id=document.getElementById('newId').value.trim(),
+        label=document.getElementById('newLabel').value.trim(),
+        opts=document.getElementById('newOpts').value.split(',').map(s=>s.trim()).filter(Boolean),
+        req=document.getElementById('newReq').checked;
+  const base={id:(id||`${t}_${Date.now()}`),label,type:t,x:50,y:50,w:30,required:req};
+  if(t==='select'||t==='radio') base.options=opts;
+  if(t==='radio'){ base.radioSize=18; base.radioGap=12; }
+  if(t==='checkmark'){ base.inputHeight = 18; base.fontSize = 18; base.value = false; base.w = 2; base.groupId = ''; base.checkValue = ''; base.checkStyle = 'tick'; base.checkSize = 18; }
+  cur().fields.push(base); selected=cur().fields.length-1; render(); scheduleSave();
+};
+
+document.getElementById('applyProp').onclick = () => {
+  if (selected < 0) return;
+
+  const f = cur().fields[selected];
+  const style = (pCheckStyle?.value || 'tick'); // tick / solid / dot
+
+  // ✅ 스타일
+  if (f.type === 'checkbox') {
+    f.checkStyle = style;
+  }
+  if (f.type === 'radio') {
+    f.radioStyle = style;
+  }
+  if (f.type === 'checkmark') {
+    f.checkStyle = style;
+  }
+
+  // ✅ 위치 / 크기
+  f.x = clamp(num(document.getElementById('p_x').value, f.x), 0, 100);
+  f.y = clamp(num(document.getElementById('p_y').value, f.y), 0, 100);
+  f.w = clamp(num(document.getElementById('p_w').value, f.w ?? 24), 2, 95);
+  f.label = pLabel.value.trim();
+
+  // ✅ 라디오 / 체크 크기
+  const sizeInput = num(pRadioSize.value, (f.checkSize ?? f.radioSize ?? 18));
+  const safeSize = clamp(sizeInput, 8, 40);
+  f.radioSize = safeSize;
+  f.checkSize = safeSize;
+
+  f.radioGap = clamp(num(pRadioGap.value, f.radioGap ?? 12), 0, 200);
+
+  // ✅ 색상 / 높이
+  f.color = pColor.value || '#000000';
+  const h = parseInt(pHeight.value, 10);
+  f.inputHeight = Number.isFinite(h) ? clamp(h, 5, 60) : undefined;
+
+  // ✅ 기타 속성
+  f.wrap = true;
+  f.id = (pId.value || '').trim() || f.id;
+  if (f.type === 'checkmark') {
+    f.groupId = (pGroupId?.value || '').trim();
+    f.checkValue = (pCheckValue?.value || '').trim();
+  }
+  f.required = !!pRequired?.checked;
+
+  f.borderTransparent = !!pBorderTransparent?.checked;
+  f.borderColor = f.borderTransparent
+    ? 'transparent'
+    : ((pBorderColor?.value || '').trim() || undefined);
+
+  if (f.type === 'select' || f.type === 'radio') {
+    const opts = (pOptions?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+    f.options = opts;
+  }
+
+  const bw = parseInt(pBorderWidth?.value, 10);
+  f.borderWidth = Number.isFinite(bw) ? clamp(bw, 1, 8) : undefined;
+
+  f.bgTransparent = !!pBgTransparent?.checked;
+  f.bgColor = f.bgTransparent
+    ? 'transparent'
+    : ((pBgColor?.value || '').trim() || undefined);
+
+  const fs = parseInt(pFontSize?.value, 10);
+  f.fontSize = Number.isFinite(fs) ? clamp(fs, 5, 32) : undefined;
+
+  f.textAlign = (pTextAlign?.value || '');
+  f.mask = (pMask?.value || '');
+  f.maskRe = (pMaskRe?.value || '').trim();
+
+  const ml = parseInt(pMaxLen?.value, 10);
+  f.maxLength = Number.isFinite(ml) ? clamp(ml, 1, 500) : undefined;
+
+  f.placeholder = (pPlaceholder?.value || '').trim();
+  f.autoDate = (pAutoDate?.value || '');
+  f.locked = !!pLocked?.checked;
+  f.lockOnPh = !!pLockOnPh?.checked;
+
+  // ✅ 요금제 연동
+  if (
+    (PLAN_ID_RE.test(String(f.id || '')) ||
+     PLAN_LABEL_RE.test(String(f.label || ''))) &&
+    f.value
+  ) {
+    updateFeesFromPlan(f.value, false);
+    mirrorPlanNameIntoBoxes(f.value);
+  }
+
+  if (
+    f.type === 'select' &&
+    (PLAN_ID_RE.test(f.id || '') || PLAN_LABEL_RE.test(f.label || ''))
+  ) {
+    f.options = Array.isArray(PLANS) ? [...PLANS] : [];
+  }
+
+  fillAutoDates();
+  applyConditionalRequired();
+  render();
+  scheduleSave();
+};
+/* ✅ 선택된 필드 삭제(여기 바깥에 있어야 정상) */
+document.getElementById('delField').onclick = () => {
+  if (selected < 0) {
+    alert('삭제할 필드를 먼저 클릭해서 선택해주세요.');
+    return;
+  }
+
+  const f = cur().fields[selected];
+
+  if (f && f.id) {
+    delete valuesById[f.id];
+    delete elById[f.id];
+  }
+
+  cur().fields.splice(selected, 1);
+  selected = -1;
+  render();
+  scheduleSave();
+};
+
+
+/* ===== 정렬 버튼 ===== */
+function alignSelectedX(mode){
+  if(selected<0) return;
+  const f=cur().fields[selected];
+  if(mode==='left')   f.x = 0;
+  if(mode==='center') f.x = clamp(50 - (f.w??24)/2, 0, 100);
+  if(mode==='right')  f.x = clamp(100 - (f.w??24), 0, 100);
+  render(); scheduleSave();
+}
+function alignSelectedY(mode){
+  if(selected<0) return;
+  const f=cur().fields[selected];
+  if(mode==='top')    f.y = 0;
+  if(mode==='middle') f.y = 50;
+  if(mode==='bottom') f.y = 100;
+  render(); scheduleSave();
+}
+document.getElementById('alignLeft').onclick = ()=>alignSelectedX('left');
+document.getElementById('alignCX').onclick   = ()=>alignSelectedX('center');
+document.getElementById('alignRight').onclick= ()=>alignSelectedX('right');
+document.getElementById('alignTop').onclick  = ()=>alignSelectedY('top');
+document.getElementById('alignCY').onclick   = ()=>alignSelectedY('middle');
+document.getElementById('alignBottom').onclick=()=>alignSelectedY('bottom');
+
+/* ===== 페이지 ===== */
+const changePage=d=>{pageIndex=clamp(pageIndex+d,0,pages.length-1); selected=-1; render(); scheduleSave();};
+document.getElementById('prev').onclick=()=>changePage(-1);
+document.getElementById('next').onclick=()=>changePage(1);
+
+/* ===== 저장/초기화 ===== */
+document.getElementById('saveJson').onclick=()=>{
+  const blob=new Blob([JSON.stringify({pages, conditionalRequired: CONDITIONAL_REQUIRED, formPopup:{ enabled: USE_FORM_POPUP, forms: FORM_POPUP_FORMS }},null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='overlay-design.json'; a.click();
+  URL.revokeObjectURL(a.href);
+};
+document.getElementById('resetValues').onclick=()=>{
+  pages.forEach(pg=>(pg.fields||[]).forEach(f=>delete f.value));
+  Object.keys(valuesById).forEach(k=>delete valuesById[k]);
+  selected=-1;
+  affBanner.style.display='none';
+  updateExtraBarDom('');
+  mirrorExtraDataIntoBoxes('');
+  mirrorPlanNameIntoBoxes('');
+  clearAutosave();
+  render();
+  evaluateAffBanner();
+  evaluateExtraDataAndBar();
+};
+
+function __fieldMatchesTarget(f, targetId){
+  const t = __normKey(targetId);
+  if (!t || !f) return false;
+  const id = __normKey(f.id);
+  const label = __normKey(f.label);
+  const ph = __normKey(f.placeholder);
+  return id === t || label === t || id.includes(t) || label.includes(t) || ph.includes(t);
+}
+function setRequiredAllPages(targetId, on){
+  pages.forEach(pg => {
+    (pg.fields || []).forEach(f => {
+      if (__fieldMatchesTarget(f, targetId)) f.required = !!on;
+    });
+  });
+}
+function applyConditionalRequired(){
+  if(!Array.isArray(CONDITIONAL_REQUIRED) || !CONDITIONAL_REQUIRED.length) return;
+  const allTargets = new Set();
+  CONDITIONAL_REQUIRED.forEach(rule => (rule.requiredOn || []).forEach(tid => { const v=String(tid||'').trim(); if(v) allTargets.add(v); }));
+  allTargets.forEach(tid => setRequiredAllPages(tid, false));
+  CONDITIONAL_REQUIRED.forEach(rule => {
+    const sourceId = String(rule.sourceId || '').trim();
+    const whenValue = String(rule.whenValue || '').trim();
+    if (!sourceId) return;
+    const curVal = String(getValueById(sourceId) || '').trim();
+    if (curVal === whenValue) (rule.requiredOn || []).forEach(tid => { const target=String(tid||'').trim(); if(target) setRequiredAllPages(target, true); });
+  });
+}
+function getConditionalRequiredSet(){
+  const s = new Set();
+  for (const rule of CONDITIONAL_REQUIRED){
+    const cur = (getValueById(rule.sourceId) || '').trim();
+    if (cur === rule.whenValue) (rule.requiredOn || []).forEach(id => s.add(id));
+  }
+  return s;
+}
+
+function isRequiredFieldFilled(f, ctrl){
+  if (!f || !f.required) return true;
+  if (!ctrl) return false;
+
+  if (f.type === 'checkbox') return !!ctrl.checked;
+  if (f.type === 'checkmark') {
+    const g = getCheckmarkGroupId(f);
+    return g ? isCheckmarkGroupChecked(g) : !!f.value;
+  }
+  if (f.type === 'radio') return !!ctrl.querySelector('input[type="checkbox"]:checked');
+
+  return String(ctrl.value ?? '').trim() !== '';
+}
+
+function updateRequiredFieldVisual(f, wrap, ctrl){
+  if (!f || !wrap) return;
+
+  if (!f.required) {
+    wrap.classList.remove('required-pending');
+    return;
+  }
+
+  const filled = isRequiredFieldFilled(f, ctrl);
+
+  if (filled) wrap.classList.remove('required-pending');
+  else wrap.classList.add('required-pending');
+}
+
+function bindRequiredFieldVisual(f, wrap, ctrl){
+  if (!f || !wrap || !ctrl) return;
+
+  const apply = () => updateRequiredFieldVisual(f, wrap, ctrl);
+
+  if (f.type === 'radio') {
+    ctrl.querySelectorAll('input[type="checkbox"]').forEach(r => {
+      r.addEventListener('change', apply);
+    });
+  } else if (f.type === 'checkbox' || f.type === 'checkmark' || f.type === 'select') {
+    ctrl.addEventListener('change', apply);
+    ctrl.addEventListener('input', apply);
+  } else {
+    ctrl.addEventListener('input', apply);
+    ctrl.addEventListener('change', apply);
+    ctrl.addEventListener('blur', apply);
+  }
+
+  apply();
+}
+/* ===== 필수 검증/토스트 ===== */
+function findMissingAll(){
+  const miss = [];
+  const seenCheckGroups = new Set();
+  getConditionalRequiredSet();
+
+  pages.forEach((pg, pi) => {
+    (pg.fields || []).forEach((f, fi) => {
+      if (!f.required) return;
+      if (f.locked && f.lockOnPh && !f.value) return;
+
+      let v = '';
+      if (f.type === 'checkbox') v = !!f.value ? 'Y' : '';
+      else if (f.type === 'checkmark') {
+        const g = getCheckmarkGroupId(f);
+        if (g) {
+          const gkey = pi + ':' + __normKey(g);
+          if (seenCheckGroups.has(gkey)) return;
+          seenCheckGroups.add(gkey);
+          v = getCheckmarkGroupValue(g);
+        } else {
+          v = !!f.value ? 'Y' : '';
+        }
+      } else {
+        v = (f.value ?? '').toString().trim();
+      }
+
+      if (!v) miss.push({page:pi, idx:fi, label:(f.label || f.id || `필드${fi+1}`)});
+    });
+  });
+  return miss;
+}
+function markInvalidForPage(pIdx,list){
+  if(pIdx!==pageIndex) return;
+  overlay.querySelectorAll('.field.invalid').forEach(el=>el.classList.remove('invalid'));
+  list.forEach(m=>{
+    const el=overlay.querySelector(`.field[data-i="${m.idx}"]`);
+    if(el) el.classList.add('invalid');
+  });
+}
+function showToast(items){
+  const toast=document.getElementById('toast'), list=document.getElementById('missList');
+  list.innerHTML=items.map(m=>`<li>${m}</li>`).join('');
+  toast.style.display='flex';
+  document.getElementById('tClose').onclick=()=>toast.style.display='none';
+}
+
+/* ===== 이미지/폰트 대기 ===== */
+async function waitForImages(root){
+  const imgs=Array.from(root.querySelectorAll('img'));
+  if(!imgs.length) return;
+  await Promise.all(imgs.map(img=>{
+    if(img.complete && img.naturalWidth>0) return Promise.resolve();
+    return new Promise(res=>{
+      const done=()=>{ img.removeEventListener('load',done); img.removeEventListener('error',done); res(); };
+      img.addEventListener('load',done,{once:true});
+      img.addEventListener('error',done,{once:true});
+    });
+  }));
+}
+
+/* ===== 인쇄 DOM ===== */
+function createPrintDOM(page, pageIdx){
+  const wrap = document.createElement('div');
+  wrap.className = 'paper';
+
+  const st = document.createElement('div');
+  st.className = 'stage';
+  st.style.transform = 'scale(1)';
+
+  const img = document.createElement('img');
+  img.src = page.bg || '';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+
+  st.appendChild(img);
+  st.appendChild(ov);
+  wrap.appendChild(st);
+
+  (page.fields || []).forEach(f => {
+    const w = document.createElement('div');
+    w.className =
+      'field ' +
+      (f.type === 'radio' ? 'radio ' : '') +
+      (f.type === 'checkbox' ? 'checkbox ' : '') +
+      (f.type === 'checkmark' ? 'checkmark ' : '');
+
+    w.style.left = `${f.x}%`;
+    w.style.top  = `${f.y}%`;
+    w.style.width = `${(f.w ?? 24)}%`;
+
+    if (f.fontSize)    
+    w.style.setProperty('--fs', f.fontSize + 'px');
+if (f.type === 'radio') {
+  const rs = (f.radioStyle || 'dot'); // dot/solid/tick
+  w.classList.remove('rd-dot','rd-solid','rd-tick');
+  w.classList.add('rd-' + rs);
+
+  w.style.setProperty('--rsize', (f.radioSize ?? 18) + 'px');
+  w.style.setProperty('--rgap',  (f.radioGap  ?? 12) + 'px');
+}
+if (f.type === 'radio') {
+  const rs = (f.radioStyle || 'dot');
+  w.classList.remove('rd-dot','rd-solid','rd-tick');
+  w.classList.add('rd-' + rs);
+
+  w.style.setProperty('--rsize', (f.radioSize ?? 18) + 'px');
+  w.style.setProperty('--rgap',  (f.radioGap  ?? 12) + 'px');
+
+  // ✅ 1,2 표기 숨김
+  if (f.radioShowText === false) w.classList.add('noText');
+
+  // ✅ 겉 테두리 제어
+  const outerColor = (f.radioOuterBorderTransparent || f.borderTransparent) ? 'transparent'
+                    : (f.radioOuterBorderColor || 'rgba(0,0,0,.25)');
+  const outerWidth = Number.isFinite(Number(f.radioOuterBorderWidth))
+    ? Math.max(0, Math.min(8, Number(f.radioOuterBorderWidth)))
+    : 1;
+
+  w.style.setProperty('--rbc', outerColor);
+  w.style.setProperty('--rbw', outerWidth + 'px');
+}
+
+
+
+    if (f.color)       w.style.setProperty('--fgc', f.color);
+    if (f.inputHeight) w.style.setProperty('--ih', f.inputHeight + 'px');
+
+    if (f.type === 'checkbox' || f.type === 'radio') {
+      const tickColor = f.borderTransparent ? 'transparent' : '#000';
+      const tickWidth = Number.isFinite(Number(f.borderWidth))
+        ? Math.max(1, Math.min(8, Number(f.borderWidth)))
+        : 1.6;
+      w.style.setProperty('--tick-bdc', tickColor);
+      w.style.setProperty('--tick-bdw', tickWidth + 'px');
+    }
+
+    const lab = document.createElement('div');
+    lab.className = 'label';
+    lab.textContent = f.label || '';
+    w.appendChild(lab);
+
+    let ctrl;
+    const lockByPlaceholder = !!f.lockOnPh && !!f.placeholder && !f.value;
+    const isHandSign = /(자필|싸인|서명)/.test(String(f.placeholder || '') + String(f.label || ''));
+    const isNameBox = isNameField(f);
+
+    const treatAsTextarea =
+      f.type === 'textarea' ||
+      (f.type === 'text' && (f.wrap || isNameBox) && !isAddressField(f));
+
+    if (treatAsTextarea) {
+      ctrl = document.createElement('textarea');
+      ctrl.spellcheck = false;
+      ctrl.style.resize = 'none';
+
+      if (isHandSign) ctrl.value = '';
+      else ctrl.value = f.value ?? '';
+
+      if (f.placeholder && lockByPlaceholder) ctrl.placeholder = f.placeholder;
+
+      if (isNameBox && pageIdx === pageIndex) {
+        const live = overlay.querySelector(`.field[data-id="${f.id}"] textarea, .field[data-id="${f.id}"] input[type="text"]`);
+        if (live) {
+          const cs = getComputedStyle(live);
+          ctrl.style.fontSize   = cs.fontSize;
+          ctrl.style.whiteSpace = cs.whiteSpace;
+          ctrl.style.overflow   = cs.overflow;
+          ctrl.style.lineHeight = cs.lineHeight;
+        }
+      }
+
+      if (f.inputHeight) {
+        ctrl.style.minHeight = f.inputHeight + 'px';
+        ctrl.style.height    = f.inputHeight + 'px';
+      } else {
+        ctrl.style.minHeight = '5px';
+        ctrl.style.height    = 'auto';
+      }
+
+      if (f.locked || lockByPlaceholder) ctrl.readOnly = true;
+    }
+
+    else if (f.type === 'select') {
+      ctrl = document.createElement('select');
+
+      const phText = (f.placeholder || '').trim();
+      if (phText) {
+        const op0 = document.createElement('option');
+        op0.value = '';
+        op0.textContent = phText;
+        op0.disabled = true;
+        op0.hidden = true;
+        ctrl.appendChild(op0);
+      }
+
+      (f.options || []).forEach(o => {
+        const op = document.createElement('option');
+        op.value = op.textContent = o;
+        ctrl.appendChild(op);
+      });
+
+      ctrl.value = f.value ?? '';
+      if (f.locked || lockByPlaceholder) ctrl.disabled = true;
+        // ✅ 여기 추가
+  w.style.height = (f.inputHeight ?? 28) + 'px';
+  w.style.setProperty('--ih', (f.inputHeight ?? 28) + 'px');
+
+      const pv = document.createElement('div');
+      pv.className = 'print-value';
+      const selText = (ctrl.options[ctrl.selectedIndex] || {}).text || ctrl.value || '';
+      pv.textContent = selText;
+      w.appendChild(pv);
+    }
+
+
+    else if (f.type === 'checkmark') {
+      ctrl = document.createElement('div');
+      ctrl.className = 'checkmark-symbol';
+      ctrl.textContent = f.value ? '✓' : '';
+      ctrl.style.width = '100%';
+      ctrl.style.height = '100%';
+      lab.style.display = 'none';
+      w.style.setProperty('--cksize', (f.checkSize ?? f.radioSize ?? 18) + 'px');
+    }
+
+    else if (f.type === 'checkbox') {
+      ctrl = document.createElement('input');
+      ctrl.type = 'checkbox';
+      const style = (f.checkStyle || 'tick');
+w.classList.remove('ck-tick','ck-solid','ck-dot');
+w.classList.add('ck-' + style);
+
+      ctrl.checked = !!f.value;
+      w.style.setProperty('--cksize', (f.checkSize ?? f.radioSize ?? 18) + 'px');
+      if (f.locked || lockByPlaceholder) ctrl.disabled = true;
+    }
+
+    else if (f.type === 'radio') {
+      ctrl = document.createElement('div');
+const opts = Array.isArray(f.options) ? f.options : [];
+
+      opts.forEach(o => {
+        const it = document.createElement('label');
+        it.className = 'radio-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = (f.value === o);
+        if (f.locked || lockByPlaceholder) cb.disabled = true;
+
+const hideText = (f.radioShowText === false) || /^\d+$/.test(String(o).trim());
+
+it.appendChild(cb);
+
+if (!hideText) {
+  const s = document.createElement('span');
+  s.textContent = o;
+  it.appendChild(s);
+}
+
+ctrl.appendChild(it);
+
+      });
+    }
+
+    else {
+      ctrl = document.createElement('input');
+      ctrl.type = 'text';
+
+      if (isHandSign) ctrl.value = '';
+      else ctrl.value = f.value ?? '';
+
+      if (f.placeholder && lockByPlaceholder) ctrl.placeholder = f.placeholder;
+      if (f.locked || lockByPlaceholder) ctrl.readOnly = true;
+      if (f.inputHeight) ctrl.style.height = f.inputHeight + 'px';
+    }
+
+    if (f.color) ctrl.style.color = f.color;
+    if (f.textAlign) { ctrl.style.textAlign = f.textAlign; w.style.setProperty('--ta', f.textAlign); }
+
+    if ((f.type === 'text' || f.type === 'textarea') && (f.borderColor || f.borderTransparent)) {
+      w.classList.add('hasBorder');
+      w.style.setProperty('--bdc', f.borderTransparent ? 'transparent' : (f.borderColor || '#ff3b3b'));
+      w.style.setProperty('--bdw', (f.borderWidth ?? 2) + 'px');
+    }
+    if ((f.type === 'text' || f.type === 'textarea') && (f.bgColor || f.bgTransparent)) {
+      w.classList.add('hasBG');
+      w.style.setProperty('--bgc', f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+    }
+
+    w.appendChild(ctrl);
+    ov.appendChild(w);
+  });
+
+  return wrap;
+}
+
+function buildPrintAll(){
+  const container = document.getElementById('printAll');
+  container.innerHTML = '';
+
+  pages.forEach((pg, idx) => {
+    const pageWrap = document.createElement('div');
+    pageWrap.className = 'pageWrap';
+    const printed = createPrintDOM(pg, idx);
+    pageWrap.appendChild(printed);
+    container.appendChild(pageWrap);
+  });
+
+  requestAnimationFrame(()=>{
+    autosizeAllTextareas(container);
+  });
+  return container;
+}
+
+async function printAllNow(){
+  const container=buildPrintAll();
+  if(document.fonts && document.fonts.ready){ try{ await document.fonts.ready; }catch{} }
+  await waitForImages(container);
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  setTimeout(()=>window.print(),0);
+}
+
+/* ===== 인쇄 버튼 ===== */
+document.getElementById('btnPdf').onclick=async ()=>{
+  applyConditionalRequired();
+  const all=findMissingAll();
+  if(all.length){
+    const first=all[0].page; pageIndex=first; render();
+    const listForPage=all.filter(m=>m.page===first);
+    markInvalidForPage(first,listForPage);
+    showToast(listForPage.map(m=>`p${m.page+1} - ${m.label}`));
+    return;
+  }
+  await printAllNow();
+};
+
+/* ===== 헤더 텍스트 박스 강제 줄바꿈 ===== */
+function forceWrapForHeaderBox(){
+  const re=/대리점|상담사|연락처/;
+  pages.forEach(pg=>{
+    (pg.fields||[]).forEach(f=>{
+      if(f.type==='text' && re.test(String(f.label||''))){
+        f.wrap = true;
+        if(!f.inputHeight) f.inputHeight = 28;
+      }
+    });
+  });
+}
+
+/* ===== 제휴 배너 ===== */
+const AFF_SEEN_KEY = 'affBanner_seen_once';
+function showAffBanner(show){ if(!affBanner) return; affBanner.style.display = show ? 'block' : 'none'; }
+function oncePopup(){
+  if (!affPopup) return;
+  if (sessionStorage.getItem(AFF_SEEN_KEY)) return;
+  affPopup.style.display='block';
+  setTimeout(()=>{ affPopup.style.display='none'; },3000);
+  sessionStorage.setItem(AFF_SEEN_KEY,'1');
+}
+function evaluateAffBanner(){
+  try{
+    const values=[];
+    pages.forEach(pg=>(pg.fields||[]).forEach(f=>{
+      const v=(f.type==='checkbox')?(f.value?'Y':''):(f.value||'');
+      if(typeof v==='string') values.push(v);
+    }));
+    overlay.querySelectorAll('input,select,textarea').forEach(el=>{
+      let v='';
+      if(el.type==='checkbox') v=el.checked?'Y':'';
+      else v=el.value||'';
+      if(typeof v==='string') values.push(v);
+    });
+
+    let hit = values.some(s=>/제휴|C-1/i.test(String(s)));
+    const planName = getSelectedPlanName();
+    if (isAffiliatePlan(planName)) hit = true;
+
+    showAffBanner(hit);
+    if(hit) oncePopup();
+  }catch(_){}
+}
+
+/* ===== extraData ===== */
+function computeExtraDataText(){
+  const pick = [];
+  const SKIP_IDS = new Set(['extradata','extradataecho','extradatabox']);
+
+  pages.forEach(pg=>(pg.fields||[]).forEach(f=>{
+    const fid = String(f.id||'').toLowerCase();
+    if (SKIP_IDS.has(fid)) return;
+
+    const idHit    = fid==='extradata' || /(extra|추가\s*데이터)/i.test(fid);
+    const labelHit = /(extra|추가\s*데이터)/i.test(String(f.label||''));
+    if(!(idHit||labelHit)) return;
+
+    let v = '';
+    if (f.type==='checkbox') v = f.value ? 'Y' : '';
+    else v = (f.value||'').toString().trim();
+    if(v) pick.push(v);
+  }));
+
+  const planName = getSelectedPlanName();
+  const info = PLANS_MAP.get(planName);
+  if (info && info.extraDataGb){
+    const token = info.bundleAnyone ? `아무나 결합 +${info.extraDataGb}GB` : `추가 데이터 +${info.extraDataGb}GB`;
+    pick.push(token);
+  }
+
+  const tokens = pick
+    .flatMap(s => String(s).split('/'))
+    .map(s => s.replace(/\s+/g,' ').trim())
+    .filter(Boolean);
+
+  const uniq = Array.from(new Set(tokens));
+  return uniq.join(' / ');
+}
+function updateExtraBarDom(txt){
+  if(!extraBar || !extraBarText) return;
+  if(txt && txt.trim()){
+    extraBarText.textContent = txt.trim();
+    extraBar.style.display = 'block';
+  }else{
+    extraBarText.textContent = '';
+    extraBar.style.display = 'none';
+  }
+}
+function mirrorExtraDataIntoBoxes(txt){
+  if (__MIRRORING__) return;
+  __MIRRORING__ = true;
+
+  const targets = [];
+  const idMatch = /^(extradata|extradatabox|extradataecho)$/i;
+  const fuzzy   = /(extra|추가\s*데이터)/i;
+
+  pages.forEach(pg => (pg.fields || []).forEach(f => {
+    const id = String(f.id || '');
+    const label = String(f.label || '');
+    const byIdExact  = idMatch.test(id);
+    const byIdFuzzy  = fuzzy.test(id);
+    const byLabel    = fuzzy.test(label);
+    if ((byIdExact || byIdFuzzy || byLabel) && (f.type === 'text' || f.type === 'textarea')) targets.push(f);
+  }));
+
+  targets.forEach(f => {
+    f.value = txt || '';
+    setValueById(f.id, txt || '');
+    const node = overlay.querySelector(`.field[data-id="${f.id}"] textarea, .field[data-id="${f.id}"] input[type="text"]`);
+    if (node) {
+      node.value = txt || '';
+      if (node.tagName === 'TEXTAREA') autosizeTA(node);
+    }
+  });
+
+  __MIRRORING__ = false;
+}
+function evaluateExtraDataAndBar(){
+  const txt = computeExtraDataText();
+  updateExtraBarDom(txt);
+  if (txt === LAST_EXTRA_TXT) return;
+  LAST_EXTRA_TXT = txt;
+  mirrorExtraDataIntoBoxes(txt);
+}
+
+/* ===== 요금제 UI ===== */
+function parsePlansFromText(text){
+  const raw=text.split(/\r?\n|,/).map(s=>s.trim()).filter(Boolean);
+  return Array.from(new Set(raw));
+}
+function openBulkPlansPrompt(){
+  const example=[
+    '예시 입력 (한 줄에 하나 또는 콤마로 구분):',
+    '베이직 5G 9GB','스페셜 15GB','무제한 11GB','','또는: 베이직 5G 9GB, 스페셜 15GB, 무제한 11GB'
+  ].join('\n');
+  const txt=prompt(example, PLANS.length?PLANS.join('\n'):'');
+  if(txt==null) return;
+  const parsed=parsePlansFromText(txt);
+  if(!parsed.length){ alert('유효한 요금제가 없습니다.'); return; }
+  PLANS=parsed;
+  localStorage.setItem('plans_json_v1', JSON.stringify(PLANS));
+  applyPlansToDesign();
+  alert(`요금제 ${PLANS.length}개가 적용되었습니다.`);
+}
+function savePlansToFile(){
+  const list=Array.isArray(PLANS)?PLANS:[];
+  const blob=new Blob([JSON.stringify(list,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='plans.json'; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function hookLoadPlansFile(){
+  const input=document.getElementById('loadPlansFile'); if(!input) return;
+  input.onchange=async (e)=>{
+    const file=e.target.files && e.target.files[0]; if(!file) return;
+    try{
+      const text=await file.text();
+      const json=JSON.parse(text);
+      const {names,map} = normalizePlans(json);
+      PLANS=names; PLANS_MAP=map;
+      localStorage.setItem('plans_json_v1', JSON.stringify(PLANS));
+      applyPlansToDesign();
+      syncFeesFromExistingPlan();
+      mirrorPlanNameIntoBoxes(getSelectedPlanName());
+      forceMirrorPlan();
+      alert(`불러오기 완료: ${PLANS.length}개`);
+    }catch(err){
+      alert('plans.json 읽기 실패: '+(err&&err.message?err.message:err));
+    }finally{
+      e.target.value='';
+    }
+  };
+}
+(function initPlansUI(){
+  const bulkBtn=document.getElementById('bulkPlansBtn');
+  const saveBtn=document.getElementById('savePlans');
+  if(bulkBtn) bulkBtn.onclick=openBulkPlansPrompt;
+  if(saveBtn) saveBtn.onclick=savePlansToFile;
+  hookLoadPlansFile();
+  try{
+    const raw=localStorage.getItem('plans_json_v1');
+    if(raw){ PLANS=JSON.parse(raw); applyPlansToDesign(); }
+  }catch(_){}
+})();
+
+/* ===== 요금제명 미러링 ===== */
+let __MIRROR_PLAN__ = false;
+function mirrorPlanNameIntoBoxes(planName){
+  if (__MIRROR_PLAN__) return;
+  __MIRROR_PLAN__ = true;
+
+  const targets = [];
+  const idExact = /^(planecho|planname|selectedplan|plan_text)$/i;
+  const fuzzy   = /(선택\s*요금(제|상품)\s*명?|요금제\s*명)/i;
+
+  pages.forEach(pg => (pg.fields || []).forEach(f => {
+    const id = String(f.id || '');
+    const label = String(f.label || '');
+    const byIdExact = idExact.test(id);
+    const byFuzzy   = fuzzy.test(id) || fuzzy.test(label);
+    if ((byIdExact || byFuzzy) && (f.type === 'text' || f.type === 'textarea')) targets.push(f);
+  }));
+
+  targets.forEach(f => {
+    f.value = planName || '';
+    setValueById(f.id, planName || '');
+    const node = overlay.querySelector(`.field[data-id="${f.id}"] textarea, .field[data-id="${f.id}"] input[type="text"]`);
+    if (node) {
+      node.value = planName || '';
+      if (node.tagName === 'TEXTAREA') autosizeTA(node);
+    }
+  });
+
+  __MIRROR_PLAN__ = false;
+}
+
+function forceMirrorPlan(){
+  let v = getSelectedPlanName();
+  try{
+    const tars = getPlanSelectTargets();
+    const onThisPage = tars.find(t => t.pi === pageIndex);
+    if (onThisPage) {
+      const dom = overlay.querySelector(`.field[data-id="${onThisPage.f.id}"] select`);
+      if (dom && dom.value) v = dom.value;
+    }
+  }catch(_){}
+  mirrorPlanNameIntoBoxes(v || '');
+}
+
+
+/* =========================
+   ✅ 조건부 필수 설정 도구 + 양식 팝업
+========================= */
+let SELECTED_COND_RULE_INDEX = -1;
+function renderConditionalRuleList(){
+  const box = document.getElementById('condRuleList');
+  if (!box) return;
+  box.innerHTML = (CONDITIONAL_REQUIRED || []).map((r, i) => '<div class="cond-rule-item ' + (i === SELECTED_COND_RULE_INDEX ? 'active' : '') + '" data-cond-index="' + i + '">' + (r.sourceId || '') + ' = ' + (r.whenValue || '') + ' → ' + ((r.requiredOn || []).join(', ')) + '</div>').join('') || '<div class="hint">등록된 규칙 없음</div>';
+}
+function readCondInputs(){
+  const sourceId = (document.getElementById('cond_sourceId')?.value || '').trim();
+  const whenValue = (document.getElementById('cond_whenValue')?.value || '').trim();
+  const requiredOn = (document.getElementById('cond_requiredOn')?.value || '').split(',').map(v => v.trim()).filter(Boolean);
+  return { sourceId, whenValue, requiredOn };
+}
+function fillCondInputs(rule){
+  const a=document.getElementById('cond_sourceId'), b=document.getElementById('cond_whenValue'), c=document.getElementById('cond_requiredOn');
+  if(a) a.value = rule?.sourceId || '';
+  if(b) b.value = rule?.whenValue || '';
+  if(c) c.value = Array.isArray(rule?.requiredOn) ? rule.requiredOn.join(', ') : '';
+}
+function initConditionalTool(){
+  renderConditionalRuleList();
+  document.getElementById('condRuleList')?.addEventListener('click', e => {
+    const item = e.target.closest('[data-cond-index]');
+    if (!item) return;
+    SELECTED_COND_RULE_INDEX = Number(item.dataset.condIndex);
+    fillCondInputs(CONDITIONAL_REQUIRED[SELECTED_COND_RULE_INDEX]);
+    renderConditionalRuleList();
+  });
+  document.getElementById('condAdd')?.addEventListener('click', () => {
+    const r = readCondInputs();
+    if (!r.sourceId || !r.whenValue || !r.requiredOn.length) { alert('기준 필드/그룹, 기준 값, 필수 대상 ID를 모두 입력해주세요.'); return; }
+    CONDITIONAL_REQUIRED.push(r);
+    SELECTED_COND_RULE_INDEX = CONDITIONAL_REQUIRED.length - 1;
+    applyConditionalRequired(); renderConditionalRuleList(); render();
+  });
+  document.getElementById('condUpdate')?.addEventListener('click', () => {
+    if (SELECTED_COND_RULE_INDEX < 0) { alert('수정할 규칙을 먼저 선택해주세요.'); return; }
+    const r = readCondInputs();
+    if (!r.sourceId || !r.whenValue || !r.requiredOn.length) { alert('기준 필드/그룹, 기준 값, 필수 대상 ID를 모두 입력해주세요.'); return; }
+    CONDITIONAL_REQUIRED[SELECTED_COND_RULE_INDEX] = r;
+    applyConditionalRequired(); renderConditionalRuleList(); render();
+  });
+  document.getElementById('condDelete')?.addEventListener('click', () => {
+    if (SELECTED_COND_RULE_INDEX < 0) { alert('삭제할 규칙을 먼저 선택해주세요.'); return; }
+    CONDITIONAL_REQUIRED.splice(SELECTED_COND_RULE_INDEX, 1);
+    SELECTED_COND_RULE_INDEX = -1; fillCondInputs(null); applyConditionalRequired(); renderConditionalRuleList(); render();
+  });
+}
+function openFormPopup(key){
+  if (!USE_FORM_POPUP) return;
+  const f = FORM_POPUP_FORMS[key];
+  if (!f) return;
+  const modal = document.getElementById('formModal'), title = document.getElementById('formPopupTitle'), text = document.getElementById('formPopupText');
+  if (!modal || !title || !text) return;
+  title.textContent = f.title || key;
+  text.textContent = f.text || '';
+  modal.setAttribute('aria-hidden','false');
+}
+function closeFormPopup(){
+  const modal = document.getElementById('formModal'), text = document.getElementById('formPopupText'), toast = document.getElementById('formToast');
+  if (modal) modal.setAttribute('aria-hidden','true');
+  if (text) text.textContent = '';
+  if (toast) toast.classList.remove('show');
+}
+function initFormPopupTool(){
+  const enabled = document.getElementById('formPopupEnabled');
+  if (enabled) { enabled.checked = !!USE_FORM_POPUP; enabled.addEventListener('change', () => { USE_FORM_POPUP = !!enabled.checked; }); }
+  document.getElementById('formSaveBtn')?.addEventListener('click', () => {
+    const key = (document.getElementById('formKey')?.value || '').trim();
+    const title = (document.getElementById('formTitleInput')?.value || '').trim();
+    const text = (document.getElementById('formTextInput')?.value || '');
+    if (!key) { alert('양식 키를 입력해주세요.'); return; }
+    FORM_POPUP_FORMS[key] = { title: title || key, text };
+    alert('양식이 저장되었습니다. 설계 저장(JSON)을 누르면 함께 저장됩니다.');
+  });
+  document.getElementById('formDeleteBtn')?.addEventListener('click', () => {
+    const key = (document.getElementById('formKey')?.value || '').trim();
+    if (!key || !FORM_POPUP_FORMS[key]) { alert('삭제할 양식 키를 확인해주세요.'); return; }
+    delete FORM_POPUP_FORMS[key]; alert('양식이 삭제되었습니다.');
+  });
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-form-close]')) closeFormPopup();
+    const trg = e.target.closest('[data-form-key]');
+    if (trg) { e.preventDefault(); e.stopPropagation(); openFormPopup(trg.dataset.formKey || ''); }
+  });
+  document.getElementById('formCloseX')?.addEventListener('click', closeFormPopup);
+  document.getElementById('formSelectAll')?.addEventListener('click', () => {
+    const text = document.getElementById('formPopupText'); if(!text) return;
+    const range = document.createRange(); range.selectNodeContents(text);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  });
+  document.getElementById('formCopyBtn')?.addEventListener('click', async () => {
+    const text = document.getElementById('formPopupText'), toast = document.getElementById('formToast');
+    try { await navigator.clipboard.writeText(text?.innerText || text?.textContent || ''); }
+    catch(_) { const range = document.createRange(); range.selectNodeContents(text); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); document.execCommand('copy'); sel.removeAllRanges(); }
+    toast?.classList.add('show'); setTimeout(() => toast?.classList.remove('show'), 1200);
+  });
+}
+
+/* ===== 부트 ===== */
+async function boot(){
+  await loadDesign();
+  forceWrapForHeaderBox();
+
+  pages.forEach(pg => (pg.fields || []).forEach(f => delete f.value));
+  if(!FRESH) tryLoadAutosave();
+
+  await loadPlansJson();
+  fillAutoDates();
+  render();
+  setTopTitle();
+  evaluateAffBanner();
+  evaluateExtraDataAndBar();
+  syncFeesFromExistingPlan();
+  mirrorPlanNameIntoBoxes(getSelectedPlanName());
+  forceMirrorPlan();
+}
+document.getElementById('reload').onclick=boot;
+window.addEventListener('DOMContentLoaded',()=>{ initConditionalTool(); initFormPopupTool(); boot(); applyZoom(); });
+
+/* ===== text → textarea 전환 스위치 ===== */
+function enableWrapAllTextFields(){
+  pages.forEach(pg => {
+    (pg.fields || []).forEach(f => {
+      if (f.type === 'text' && !isNameField(f) && !isAddressField(f)) {
+        f.wrap = true;
+        if (!f.inputHeight) f.inputHeight = 28;
+      }
+    });
+  });
+  render(); scheduleSave();
+}
+function setTopTitle() {
+  const params = new URLSearchParams(location.search);
+  const doc = params.get('doc');
+
+  let text = 'MCC 스테이지파이브 SK';
+
+  if (doc === 'change') text += ' 변경';
+  else if (doc === 'cancel') text += ' 해지';
+
+  const el = document.getElementById('topTitle');
+  if (el) el.textContent = text;
+}
+const wrapBtn = document.getElementById('enableWrapAll');
+if (wrapBtn) wrapBtn.onclick = enableWrapAllTextFields;
+
+/* =========================================================
+   ✅ Ctrl+P 빈서식지 출력
+   - PDF 생성OR인쇄 버튼: 기존 필수값 검증 유지
+   - Ctrl+P: 필수값 검증 없이 빈 서식지 출력
+========================================================= */
+function clearPrintBlockingVisuals(){
+  try{
+    const toast = document.getElementById('toast');
+    if (toast) toast.style.display = 'none';
+
+    document.querySelectorAll('.field.invalid, .field.required-pending')
+      .forEach(el => el.classList.remove('invalid','required-pending'));
+
+    document.querySelectorAll('.modal, .popup, .dim, .backdrop, .modal-backdrop, .form-modal, .form-backdrop, #addressSearchModal')
+      .forEach(el => {
+        el.style.display = 'none';
+        el.setAttribute?.('aria-hidden','true');
+        el.classList?.remove('open');
+      });
+
+    document.body.classList.remove('modal-open','open','locked','no-scroll');
+  }catch(e){
+    console.error('[clearPrintBlockingVisuals error]', e);
+  }
+}
+
+async function forcePrintBlankForm(){
+  try{
+    clearPrintBlockingVisuals();
+
+    if (typeof forceMirrorPlan === 'function') {
+      forceMirrorPlan();
+    }
+
+    const container = buildPrintAll();
+
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch(_) {}
+    }
+
+    await waitForImages(container);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    setTimeout(() => window.print(), 0);
+  }catch(err){
+    console.error('[forcePrintBlankForm error]', err);
+  }
+}
+
+/* ✅ 브라우저 인쇄창 직전에도 출력용 DOM 생성 */
+window.addEventListener('beforeprint', () => {
+  try{
+    clearPrintBlockingVisuals();
+    if (typeof forceMirrorPlan === 'function') {
+      forceMirrorPlan();
+    }
+    if (typeof buildPrintAll === 'function') {
+      buildPrintAll();
+    }
+  }catch(e){
+    console.error('[beforeprint buildPrintAll error]', e);
+  }
+});
+
+/* ✅ Ctrl+P는 필수값 검사 없이 빈서식지 출력 */
+(function bindCtrlPToBlankPrint(){
+  let printing = false;
+
+  document.addEventListener('keydown', async (e) => {
+    const isPrintShortcut =
+      (e.ctrlKey || e.metaKey) &&
+      String(e.key).toLowerCase() === 'p';
+
+    if (!isPrintShortcut) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    if (printing) return;
+    printing = true;
+
+    try{
+      await forcePrintBlankForm();
+    }catch(err){
+      console.error('[Ctrl+P blank print error]', err);
+    }finally{
+      setTimeout(() => {
+        printing = false;
+      }, 1200);
+    }
+  }, true);
+})();
+
+</script>
+</body>
+</html>

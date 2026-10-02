@@ -1,0 +1,4763 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<script src="../../../app/typing-version-bridge.js" defer></script>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MCCNETWORLD · KT 단말</title>
+
+<link rel="icon" type="image/png" sizes="16x16"  href="/mccnetworld/favicon-16x16.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32"  href="/mccnetworld/favicon-32x32.png?v=2">
+<link rel="icon" type="image/png" sizes="192x192" href="/mccnetworld/android-chrome-192x192.png?v=2">
+<link rel="icon" type="image/png" sizes="512x512" href="/mccnetworld/android-chrome-512x512.png?v=2">
+<link rel="apple-touch-icon" href="/mccnetworld/apple-touch-icon.png?v=2">
+<link rel="shortcut icon" href="/mccnetworld/favicon.ico?v=2">
+<meta name="theme-color" content="#0c1117"/>
+
+<style>
+  :root{
+    --bg:#0c1117;--fg:#eaf1ff;--card:#121a24;--line:#243347;
+    --pink:#e6007e;--vio:#6a35ff;--danger:#ff3b3b;
+    --zoom:1;
+    --stage-w:210mm;
+    --stage-h:297mm;
+    --phc:#c05;--phbg:#ffe08a66;
+  }
+
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,"Noto Sans KR",sans-serif}
+  .wrap{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;min-height:100vh;padding:12px}
+  html.fill .wrap{grid-template-columns:1fr}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:visible}
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .hd strong{font-weight:800}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid #ffffff1f;background:linear-gradient(90deg,var(--pink),var(--vio));color:#fff;cursor:pointer}
+  .btn--ghost{background:#182234;border-color:#2b3a54;color:#d6e4ff}
+  .stack{padding:12px;overflow:auto}
+
+  /* 화면 캔버스 */
+  .paper{position:relative;width:min(1480px,100%);margin:auto;border:1px solid #223049;border-radius:10px;background:#0f1624;height:calc((var(--stage-h)) * var(--zoom));overflow:hidden;}
+  .stage{width:var(--stage-w);height:var(--stage-h);transform-origin:top left;transform:scale(var(--zoom));position:relative;}
+  .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none}
+  .overlay{position:absolute;inset:0}
+
+  /* 필드 */
+  .field{position:absolute;transform:none;cursor:move;z-index:2;--fs:18px;}
+  .field.checkbox{transform:translate(-50%,-50%)}
+  .field[data-va="top"]{
+  display:flex;
+  align-items:flex-start;
+}
+.field[data-va="middle"]{
+  display:flex;
+  align-items:center;
+}
+.field[data-va="bottom"]{
+  display:flex;
+  align-items:flex-end;
+}
+  .label{position:absolute;top:-16px;left:0;font-size:12px;font-weight:800;text-shadow:0 1px 2px #0009}
+.field input,.field textarea,.field select{
+  width:100%;
+  background:transparent;
+  border:none;
+  color:var(--fgc,#fff);
+  outline:none;
+  box-sizing:border-box !important;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  font-weight:700;
+}
+  .field:focus-within{
+    outline: 3px solid #e724ee83;
+    outline-offset: 0px;
+    border-radius: 0px;
+    background: rgba(37,99,235,.03);
+  }
+
+  /* ✅ 길면 자동 축소용(한 줄 고정) */
+  .field input.fit-one-line,
+  .field textarea.fit-one-line{
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+  }
+
+  /* 세로 가운데(텍스트 한 줄용) */
+.field input[type="text"],
+.field select{
+  height:100% !important;
+  line-height:1 !important;
+  padding:0 1px !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  font-weight:700;
+  transform:translateY(-0.02em);
+}
+  /* 리사이즈 손잡이 */
+  .field .resize-handle{
+    position:absolute;
+    right:-6px;
+    bottom:-6px;
+    width:12px;
+    height:12px;
+    border-radius:3px;
+    cursor:nwse-resize;
+    opacity:0;
+    border:1px solid transparent;
+    background:transparent;
+    box-shadow:none;
+  }
+  .field:hover .resize-handle,
+  .field.sel .resize-handle{
+    opacity:1;
+    border-color:#60a5fa;
+    background:#1d4ed8;
+    box-shadow:0 0 0 1px #0b1120;
+  }
+  html.fill .field .resize-handle{display:none !important;}
+
+  /* 서류 영역(왼쪽 캔버스) 드롭다운 화살표 숨기기 */
+  .paper .field select{
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: none !important;
+    padding-right: 8px;
+  }
+
+  /* 필드(중복 선언 정리) */
+.field input,
+.field select{
+  width:100%;
+  background:transparent;
+  border:none;
+  color:var(--fgc,#fff);
+  height:100% !important;
+  outline:none;
+  padding:0 1px !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+  line-height:1 !important;
+  font-size:var(--fs);
+  font-weight:700;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  text-align:var(--ta,left);
+}
+
+  /* textarea는 autosize가 있으니 line-height만 유지하고 height는 JS가 제어 */
+.field textarea{
+  width:100%;
+  background:transparent;
+  border:none;
+  color:var(--fgc,#fff);
+  outline:none;
+  padding:0 2px !important;
+  font-size:var(--fs);
+  font-weight:700;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  text-align:var(--ta,left);
+  line-height:1.1 !important;
+  white-space:pre-wrap;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  overflow:hidden;
+  resize:none !important;
+  min-height:5px;
+  max-height:none !important;
+}
+
+  .field textarea::-webkit-scrollbar{display:none}
+
+  /* 입력 잠금(시각적 안내만) */
+  .field [data-locked="1"]{caret-color:transparent}
+  .field [data-locked="1"]::placeholder{color:var(--phc);font-weight:900;background:var(--phbg);padding:0 .25em;border-radius:6px;}
+
+  /* 체크/라디오 */
+  .field.checkbox input,.field.radio input[type="checkbox"]{
+    appearance:none;-webkit-appearance:none;background:transparent;
+    border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000);
+    position:relative;vertical-align:middle;display:inline-block;box-sizing:border-box;
+  }
+
+  /* ===== radio 표시 스타일 3종 (dot / solid / tick) ===== */
+  .field.radio.rd-dot input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    inset:3px;
+    border-radius:999px;
+    background:#000;
+  }
+  .field.radio.rd-solid input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    inset:2px;
+    border-radius:999px;
+    background:#000;
+  }
+  .field.radio.rd-tick input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    left:5px;
+    top:2px;
+    width:calc(var(--rsize,18px) - 10px);
+    height:calc(var(--rsize,18px) - 10px);
+    border-right:2px solid #000;
+    border-bottom:2px solid #000;
+    transform:rotate(45deg);
+    border-radius:0;
+  }
+
+  .field.checkbox input{width:var(--cksize,18px);height:var(--cksize,18px);border-radius:2px;}
+  .field.checkbox.ck-tick input:checked::after,
+  .field.checkbox:not(.ck-solid):not(.ck-dot) input:checked::after{
+    content:"";
+    position:absolute;
+    left:3px;
+    top:0px;
+    width:calc(var(--cksize,18px) - 6px);
+    height:calc(var(--cksize,18px) - 6px);
+    border-right:2px solid #000;
+    border-bottom:2px solid #000;
+    transform:rotate(45deg) translateY(-2px);
+  }
+  .field.checkbox.ck-solid input:checked::after{
+    content:"";
+    position:absolute;
+    inset:2px;
+    background:#000;
+    border:none;
+    transform:none;
+  }
+  .field.checkbox.ck-dot input:checked::after{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:calc(var(--cksize,18px) * 0.45);
+    height:calc(var(--cksize,18px) * 0.45);
+    background:#000;
+    border-radius:999px;
+    transform:translate(-50%,-50%);
+    border:none;
+  }
+
+  .field.checkbox .label{top:0;left:24px}
+
+  /* ===== radio 개선 ===== */
+  .field.radio{ white-space: normal; }
+  .field.radio > div{
+    display:flex;
+    flex-wrap:wrap;
+    gap: var(--rgap,0px);
+    align-items:center;
+    max-width:100%;
+  }
+
+  .field.radio .radio-item{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:0;
+    border-radius:8px;
+    border: var(--rbw,1px) solid var(--rbc, rgba(0,0,0,.25));
+    background: var(--rbg, transparent);
+    flex:0 1 auto;
+    max-width:100%;
+  }
+  .field.radio .radio-item span{
+    display:inline;
+    font-weight:700;
+    color:#000;
+    white-space:normal;
+    word-break:keep-all;
+  }
+  .field.radio.noText .radio-item span{display:none !important;}
+
+  .sel{outline:3px solid #00d2ff66;border-radius:8px}
+
+  /* 우측 기본도구 */
+  .group{border:2px solid #2b3a54;border-radius:12px;padding:10px;margin:10px 0 14px;background:#0f1624}
+  .group h4{margin:0 0 8px;font-size:12px;color:#9fb0cc;font-weight:800;letter-spacing:.4px}
+  .row{display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+  .row input,.row select,.row textarea{width:100%;background:#0f1624;border:1px solid #2b3a54;border-radius:10px;color:#dfe9ff;outline:none;padding:8px 10px;font-weight:700}
+  .hint{color:#9fb0cc;font-size:12px}
+.prop-box{
+  border:1px solid rgba(120,160,255,.35);
+  border-radius:10px;
+  padding:10px;
+  margin-top:10px;
+  margin-bottom:10px;
+  background:rgba(255,255,255,.02);
+}
+
+.prop-row{
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:8px;
+  padding:10px 12px;
+  margin-bottom:8px;
+  background:rgba(255,255,255,.02);
+}
+
+.prop-row:last-child{
+  margin-bottom:0;
+}
+
+.prop-row > div:first-child{
+  min-width:90px;
+  font-weight:600;
+  color:#dbe7ff;
+}
+
+.inline-check{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.lock-check span{
+  display:block;
+  color:#dbe7ff;
+  font-size:13px;
+  font-weight:600;
+  word-break:keep-all;
+}
+
+.lock-check input[type="checkbox"]{
+  margin-top:2px;
+  width:16px;
+  height:16px;
+  flex:0 0 auto;
+}
+.inline-check input[type="checkbox"]{
+  width:16px;
+  height:16px;
+}
+  .stack .paper{margin-bottom:56px}
+  .stack{padding-bottom:140px}
+  .pager{display:flex;align-items:center;gap:8px;justify-content:center;margin:6px 0 18px;flex-wrap:wrap}
+  #pageInfo{min-width:84px;text-align:center;font-weight:800}
+
+  .toast{position:fixed;left:0;right:0;bottom:16px;display:none;justify-content:center;z-index:9999}
+  .toast__card{background:#172131;border:1px solid #2b3a54;border-radius:10px;padding:10px 12px;color:#fff;max-width:680px;width:calc(100% - 32px)}
+  .invalid{outline:3px solid var(--danger)!important;background:rgba(255,59,59,.2);border-radius:8px}
+  .required-pending{
+  background:  rgba(7, 255, 7, 0.18) !important;
+  outline: 2px solid #47d64e !important;
+  border-radius: 6px !important;
+}
+  html.fill .builder{display:none}
+
+  /* 인쇄 공통 */
+  @page{size:A4 portrait;margin:0}
+  #printAll{display:none}
+  .print-value{
+  display:none;
+  white-space:pre-wrap;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  padding:0 1px;
+  font:700 var(--fs)/1.1 system-ui,"Noto Sans KR",sans-serif;
+  box-sizing:border-box;
+}
+
+  /* ✅ PRINT: radio (원형 유지) */
+  .field.radio input[type="checkbox"]{
+    width:var(--rsize,18px) !important;
+    height:var(--rsize,18px) !important;
+    border-radius:999px !important;
+  }
+@media print{
+  body{background:#fff}
+  .wrap,.builder,.pager,.hint,.hd,#affPopup{display:none !important}
+
+  #printAll{
+    display:block !important;
+    visibility:visible !important;
+    position:static !important;
+    left:auto !important;
+    top:auto !important;
+    width:auto !important;
+  }
+
+.pageWrap{
+  width:210mm;
+  height:297mm;
+  position:relative;
+  overflow:hidden;
+  padding:8mm 0 0 0;
+  box-sizing:border-box;
+  page-break-after:always;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+}
+  .pageWrap > .paper{
+  width:210mm;
+  height:297mm;
+  border:none !important;
+  transform:scale(0.97);
+  transform-origin:top center;
+}
+  .pageWrap:last-child{page-break-after:auto}
+
+  #printAll .stage{transform:scale(1)}
+  #printAll .stage img{width:100%;height:100%;object-fit:fill}
+  #printAll .overlay{position:absolute;inset:0;overflow:visible !important}
+  #printAll,#printAll *{
+    font-family:system-ui,"Noto Sans KR",sans-serif !important;
+    letter-spacing:0 !important;
+  }
+
+  #printAll .field .label{
+    display:none !important;
+  }
+
+  #printAll .field input[type="text"],
+  #printAll .field textarea,
+  #printAll .field select{
+    display:none !important;
+  }
+
+  #printAll .field.checkbox input,
+  #printAll .field.radio input[type="checkbox"]{
+    display:inline-block !important;
+  }
+
+  #printAll .field .print-value{
+    display:flex !important;
+    color:#000 !important;
+    position:absolute !important;
+    inset:0 !important;
+    padding:0 1px !important;
+    margin:0 !important;
+    box-sizing:border-box !important;
+    font-family:system-ui,"Noto Sans KR",sans-serif !important;
+    font-weight:700 !important;
+    line-height:1.0 !important;
+    white-space:pre-wrap !important;
+    word-break:break-word !important;
+    overflow-wrap:anywhere !important;
+    text-align:var(--ta,left) !important;
+    transform:translateY(-0.02em) !important;
+  }
+
+  #printAll .field[data-va="top"] .print-value{
+    align-items:flex-start !important;
+  }
+  #printAll .field[data-va="middle"] .print-value{
+    align-items:center !important;
+  }
+  #printAll .field[data-va="bottom"] .print-value{
+    align-items:flex-end !important;
+  }
+
+  #printAll .field .print-value-ta{
+    line-height:1.1 !important;
+    transform:none !important;
+    padding:0 2px !important;
+  }
+
+  #printAll .field.hasBorder .print-value{
+    border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;
+    border-radius:8px !important;
+    background:transparent !important;
+  }
+
+  #printAll .field.hasBG .print-value{
+    background:var(--bgc,transparent) !important;
+  }
+
+  /* 혹시 남아있는 fixed/overlay 계열 차단 */
+  body > [style*="position: fixed"]:not(#printAll){
+    visibility:hidden !important;
+  }
+
+  .field.checkbox input,.field.radio input[type="checkbox"]{
+    appearance:none !important;
+    -webkit-appearance:none !important;
+    background:transparent !important;
+    border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000) !important;
+    position:relative !important;
+    vertical-align:middle;
+  }
+
+  .field.checkbox input{
+    width:var(--cksize,18px) !important;
+    height:var(--cksize,18px) !important;
+    border-radius:2px !important;
+  }
+
+  .field.radio.rd-dot input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    inset:3px;
+    border-radius:999px;
+    background:#000;
+  }
+  .field.radio.rd-solid input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    inset:2px;
+    border-radius:999px;
+    background:#000;
+  }
+  .field.radio.rd-tick input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;
+    left:5px;
+    top:2px;
+    width:calc(var(--rsize,18px) - 10px);
+    height:calc(var(--rsize,18px) - 10px);
+    border-right:2px solid #000;
+    border-bottom:2px solid #000;
+    transform:rotate(45deg);
+  }
+
+  .env-badge{display:none !important;}
+
+  .field.is-missing{
+  outline:2px solid #ff3b3b !important;
+  outline-offset:1px;
+  border-radius:6px;
+}
+
+.field.is-missing input,
+.field.is-missing textarea,
+.field.is-missing select{
+  box-shadow:none !important;
+}
+
+#missingGuideToast{
+  position:fixed;
+  left:50%;
+  bottom:24px;
+  transform:translateX(-50%);
+  z-index:99999;
+  min-width:280px;
+  max-width:calc(100vw - 32px);
+  padding:12px 16px;
+  border-radius:12px;
+  background:rgba(17,24,39,.96);
+  color:#fff;
+  font-size:14px;
+  font-weight:700;
+  line-height:1.45;
+  box-shadow:0 10px 30px rgba(0,0,0,.22);
+  display:none;
+}
+
+#missingGuideToast.show{
+  display:block;
+}
+
+@media print{
+  .field.is-missing{
+    outline:none !important;
+    box-shadow:none !important;
+  }
+
+  #missingGuideToast{
+    display:none !important;
+  }
+}
+}
+
+.field.hasBorder input[type="text"],
+.field.hasBorder textarea,
+.field.hasBorder select,
+.field.selectLike.hasBorder .select-display{
+  border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;
+  border-radius:8px;
+  background:transparent;
+  padding:0 2px !important;
+}
+  #printAll .field.hasBorder .print-value{
+  border:var(--bdw,2px) solid var(--bdc,#ff3b3b) !important;
+  border-radius:8px !important;
+  background:transparent !important;
+}
+.field.hasBG input[type="text"],
+.field.hasBG textarea,
+.field.hasBG select,
+.field.selectLike.hasBG .select-display{
+  background:var(--bgc,transparent) !important;
+}
+#printAll .field.hasBG .print-value{
+  background:var(--bgc,transparent) !important;
+}
+  .affBanner{display:none;position:sticky;top:0;z-index:50;margin:6px 0 10px}
+  .affBanner__card{background:#ffe08a;color:#2a2100;border:1px solid #cfa442;border-radius:10px;padding:10px 12px;font-weight:800}
+  #affPopup{position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:99999;display:none}
+  #affPopup .card b{font-weight:900}
+
+  .extraBar{display:none;margin:6px 0 0}
+  .extraBar__card{background:#0f2036;border:1px solid #2b3a54;border-radius:10px;padding:8px 10px;font-weight:800;color:#cfe0ff}
+  .extraBar__label{opacity:.85;margin-right:8px}
+
+  html.is-staging .env-badge{
+    position:fixed;z-index:9999;top:10px;left:10px;
+    padding:6px 10px;border-radius:6px;font-weight:700;
+    background:#f59e0b;color:#111827;box-shadow:0 2px 6px rgba(0,0,0,.2);
+    user-select:none;pointer-events:none;
+  }
+  html.is-prod .builder{display:none !important;}
+  html.is-prod .hd .builder{display:none !important;}
+
+  .btn-back{
+    min-width: 140px;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 6px 14px;
+    text-decoration:none;
+  }
+  .btn-back::before{
+    content: "←";
+    margin-right: 4px;
+    font-size: 14px;
+  }
+
+  /* =========================
+     ✅ select 잘림 해결: select는 클릭만 / 표시는 div로 2줄+자동축소
+  ========================= */
+  .field.selectLike{ position:absolute; }
+  .field.selectLike select{
+    color: transparent !important;
+    background: transparent !important;
+    text-shadow: none !important;
+  }
+.field.selectLike .select-display{
+  position:absolute;
+  inset:0;
+  padding:0 1px;
+  pointer-events:none;
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  white-space:normal;
+  word-break:keep-all;
+  overflow:hidden;
+  line-height:1.1;
+  font-weight:700;
+  color:var(--fgc,#fff);
+}
+.field.selectLike .select-display.device-one-line{
+  white-space:nowrap !important;
+  word-break:normal !important;
+  overflow:hidden !important;
+  text-overflow:clip !important;
+  overflow-wrap:normal !important;
+  line-height:1.0 !important;
+  transform:translateY(-0.02em) !important;
+}
+  /* ✅ [추가] 인쇄 시 검정화면(오버레이/모달) 방지 */
+  @media print{
+    #msgModal,
+    #docsModal,
+    #comingSoonModal,
+    #formModal,
+    #addressSearchModal,
+    .modal, .cs-modal, .form-modal,
+    .modal-backdrop, .cs-backdrop, .form-backdrop{
+      display:none !important;
+      visibility:hidden !important;
+    }
+
+    html, body{
+      background:#fff !important;
+    }
+
+/* 혹시 남아있는 fixed/overlay 계열 차단 */
+body > [style*="position: fixed"]:not(#printAll){
+  visibility:hidden !important;
+}
+  }
+@media print{
+  /* 1) ✅ 라디오/체크 '원(input)' 테두리 제거 (투명 설정일 때) */
+  #printAll .field.radio[style*="--tick-bdc: transparent"] input[type="checkbox"],
+  #printAll .field.checkbox[style*="--tick-bdc: transparent"] input{
+    border: 0 !important;
+    border-color: transparent !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* 2) ✅ 라디오 '박스(.radio-item)' 테두리 제거 (투명 설정일 때) */
+  #printAll .field.radio[style*="--rbc: transparent"] .radio-item{
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* 3) (원하면) 라디오 박스 테두리를 그냥 무조건 다 없애기 — 위 2번이 안 먹을 때만 사용
+  #printAll .field.radio .radio-item{
+    border: 0 !important;
+    background: transparent !important;
+  }
+  */
+}
+/* ✅ 라디오 전체 박스 테두리(컨테이너) */
+.field.radio.radioBox{
+  border: var(--box-bdw, 2px) solid var(--box-bdc, #000) !important;
+  border-radius: var(--box-bdr, 6px);
+  background: var(--box-bg, transparent);
+  padding: var(--box-pad, 2px);
+}
+.field .fixed-label{
+  width:100%;
+  height:100%;
+  box-sizing:border-box;
+  padding:0 2px;
+  font-size:var(--fs);
+  font-weight:700;
+  font-family:"Noto Sans KR", system-ui, sans-serif;
+  color:var(--fgc,#000);
+  line-height:1;
+  display:flex;
+  align-items:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:clip;
+}
+
+@media print{
+  #printAll .field .fixed-label{
+    display:none !important;
+  }
+}
+#printNoticeModal{
+  position:fixed;
+  inset:0;
+  z-index:100000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,.45);
+}
+
+#printNoticeModal.open{
+  display:flex;
+}
+
+#printNoticeModal .pnm-card{
+  width:min(92vw, 520px);
+  background:#ffffff;
+  color:#111827;
+  border-radius:14px;
+  padding:20px 18px 16px;
+  box-shadow:0 20px 50px rgba(0,0,0,.28);
+  border:1px solid #d1d5db;
+}
+
+#printNoticeModal .pnm-title{
+  font-size:18px;
+  font-weight:900;
+  margin-bottom:12px;
+}
+
+#printNoticeModal .pnm-body{
+  white-space:pre-line;
+  line-height:1.6;
+  font-size:14px;
+  color:#111827;
+}
+
+#printNoticeModal .pnm-check{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:16px;
+  font-size:14px;
+  font-weight:700;
+  color:#374151;
+}
+
+#printNoticeModal .pnm-check input{
+  width:16px;
+  height:16px;
+}
+
+#printNoticeModal .pnm-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:18px;
+}
+
+#printNoticeModal .pnm-btn{
+  min-width:92px;
+  padding:9px 14px;
+  border-radius:10px;
+  border:1px solid #d1d5db;
+  background:#fff;
+  color:#111827;
+  font-weight:800;
+  cursor:pointer;
+}
+
+#printNoticeModal .pnm-btn--primary{
+  border-color:#7c3aed;
+  background:linear-gradient(90deg,#e6007e,#6a35ff);
+  color:#fff;
+}
+/* 필수 안내 토스트 제거 */
+#toast{
+  display:none !important;
+}
+@media print{
+  #printNoticeModal{
+    display:none !important;
+  }
+}
+
+.notice-danger{
+  color:#ff3b3b;
+  font-weight:800;
+}
+
+
+
+/* =========================================================
+   ✅ 체크표시 그룹화 / checkmark / 조건부필수 / 양식팝업
+========================================================= */
+.field.checkmark{
+  transform:translate(-50%,-50%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+.checkmark-box{
+  width:var(--cksize,18px);
+  height:var(--cksize,18px);
+  position:relative;
+  box-sizing:border-box;
+  border:var(--tick-bdw,1.6px) solid var(--tick-bdc,#000);
+  border-radius:2px;
+  background:transparent;
+}
+.field.checkmark.ck-tick .checkmark-box.checked::after,
+.field.checkmark:not(.ck-solid):not(.ck-dot) .checkmark-box.checked::after{
+  content:"";
+  position:absolute;
+  left:3px;
+  top:0px;
+  width:calc(var(--cksize,18px) - 6px);
+  height:calc(var(--cksize,18px) - 6px);
+  border-right:2px solid #000;
+  border-bottom:2px solid #000;
+  transform:rotate(45deg) translateY(-2px);
+}
+.field.checkmark.ck-solid .checkmark-box.checked::after{
+  content:"";
+  position:absolute;
+  inset:2px;
+  background:#000;
+}
+.field.checkmark.ck-dot .checkmark-box.checked::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:calc(var(--cksize,18px) * .45);
+  height:calc(var(--cksize,18px) * .45);
+  border-radius:999px;
+  background:#000;
+  transform:translate(-50%,-50%);
+}
+.cond-rule-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-top:8px;
+}
+.cond-rule-item{
+  border:1px solid #2b3a54;
+  border-radius:10px;
+  padding:8px 10px;
+  background:#0b1220;
+  color:#dfe9ff;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:700;
+}
+.cond-rule-item.active{
+  outline:2px solid #60a5fa;
+  background:#10213a;
+}
+.form-modal{position:fixed;inset:0;display:none;z-index:110000}
+.form-modal[aria-hidden="false"]{display:block}
+.form-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.form-panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,calc(100% - 32px));background:#fff;color:#111827;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.form-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e5e7eb}
+.form-x{border:1px solid #d1d5db;background:#fff;border-radius:10px;padding:6px 10px;cursor:pointer;font-weight:800;font-size:12px}
+.form-body{padding:14px}
+.form-textarea{width:100%;min-height:360px;max-height:70vh;resize:vertical;border:1px solid #d1d5db;border-radius:12px;padding:12px;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Noto Sans KR",monospace;color:#111827;background:#fff;white-space:pre-wrap;overflow:auto}
+.form-actions{display:flex;justify-content:flex-end;gap:8px;padding:0 14px 14px}
+.form-btn{border:none;border-radius:10px;padding:8px 14px;background:#111827;color:#fff;font-weight:900;cursor:pointer}
+.form-btn.ghost{background:#fff;color:#111827;border:1px solid #d1d5db}
+.form-toast{margin-top:8px;font-size:12px;font-weight:800;color:#16a34a;display:none}.form-toast.show{display:block}
+@media print{
+  #printAll .field.checkmark .checkmark-box{display:block !important}
+  #formModal,.form-modal,.form-backdrop{display:none !important;visibility:hidden !important}
+}
+
+/* =========================
+   주소 검색 팝업
+========================= */
+#addressSearchModal{
+  position:fixed;
+  inset:0;
+  z-index:120000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(3,10,22,.58);
+}
+#addressSearchModal.open{display:flex;}
+#addressSearchModal .asm-card{
+  width:min(94vw,620px);
+  max-height:94vh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  background:#fff;
+  color:#111827;
+  border:1px solid #d1d5db;
+  border-radius:16px;
+  box-shadow:0 24px 70px rgba(0,0,0,.34);
+}
+#addressSearchModal .asm-hd{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border-bottom:1px solid #e5e7eb;
+}
+#addressSearchModal .asm-title{font-size:17px;font-weight:900;}
+#addressSearchModal .asm-close,
+#addressSearchModal .asm-btn{
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:9px 14px;
+  background:#f1f5f9;
+  color:#0f172a;
+  font-weight:800;
+  cursor:pointer;
+}
+#addressSearchModal .asm-btn--primary{
+  border-color:#111827;
+  background:#111827;
+  color:#fff;
+}
+#addressSearchModal .asm-search{
+  min-height:430px;
+  height:min(58vh,520px);
+  background:#fff;
+}
+#addressSearchModal .asm-loading{
+  min-height:430px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  color:#475569;
+  font-weight:700;
+}
+#addressSearchModal .asm-detail{
+  padding:12px 14px;
+  border-top:1px solid #e5e7eb;
+  background:#fff;
+}
+#addressSearchModal .asm-label{
+  display:block;
+  margin-bottom:6px;
+  font-size:12px;
+  font-weight:900;
+  color:#334155;
+}
+#addressSearchModal .asm-selected,
+#addressSearchModal .asm-detail-input{
+  width:100%;
+  min-height:42px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:10px 12px;
+  background:#fff;
+  color:#111827;
+  font:700 14px/1.4 system-ui,"Noto Sans KR",sans-serif;
+}
+#addressSearchModal .asm-selected{
+  margin-bottom:10px;
+  background:#f8fafc;
+}
+#addressSearchModal .asm-selected:empty::before{
+  content:"주소 검색 결과를 선택해 주세요.";
+  color:#94a3b8;
+}
+#addressSearchModal .asm-error{
+  min-height:20px;
+  margin-top:7px;
+  color:#dc2626;
+  font-size:12px;
+  font-weight:800;
+}
+#addressSearchModal .asm-ft{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  padding:0 14px 14px;
+  background:#fff;
+}
+.field.address-search-enabled{cursor:pointer !important;}
+.field.address-search-enabled input,
+.field.address-search-enabled textarea{cursor:pointer;}
+html.fill .field.address-search-enabled::after{
+  display:none !important;
+  content:none !important;
+}
+@media (max-width:640px){
+  #addressSearchModal{padding:6px;}
+  #addressSearchModal .asm-card{width:100%;max-height:98vh;border-radius:12px;}
+  #addressSearchModal .asm-search,
+  #addressSearchModal .asm-loading{height:55vh;min-height:360px;}
+}
+@media print{
+  #addressSearchModal{display:none !important;visibility:hidden !important;}
+}
+
+</style>
+
+<script>
+/* =========================
+   ✅ ENV / URL 가드 (KT 단말 전용)
+   (⚠️ 여기에는 조건부필수 함수 넣지 않습니다)
+========================= */
+(function(){
+  const host = location.hostname;
+  const IS_LOCAL   = /^(localhost|127\.0\.0\.1)$/i.test(host);
+  const IS_STAGING = host.startsWith('staging.') || IS_LOCAL;
+
+  document.documentElement.classList.toggle('is-staging', IS_STAGING);
+  document.documentElement.classList.toggle('is-prod', !IS_STAGING);
+
+  const qs = new URLSearchParams(location.search);
+  const doc = (qs.get('doc') || 'device').toLowerCase();
+
+  // ✅ 단말 페이지는 doc=device로 고정(다른 값이면 device로 정리)
+  if (doc !== 'device') {
+    qs.set('doc','device');
+    const url = new URL(location.href);
+    url.search = qs.toString();
+    location.replace(url.toString());
+    return;
+  }
+
+  const fav = document.querySelector('link[rel="icon"][sizes="32x32"]') || document.querySelector('link[rel="icon"]');
+  if (IS_STAGING) {
+    document.title = 'STAGING · ' + document.title.replace(/^STAGING ·\s*/,'');
+    if (fav) fav.href = '/favicon-32x32.png?v=stg';
+
+    const b = document.createElement('div');
+    b.className = 'env-badge';
+    b.textContent = 'STAGING (개발/테스트)';
+    window.addEventListener('DOMContentLoaded', ()=>document.body.appendChild(b));
+  } else {
+    document.title = document.title.replace(/^STAGING ·\s*/,'');
+    if (fav) fav.href = '/favicon-32x32.png?v=prod';
+
+    const url = new URL(location.href);
+    if (!url.searchParams.has('mode')) {
+      url.searchParams.set('mode','fill');
+      history.replaceState(null,'',url.toString());
+    }
+    if (!url.searchParams.has('doc')) {
+      url.searchParams.set('doc','device');
+      history.replaceState(null,'',url.toString());
+    }
+  }
+})();
+
+(function(){
+  function forceCloseForPrint(){
+    const ids = ['msgModal','docsModal','comingSoonModal','formModal','addressSearchModal'];
+    ids.forEach(id=>{
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.setAttribute('aria-hidden','true');
+      el.classList.remove('open');
+      el.style.display = 'none';
+    });
+
+    document.querySelectorAll('.modal-backdrop,.cs-backdrop,.form-backdrop,.backdrop').forEach(b=>{
+      b.style.display = 'none';
+    });
+  }
+
+  window.addEventListener('beforeprint', forceCloseForPrint);
+})();
+/* ✅ 모든 입력에서 Enter 줄바꿈/제출 방지(동적 생성 포함) */
+(function blockEnterEverywhere(){
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+
+    const t = e.target;
+    if (!t) return;
+
+    // 주소 검색 팝업 상세주소 Enter는 주소 적용 기능에서 처리
+    if (t.id === 'addressSearchDetail') return;
+
+    // 입력 가능한 요소만 처리
+    const isInput =
+      t.tagName === 'INPUT' ||
+      t.tagName === 'TEXTAREA' ||
+      t.tagName === 'SELECT';
+
+    if (!isInput) return;
+
+    // 체크박스/라디오/버튼류 제외
+    if (
+      t.tagName === 'INPUT' &&
+      ['checkbox', 'radio', 'button', 'submit', 'file'].includes((t.type || '').toLowerCase())
+    ) {
+      return;
+    }
+
+    // 현재 보이는 입력 필드 목록
+const fields = Array.from(document.querySelectorAll(
+  'input[type="text"], input[type="search"], input[type="tel"], input[type="number"], textarea, select'
+)).filter(el => {
+  if (!el) return false;
+  if (el.disabled) return false;
+  if (el.offsetParent === null) return false;
+  if (el.readOnly) return false;
+  if (el.dataset.locked === '1') return false;
+
+  const wrap = el.closest('.field');
+  if (!wrap) return false;
+
+  const idx = Number(wrap.dataset.i);
+  const f = cur()?.fields?.[idx];
+  if (!f) return false;
+
+  // ✅ 필수 입력칸만 이동
+  if (!f.required) return false;
+
+  return true;
+});
+
+    const idx = fields.indexOf(t);
+    if (idx === -1) return;
+
+    // 마지막 필드가 아니면 다음 필드로 이동
+    const next = fields[idx + 1];
+    if (next) {
+      e.preventDefault();
+      next.focus();
+
+      // select는 열지 않고 focus만
+      if (typeof next.select === 'function' && next.tagName !== 'SELECT') {
+        next.select();
+      }
+      return;
+    }
+
+    // 마지막 필드는 Enter 입력만 막기
+    e.preventDefault();
+  }, true);
+})();
+
+(function bindCtrlPToCustomPrint(){
+  let printing = false;
+
+  document.addEventListener('keydown', async (e) => {
+    const isPrintShortcut =
+      (e.ctrlKey || e.metaKey) &&
+      String(e.key).toLowerCase() === 'p';
+
+    if (!isPrintShortcut) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    if (printing) return;
+    printing = true;
+
+    try {
+      await forcePrintBlankForm();
+    } catch (err) {
+      console.error('[Ctrl+P print error]', err);
+    } finally {
+      setTimeout(() => { printing = false; }, 1200);
+    }
+  }, true);
+})();
+
+</script>
+</head>
+
+<body>
+<div class="wrap">
+  <section class="panel">
+    <div class="hd">
+      <strong>MCC · KT 단말 개통</strong>
+
+      <div style="display:flex; gap:8px; align-items:center">
+        <a href="../../../index.html" class="btn btn--ghost btn-back" id="backToHub">서류 선택 화면</a>
+        <div class="builder">
+          <button class="btn--ghost btn" id="enableWrapAll">모든 텍스트 자동 줄바꿈 켜기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div id="affBanner" class="affBanner"><div class="affBanner__card">제휴 요금제 진행 시 <b> C-1 성함·동의 체크</b>가 필요합니다.</div></div>
+
+      <div id="extraBar" class="extraBar">
+        <div class="extraBar__card"><span class="extraBar__label">추가 데이터</span><span id="extraBarText"></span></div>
+      </div>
+
+      <div class="paper" id="paper">
+        <div class="stage" id="stage">
+          <img id="bg" src="" alt="">
+          <div class="overlay" id="overlay"></div>
+        </div>
+      </div>
+
+      <div class="pager">
+        <button class="btn--ghost btn" id="prev">◀ 이전</button>
+        <div id="pageInfo">1 / 1</div>
+        <button class="btn--ghost btn" id="next">다음 ▶</button>
+        <button class="btn" id="btnPdf">PDF 생성OR인쇄</button>
+      </div>
+      <p class="hint" style="text-align:center">필드를 클릭해 드래그로 이동. 입력은 컨트롤을 클릭 후 타이핑.</p>
+    </div>
+  </section>
+
+  <section class="panel builder">
+    <div class="hd">
+      <strong>기본 도구</strong>
+      <div>
+        <button class="btn--ghost btn" id="reload">설계 다시읽기</button>
+        <button class="btn--ghost btn" id="resetValues">값 초기화</button>
+        <button class="btn" id="saveJson">설계 저장(JSON)</button>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="group">
+        <h4>새 필드</h4>
+        <div class="row"><div>새 필드 타입</div>
+          <select id="newType">
+            <option value="text">텍스트박스</option>
+            <option value="textarea">텍스트영역</option>
+            <option value="select">드롭다운</option>
+            <option value="radio">라디오(단일선택)</option>
+            <option value="checkbox">체크박스</option>
+            <option value="checkmark">체크표시(checkmark)</option>
+            <option value="label">고정텍스트</option>
+          </select>
+        </div>
+        <div class="row"><div>새 필드 ID</div><input id="newId" placeholder="예: deviceId / planId / subsidy 등"></div>
+        <div class="row"><div>라벨</div><input id="newLabel" placeholder="예: 단말 선택"></div>
+        <div class="row"><div>옵션(콤마)</div><input id="newOpts" placeholder="라디오·드롭다운: 예) 12,24,36"></div>
+        <div class="row"><div>필수</div><label><input type="checkbox" id="newReq"> 필수값</label></div>
+        <div class="row"><button class="btn" id="addField">필드 추가</button></div>
+      </div>
+
+      <div class="group" id="conditionalRequiredTool">
+        <h4>조건부 필수 설정</h4>
+        <div class="row"><div>기준 필드/그룹</div><input id="cr_sourceId" type="text" placeholder="예: 신규/번이 / 전통신사 / 성별"></div>
+        <div class="row"><div>기준 값</div><input id="cr_whenValue" type="text" placeholder="예: 신규"></div>
+        <div class="row"><div>필수 대상</div><input id="cr_requiredOn" type="text" placeholder="예: 희망번호, 번호이동, 통신사명"></div>
+        <div class="row">
+          <div></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn--ghost btn" id="cr_add" type="button">규칙 추가</button>
+            <button class="btn--ghost btn" id="cr_update" type="button">선택 수정</button>
+            <button class="btn--ghost btn" id="cr_delete" type="button">선택 삭제</button>
+          </div>
+        </div>
+        <div class="row"><div>규칙 목록</div><div class="cond-rule-list" id="cr_list"></div></div>
+      </div>
+
+      <div id="propBox" class="group">
+        <h4>선택한 필드 속성</h4>
+        <div class="row"><div>선택된 항목</div><div id="selInfo" class="hint">없음</div></div>
+
+        <div class="row"><div>라벨(선택)</div><input id="p_label" type="text" placeholder="라벨"></div>
+        <div class="row"><div>필드 ID</div><input id="p_id" type="text" placeholder="예: deviceId / planId / msrp"></div>
+        <div class="row" id="row_checkGroup"><div>체크 그룹명</div><input id="p_groupId" type="text" placeholder="예: 신규/번이 / 성별 / 전통신사"></div>
+        <div class="row" id="row_checkValue"><div>체크 값</div><input id="p_checkValue" type="text" placeholder="예: 신규 / 번이 / 남 / 여 / SK"></div>
+
+        <div class="row" id="row_opts"><div>옵션(콤마)</div><input id="p_options" type="text" placeholder="예: 12, 24, 36"></div>
+        <div class="row" id="row_req"><div>필수</div><label><input type="checkbox" id="p_required"> 반드시 작성</label></div>
+
+        <div class="row"><div>X(%)</div><input id="p_x" type="number" step="0.1"></div>
+        <div class="row"><div>Y(%)</div><input id="p_y" type="number" step="0.1"></div>
+        <div class="row"><div>폭(%)</div><input id="p_w" type="number" step="0.1"></div>
+
+        <div class="row"><div>라디오 크기(px)</div><input id="p_radioSize" type="number" min="10" max="32" step="1" placeholder="18"></div>
+        <div class="row"><div>라디오 간격(px)</div><input id="p_radioGap" type="number" min="0" max="200" step="1" placeholder="12"></div>
+        <div class="row" id="row_checkStyle">
+          <div>체크 스타일</div>
+          <select id="p_checkStyle">
+            <option value="tick">✓ 체크</option>
+            <option value="solid">■ 꽉찬</option>
+            <option value="dot">● 점</option>
+          </select>
+        </div>
+
+        <div class="row"><div>텍스트 색상</div><input id="p_color" type="color" value="#000000"></div>
+        <div class="row"><div>입력 높이(px)</div><input id="p_height" type="number" min="5" max="60" step="1" placeholder="auto"></div>
+        <div class="row"><div>글자 크기(px)</div><input id="p_fontSize" type="number" min="5" max="32" step="1" placeholder="14"></div>
+<div class="row"><div>정렬</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button class="btn--ghost btn" id="alignLeft">좌</button>
+    <button class="btn--ghost btn" id="alignCX">가운데</button>
+    <button class="btn--ghost btn" id="alignRight">우</button>
+    <button class="btn--ghost btn" id="alignTop">상</button>
+    <button class="btn--ghost btn" id="alignCY">중앙</button>
+    <button class="btn--ghost btn" id="alignBottom">하</button>
+  </div>
+</div>
+
+<div class="prop-box">
+  <div class="row prop-row">
+    <div>텍스트 정렬</div>
+    <select id="p_textAlign">
+      <option value="">기본</option>
+      <option value="left">좌측</option>
+      <option value="center">가운데</option>
+      <option value="right">우측</option>
+    </select>
+  </div>
+
+  <div class="row prop-row">
+    <div>세로 정렬</div>
+    <select id="p_verticalAlign">
+      <option value="top">상단</option>
+      <option value="middle" selected>가운데</option>
+      <option value="bottom">하단</option>
+    </select>
+  </div>
+
+  <div class="row prop-row">
+    <div>자동 글자 축소</div>
+    <label class="inline-check">
+      <input type="checkbox" id="p_autoShrink" checked> 사용
+    </label>
+  </div>
+</div>
+
+<div class="prop-box">
+  <div class="row prop-row">
+    <div>입력 잠금</div>
+    <label class="inline-check lock-check">
+      <input type="checkbox" id="p_locked">
+      <span> 화면에서 타이핑 금지</span>
+    </label>
+  </div>
+
+  <div class="row prop-row">
+    <div>placeholder 잠금</div>
+    <label class="inline-check lock-check">
+      <input type="checkbox" id="p_lockOnPh">
+      <span>체크 시 placeholder만 화면에 표시 출력되지 않음</span>
+    </label>
+  </div>
+</div>
+
+        <div class="group" style="margin:8px 0 0;padding-top:8px">
+          <h4>입력 제한(마스크)</h4>
+          <div class="row"><div>패턴 선택</div>
+            <select id="p_mask">
+              <option value="">없음</option>
+              <option value="number">숫자만</option>
+              <option value="tel">전화번호(숫자-)</option>
+              <option value="alpha">영문</option>
+              <option value="alnum">영문+숫자</option>
+              <option value="hangul">한글만</option>
+              <option value="custom">사용자정의(정규식)</option>
+            </select>
+          </div>
+          <div class="row"><div>허용 패턴(정규식)</div><input id="p_maskRe" type="text" placeholder="예: [0-9-], [A-Za-z], [가-힣0-9 ]"></div>
+        </div>
+
+        <div class="group" style="margin-top:8px">
+          <h4>콘텐츠 설정</h4>
+          <div class="row"><div>최대 글자 수</div><input id="p_maxlen" type="number" min="1" max="500" step="1"></div>
+          <div class="row"><div>안내 문구(placeholder)</div><input id="p_placeholder" type="text" placeholder="예: 선납금 입력"></div>
+          <div class="row"><div>자동 줄바꿈</div><label><input id="p_wrap" type="checkbox" checked> 사용</label></div>
+          <div class="row"><div>자동 날짜</div>
+            <select id="p_autoDate">
+              <option value="">없음</option>
+              <option value="year">년(YYYY)</option>
+              <option value="month">월(MM)</option>
+              <option value="day">일(DD)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="group" style="margin-top:8px">
+          <h4>테두리/배경</h4>
+          <div class="row"><div>테두리 색상</div><input id="p_borderColor" type="color" value="#ff3b3b"></div>
+          <div class="row"><div>테두리 굵기(px)</div><input id="p_borderWidth" type="number" min="1" max="8" step="1" placeholder="2"></div>
+          <div class="row"><div>테두리 투명</div><label><input type="checkbox" id="p_borderTransparent"> 사용</label></div>
+          <div class="row"><div>배경 색상</div><input id="p_bgColor" type="color" value="#000000"></div>
+          <div class="row"><div>배경 투명</div><label><input type="checkbox" id="p_bgTransparent"> 사용</label></div>
+        </div>
+
+        <div class="row" style="margin-top:8px">
+          <button class="btn--ghost btn" id="applyProp">적용</button>
+          <button class="btn--ghost btn" id="delField" style="margin-left:8px">삭제</button>
+        </div>
+      </div>
+
+      
+
+    </div>
+  </section>
+</div>
+
+<div id="printAll"></div>
+
+<div class="toast" id="toast"><div class="toast__card">
+  <b>작성되지 않은 필수 항목이 있습니다</b>
+  <ul id="missList" style="margin:8px 0 0 18px;padding:0"></ul>
+  <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn--ghost btn" id="tClose">확인</button></div>
+</div></div>
+
+<div id="affPopup"><div class="card">⚠️ <b>제휴 요금제</b>입니다. <b> C-1 성함·동의 체크</b>가 모두 완료되어야 진행됩니다.</div></div>
+<div id="addressSearchModal" aria-hidden="true">
+  <div class="asm-card" role="dialog" aria-modal="true" aria-labelledby="addressSearchTitle">
+    <div class="asm-hd">
+      <div class="asm-title" id="addressSearchTitle">주소 검색</div>
+      <button type="button" class="asm-close" id="addressSearchClose">닫기</button>
+    </div>
+    <div id="addressSearchLayer" class="asm-search">
+      <div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>
+    </div>
+    <div class="asm-detail">
+      <label class="asm-label">선택한 주소</label>
+      <div id="addressSearchSelected" class="asm-selected"></div>
+      <label class="asm-label" for="addressSearchDetail">상세주소</label>
+      <input id="addressSearchDetail" class="asm-detail-input" type="text"
+             maxlength="100" autocomplete="off"
+             placeholder="동/호수 등 상세주소를 입력해 주세요">
+      <div id="addressSearchError" class="asm-error" aria-live="polite"></div>
+    </div>
+    <div class="asm-ft">
+      <button type="button" class="asm-btn" id="addressSearchReset">다시 검색</button>
+      <button type="button" class="asm-btn asm-btn--primary" id="addressSearchApply">주소 적용</button>
+    </div>
+  </div>
+</div>
+
+
+<div id="printNoticeModal" aria-hidden="true">
+  <div class="pnm-card" role="dialog" aria-modal="true" aria-labelledby="printNoticeTitle">
+    <div class="pnm-title" id="printNoticeTitle">필수 확인 안내</div>
+
+    <div class="pnm-body" id="printNoticeText">
+부가서비스(캐치콜플러스) 가입 여부를 반드시 확인 후 진행해 주세요.
+
+<span class="notice-danger">※ 정책 미확인으로 인한 문제는 책임지지 않습니다.</span>
+    </div>
+
+    <label class="pnm-check">
+      <input type="checkbox" id="printNoticeHideToday">
+      <span>오늘 하루 동안 보지 않기</span>
+    </label>
+
+    <div class="pnm-actions">
+      <button type="button" class="pnm-btn" id="printNoticeCancel">취소</button>
+      <button type="button" class="pnm-btn pnm-btn--primary" id="printNoticeConfirm">확인 후 진행</button>
+    </div>
+  </div>
+</div>
+
+<div class="form-modal" id="formModal" aria-hidden="true">
+  <div class="form-backdrop" data-form-close="1"></div>
+  <div class="form-panel" role="dialog" aria-modal="true" aria-label="양식 팝업">
+    <div class="form-head">
+      <strong id="formTitle">양식</strong>
+      <button class="form-x" id="formCloseX" type="button">닫기</button>
+    </div>
+    <div class="form-body">
+      <div class="form-textarea" id="formTextarea" contenteditable="true"></div>
+      <div class="form-toast" id="formToast">복사되었습니다.</div>
+    </div>
+    <div class="form-actions">
+      <button class="form-btn ghost" id="formSelectAll" type="button">전체선택</button>
+      <button class="form-btn" id="formCopyBtn" type="button">복사</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   ✅ [핵심] BASE_URL: 현재 파일(index.html)이 있는 폴더 기준
+========================================================= */
+const BASE_URL = new URL('./', location.href);
+const ABS = (p) => new URL(String(p || ''), BASE_URL).toString();
+
+/* ✅ 조건부 필수 규칙 */
+let CONDITIONAL_REQUIRED = [
+  { sourceId: '신규/번이', whenValue: '신규', requiredOn: ['희망번호'] },
+  { sourceId: '신규/번이', whenValue: '번이', requiredOn: ['번호이동', '전통신사'] },
+  { sourceId: '전통신사', whenValue: 'MVNO', requiredOn: ['통신사명'] },
+];
+/* =========================
+   ✅ 전역 값 저장/동기화
+========================= */
+let USE_FORM_POPUP = false;
+let FORM_POPUP_DATA = { title: '양식', text: '' };
+
+const valuesById = Object.create(null);
+const elById = Object.create(null);
+
+const USE_PRINT_POLICY_NOTICE = true;
+const PRINT_NOTICE_HIDE_KEY = 'mmobile_print_notice_hide_until';
+
+const PRE_PRINT_NOTICE = `부가서비스(캐치콜플러스) 가입 여부를 반드시 확인 후 진행해 주세요.
+
+※ 정책 미확인으로 인한 문제는 책임지지 않습니다.`;
+let SHOW_INVALID = false;
+
+function setValueById(id, value) {
+  if (!id) return;
+  valuesById[id] = (value ?? "");
+
+  try {
+    const key = String(id).toLowerCase();
+    pages.forEach(pg => {
+      (pg.fields || []).forEach(f => {
+        if (String(f.id || '').toLowerCase() === key) {
+          if (f.type === 'checkbox') f.value = !!value;
+          else f.value = (value ?? "");
+        }
+      });
+    });
+  } catch (_) {}
+
+  const el = elById[id];
+  if (!el) return;
+
+  if (el.type === 'checkbox') el.checked = !!value;
+  else if (el.type === 'checkmark') { el.value = !!value; if (el.el) el.el.classList.toggle('checked', !!value); }
+  else {
+    if (typeof el === 'object' && el.type === 'radio') el.value = (value ?? "");
+    else el.value = valuesById[id];
+  }
+}
+function applyAutoDateAll(){
+  const d = new Date();
+  const YYYY = String(d.getFullYear());
+  const MM   = String(d.getMonth() + 1).padStart(2, '0');
+  const DD   = String(d.getDate()).padStart(2, '0');
+
+  pages.forEach(pg=>{
+    (pg.fields || []).forEach(f=>{
+      if(!f.autoDate) return;
+
+      // 값이 비어있을 때만 자동 입력
+      //if(String(f.value || '').trim() !== '') return;
+
+      if (f.autoDate === 'year')  f.value = YYYY;
+      if (f.autoDate === 'month') f.value = MM;
+      if (f.autoDate === 'day')   f.value = DD;
+
+      if (f.id) setValueById(f.id, f.value);
+    });
+  });
+}
+
+function applyMirror(sourceField, value) {
+  const targets = sourceField.mirrorTo || [];
+  targets.forEach(tid => setValueById(tid, value));
+}
+
+/* ===== 모드/상태 ===== */
+const QS  = new URLSearchParams(location.search);
+const DOC = (QS.get('doc') || 'device').toLowerCase();
+const FILL  = QS.get('mode') === 'fill';
+const FRESH = QS.get('fresh') === '1';
+if(FILL) document.documentElement.classList.add('fill');
+
+let selected=-1;
+let pages=[{bg:ABS('images/device-1.jpg'),fields:[]}], pageIndex=0;
+
+/* ✅ age별 bg 강제 덮기 */
+/* ✅ age별 bg 강제 덮기 (반드시 loadDesign()보다 위에 있어야 함) */
+function getSafeAge(){
+  const age = (new URLSearchParams(location.search).get('age') || 'adult').toLowerCase();
+  return (age === 'teen') ? 'teen' : 'adult';
+}
+
+function forceAgeBgOnPages(){
+  const safeAge = getSafeAge();
+  const pageCount = pages.length || 8;
+
+  for (let i = 0; i < pageCount; i++){
+    if (!pages[i]) pages[i] = { bg:'', fields:[] };
+    pages[i].bg = ABS(`images/${safeAge}-${i+1}.jpg`);
+  }
+}
+
+
+const paper   = document.getElementById('paper');
+const stage   = document.getElementById('stage');
+const overlay = document.getElementById('overlay');
+const bg      = document.getElementById('bg');
+const pageInfo= document.getElementById('pageInfo');
+const affBanner=document.getElementById('affBanner');
+const affPopup = document.getElementById('affPopup');
+
+const extraBar = document.getElementById('extraBar');
+const extraBarText = document.getElementById('extraBarText');
+
+let LAST_EXTRA_TXT = '';
+let __MIRRORING__ = false;
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const num=(v,d)=>{const n=parseFloat(v);return isNaN(n)?d:n;};
+const cur=()=>pages[pageIndex];
+
+/* ===== 화면 줌 ===== */
+function applyZoom(){
+  stage.style.transform='scale(1)';
+  const stageRect = stage.getBoundingClientRect();
+  const targetW = paper.clientWidth;
+  let z = targetW / Math.max(stageRect.width,1);
+  z = Math.max(0.4, Math.min(2, z));
+  document.documentElement.style.setProperty('--zoom', z);
+  stage.style.transform = '';
+  paper.style.height = (stage.offsetHeight * z) + 'px';
+}
+window.addEventListener('resize', applyZoom);
+
+/* ===== 자동 저장 비활성 ===== */
+const AUTOSAVE_KEY=null;
+function scheduleSave(){ }
+function tryLoadAutosave(){ }
+const clearAutosave = () => { try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_) {} };
+
+/* ===== 드롭다운 글자 자동 축소 ===== */
+function fitSelectText(sel, maxPx = 16, minPx = 8, arrowPx) {
+  sel.style.fontSize = maxPx + 'px';
+  try {
+    const text = (sel.options[sel.selectedIndex] || {}).text || sel.value || '';
+    const style = getComputedStyle(sel);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padR = parseFloat(style.paddingRight) || 0;
+    const ARROW_W = (typeof arrowPx === 'number') ? arrowPx : 0;
+    const inner = sel.clientWidth - padL - padR - ARROW_W;
+    if (inner <= 0 || !text) return;
+
+    let meas = document.getElementById('__measure_span__');
+    if (!meas) {
+      meas = document.createElement('span');
+      meas.id = '__measure_span__';
+      meas.style.position = 'fixed';
+      meas.style.visibility = 'hidden';
+      meas.style.whiteSpace = 'nowrap';
+      meas.style.left = '-9999px';
+      document.body.appendChild(meas);
+    }
+    meas.style.fontFamily = style.fontFamily;
+    meas.style.fontWeight = style.fontWeight;
+    meas.style.fontStyle = style.fontStyle;
+    meas.style.letterSpacing = style.letterSpacing;
+    meas.style.textTransform = style.textTransform;
+
+    for (let px = maxPx; px >= minPx; px -= 0.5) {
+      meas.style.fontSize = px + 'px';
+      meas.textContent = text;
+      if (meas.getBoundingClientRect().width <= inner) {
+        sel.style.fontSize = px + 'px';
+        return;
+      }
+    }
+    sel.style.fontSize = minPx + 'px';
+  } catch (_) {}
+}
+
+function fitTextToWidth(el, maxPx = 20, minPx = 12){
+  try{
+    const raw = (el.value ?? '').toString();
+    const text = raw.replace(/\n+/g,' ').trim();
+
+    if(!text){
+      el.classList.remove('fit-one-line');
+      el.style.fontSize = maxPx + 'px';
+      return;
+    }
+
+    el.classList.add('fit-one-line');
+    el.style.fontSize = maxPx + 'px';
+
+    const style = getComputedStyle(el);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padR = parseFloat(style.paddingRight) || 0;
+    const inner = el.clientWidth - padL - padR;
+    if (inner <= 0) return;
+
+    let meas = document.getElementById('__measure_span__');
+    if (!meas) {
+      meas = document.createElement('span');
+      meas.id = '__measure_span__';
+      meas.style.position = 'fixed';
+      meas.style.visibility = 'hidden';
+      meas.style.whiteSpace = 'nowrap';
+      meas.style.left = '-9999px';
+      document.body.appendChild(meas);
+    }
+
+    meas.style.fontFamily = style.fontFamily;
+    meas.style.fontWeight = style.fontWeight;
+    meas.style.fontStyle  = style.fontStyle;
+    meas.style.letterSpacing = style.letterSpacing;
+    meas.style.textTransform  = style.textTransform;
+
+    for (let px = maxPx; px >= minPx; px -= 0.5) {
+      meas.style.fontSize = px + 'px';
+      meas.textContent = text;
+      if (meas.getBoundingClientRect().width <= inner) {
+        el.style.fontSize = px + 'px';
+        return;
+      }
+    }
+    el.style.fontSize = minPx + 'px';
+  }catch(_){}
+}
+function fitStringToWidth(text, widthPx, styleSourceEl, maxPx = 20, minPx = 12){
+  try{
+    const raw = String(text ?? '').replace(/\n+/g,' ').trim();
+    if(!raw) return maxPx;
+
+    let meas = document.getElementById('__measure_span__');
+    if (!meas) {
+      meas = document.createElement('span');
+      meas.id = '__measure_span__';
+      meas.style.position = 'fixed';
+      meas.style.visibility = 'hidden';
+      meas.style.whiteSpace = 'nowrap';
+      meas.style.left = '-9999px';
+      document.body.appendChild(meas);
+    }
+
+    const style = getComputedStyle(styleSourceEl);
+    meas.style.fontFamily = style.fontFamily;
+    meas.style.fontWeight = style.fontWeight;
+    meas.style.fontStyle  = style.fontStyle;
+    meas.style.letterSpacing = style.letterSpacing;
+    meas.style.textTransform  = style.textTransform;
+
+    for (let px = maxPx; px >= minPx; px -= 0.5) {
+      meas.style.fontSize = px + 'px';
+      meas.textContent = raw;
+      if (meas.getBoundingClientRect().width <= widthPx) {
+        return px;
+      }
+    }
+    return minPx;
+  }catch(_){
+    return minPx;
+  }
+}
+function isNameField(f){
+  const id = String(f?.id || '').toLowerCase();
+  const label = String(f?.label || '').toLowerCase();
+
+return (
+  id.includes('name') ||
+  id.includes('성명') ||
+  id.includes('이름') ||
+  id.includes('고객명') ||
+  id.includes('법인명') ||
+  id.includes('대표자명') ||
+  id.includes('가입자명') ||
+  id.includes('예금주') ||
+  id.includes('상호명') ||
+  id.includes('성함') ||
+  id.includes('고객성명') ||
+  id.includes('명의자') ||
+  id.includes('실사용자') ||
+  id.includes('수령인') ||
+  id.includes('가입자') ||
+  id.includes('대표자') ||
+  id.includes('수취인') ||
+  id.includes('회사명') ||
+  id.includes('업체명') ||
+  label.includes('name') ||
+  label.includes('성명') ||
+  label.includes('이름') ||
+  label.includes('고객명') ||
+  label.includes('법인명') ||
+  label.includes('대표자명') ||
+  label.includes('가입자명') ||
+  label.includes('예금주') ||
+  label.includes('상호명') ||
+  label.includes('성함') ||
+  label.includes('고객성명') ||
+  label.includes('명의자') ||
+  label.includes('실사용자') ||
+  label.includes('수령인') ||
+  label.includes('가입자') ||
+  label.includes('대표자') ||
+  label.includes('수취인') ||
+  label.includes('회사명') ||
+  label.includes('업체명')
+);
+}
+function isAddressField(f){
+  const text = [
+    String(f?.id || ''),
+    String(f?.label || ''),
+    String(f?.placeholder || '')
+  ].join(' ');
+  return /(주소|거주지|도로명|상세주소|배송지|수령지|addr|address)/i.test(text);
+}
+function isAddressDetailField(f){
+  return /(상세\s*주소|상세주소|address.?detail|detail.?address|addr.?detail)/i.test([
+    f?.id, f?.label, f?.placeholder
+  ].join(' '));
+}
+function isAddressZipField(f){
+  return /(우편\s*번호|우편번호|zonecode|zip.?code|postcode)/i.test([
+    f?.id, f?.label, f?.placeholder
+  ].join(' '));
+}
+function isAddressBaseField(f){
+  return isAddressField(f) && !isAddressDetailField(f) && !isAddressZipField(f);
+}
+
+const ADDRESS_POSTCODE_SCRIPT =
+  'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+
+let __addressScriptPromise = null;
+let __addressTargetField = null;
+let __addressTargetControl = null;
+let __addressResult = null;
+let __addressPostcodeInstance = null;
+
+function loadAddressPostcodeScript(){
+  if (window.daum?.Postcode) return Promise.resolve();
+  if (__addressScriptPromise) return __addressScriptPromise;
+
+  __addressScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-address-postcode="1"]');
+    if (existing) {
+      existing.addEventListener('load', resolve, {once:true});
+      existing.addEventListener('error', () => reject(new Error('주소 검색 스크립트를 불러오지 못했습니다.')), {once:true});
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = ADDRESS_POSTCODE_SCRIPT;
+    script.async = true;
+    script.dataset.addressPostcode = '1';
+    script.onload = resolve;
+    script.onerror = () => {
+      __addressScriptPromise = null;
+      reject(new Error('주소 검색 서비스를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'));
+    };
+    document.head.appendChild(script);
+  });
+
+  return __addressScriptPromise;
+}
+
+function findAddressFields(predicate){
+  const found = [];
+  pages.forEach((pg, pi) => {
+    (pg.fields || []).forEach((f, fi) => {
+      if (predicate(f)) found.push({f, pi, fi});
+    });
+  });
+  return found;
+}
+
+function setAddressFieldValue(f, value){
+  if (!f) return;
+  f.value = value ?? '';
+  if (f.id) setValueById(f.id, f.value);
+}
+
+function normalizeSelectedAddress(data){
+  const road = String(data?.roadAddress || '').trim();
+  const jibun = String(data?.jibunAddress || '').trim();
+  const base = road || jibun;
+  const extras = [];
+
+  if (data?.bname && /[동|로|가]$/.test(data.bname)) extras.push(data.bname);
+  if (data?.buildingName && data?.apartment === 'Y') extras.push(data.buildingName);
+
+  return {
+    zonecode: String(data?.zonecode || '').trim(),
+    base,
+    extra: extras.length ? ` (${extras.join(', ')})` : ''
+  };
+}
+
+function resetAddressSearchResult(){
+  __addressResult = null;
+  const selected = document.getElementById('addressSearchSelected');
+  const detail = document.getElementById('addressSearchDetail');
+  const error = document.getElementById('addressSearchError');
+  if (selected) selected.textContent = '';
+  if (detail) detail.value = '';
+  if (error) error.textContent = '';
+}
+
+function closeAddressSearch(){
+  const modal = document.getElementById('addressSearchModal');
+  if (!modal) return;
+
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open','no-scroll');
+
+  const layer = document.getElementById('addressSearchLayer');
+  if (layer) {
+    layer.style.height = '';
+    layer.innerHTML = '<div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>';
+  }
+
+  __addressPostcodeInstance = null;
+  __addressResult = null;
+}
+
+function renderAddressPostcode(){
+  const layer = document.getElementById('addressSearchLayer');
+  const error = document.getElementById('addressSearchError');
+  if (!layer || !window.daum?.Postcode) return;
+
+  layer.innerHTML = '';
+  if (error) error.textContent = '';
+
+  __addressPostcodeInstance = new daum.Postcode({
+    width:'100%',
+    height:'100%',
+    animation:true,
+    autoClose:false,
+    oncomplete(data){
+      __addressResult = normalizeSelectedAddress(data);
+
+      const selected = document.getElementById('addressSearchSelected');
+      const detail = document.getElementById('addressSearchDetail');
+
+      if (selected) {
+        selected.textContent =
+          `${__addressResult.zonecode ? `[${__addressResult.zonecode}] ` : ''}` +
+          __addressResult.base +
+          __addressResult.extra;
+      }
+
+      if (error) error.textContent = '';
+      requestAnimationFrame(() => detail?.focus());
+    },
+    onresize(size){
+      if (size?.height && window.innerWidth > 640) {
+        layer.style.height = Math.min(Math.max(size.height,430),520) + 'px';
+      }
+    }
+  });
+
+  __addressPostcodeInstance.embed(layer, {autoClose:false});
+}
+
+async function openAddressSearch(f, ctrl){
+  if (!FILL || !f || !ctrl || f.locked) return;
+
+  __addressTargetField = f;
+  __addressTargetControl = ctrl;
+  resetAddressSearchResult();
+
+  const modal = document.getElementById('addressSearchModal');
+  const layer = document.getElementById('addressSearchLayer');
+  if (!modal || !layer) return;
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open','no-scroll');
+  layer.innerHTML = '<div class="asm-loading">주소 검색 서비스를 불러오는 중입니다.</div>';
+
+  try {
+    await loadAddressPostcodeScript();
+    renderAddressPostcode();
+  } catch (err) {
+    layer.innerHTML = `<div class="asm-loading">${String(err?.message || err)}</div>`;
+  }
+}
+
+function applySelectedAddress(){
+  const error = document.getElementById('addressSearchError');
+  const detailEl = document.getElementById('addressSearchDetail');
+
+  if (!__addressResult?.base) {
+    if (error) error.textContent = '검색 결과에서 기본 주소를 먼저 선택해 주세요.';
+    return;
+  }
+
+  const detail = String(detailEl?.value || '').trim();
+  if (!detail) {
+    if (error) error.textContent = '동/호수 등 상세주소를 입력해 주세요.';
+    detailEl?.focus();
+    return;
+  }
+
+  const baseAddress = (__addressResult.base + __addressResult.extra).trim();
+  const fullAddress = `${baseAddress} ${detail}`.replace(/\s+/g,' ').trim();
+
+  setAddressFieldValue(__addressTargetField, fullAddress);
+
+  findAddressFields(isAddressZipField).forEach(({f}) => {
+    if (f !== __addressTargetField) setAddressFieldValue(f, __addressResult.zonecode);
+  });
+  findAddressFields(isAddressDetailField).forEach(({f}) => {
+    if (f !== __addressTargetField) setAddressFieldValue(f, detail);
+  });
+
+  if (__addressTargetControl) {
+    __addressTargetControl.value = fullAddress;
+    const maxPx = Number.isFinite(__addressTargetField?.inputHeight)
+      ? (__addressTargetField.inputHeight - 4)
+      : (__addressTargetField?.fontSize ?? 20);
+    fitTextToWidth(__addressTargetControl, maxPx, 6);
+  }
+
+  scheduleSave();
+  refreshConditionalInvalid();
+  closeAddressSearch();
+  render();
+
+  requestAnimationFrame(() => {
+    const id = String(__addressTargetField?.id || '');
+    if (!id) return;
+    const live = overlay.querySelector(
+      `.field[data-id="${CSS.escape(id)}"] input[type="text"],` +
+      `.field[data-id="${CSS.escape(id)}"] textarea`
+    );
+    if (!live) return;
+
+    const maxPx = Number.isFinite(__addressTargetField?.inputHeight)
+      ? (__addressTargetField.inputHeight - 4)
+      : (__addressTargetField?.fontSize ?? 20);
+    fitTextToWidth(live, maxPx, 6);
+  });
+}
+
+function wireAddressSearchModal(){
+  const modal = document.getElementById('addressSearchModal');
+  const close = document.getElementById('addressSearchClose');
+  const reset = document.getElementById('addressSearchReset');
+  const apply = document.getElementById('addressSearchApply');
+  const detail = document.getElementById('addressSearchDetail');
+
+  close?.addEventListener('click', closeAddressSearch);
+  reset?.addEventListener('click', () => {
+    resetAddressSearchResult();
+    renderAddressPostcode();
+  });
+  apply?.addEventListener('click', applySelectedAddress);
+
+  detail?.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    e.stopPropagation();
+    applySelectedAddress();
+  });
+
+  modal?.addEventListener('click', e => {
+    if (e.target === modal) closeAddressSearch();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && modal?.classList.contains('open')) {
+      e.preventDefault();
+      closeAddressSearch();
+    }
+  }, true);
+}
+
+function bindAddressSearchToControl(f, w, ctrl){
+  if (!FILL || !isAddressBaseField(f) || f.locked || !ctrl?.addEventListener) return;
+
+  w.classList.add('address-search-enabled');
+  w.setAttribute('role','button');
+  w.setAttribute('tabindex','0');
+  w.setAttribute('aria-haspopup','dialog');
+  w.title = '주소 입력칸을 클릭하면 주소 검색창이 열립니다.';
+
+  ctrl.readOnly = true;
+  ctrl.setAttribute('aria-haspopup','dialog');
+  ctrl.title = '클릭하면 주소 검색창이 열립니다.';
+
+  let opening = false;
+  const open = async e => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+
+    if (opening) return;
+    if (document.getElementById('addressSearchModal')?.classList.contains('open')) return;
+
+    opening = true;
+    try {
+      await openAddressSearch(f, ctrl);
+    } finally {
+      setTimeout(() => { opening = false; }, 250);
+    }
+  };
+
+  ctrl.addEventListener('click', open);
+  w.addEventListener('click', open);
+
+  const onKey = e => {
+    if (e.key === 'Enter' || e.key === ' ') open(e);
+  };
+  ctrl.addEventListener('keydown', onKey);
+  w.addEventListener('keydown', onKey);
+}
+
+window.addEventListener('DOMContentLoaded', wireAddressSearchModal);
+
+
+/* =========================
+   ✅ select 표시 div: 2줄 허용 + 박스에 맞춰 자동 축소
+========================= */
+function fitSelectDisplay(div, maxPx = 20, minPx = 10){
+  if(!div) return;
+  try{
+    div.style.fontSize = maxPx + 'px';
+
+    for(let px = maxPx; px >= minPx; px -= 0.5){
+      div.style.fontSize = px + 'px';
+      const overH = div.scrollHeight > div.clientHeight + 1;
+      const overW = div.scrollWidth  > div.clientWidth  + 1;
+      if(!overH && !overW) return;
+    }
+    div.style.fontSize = minPx + 'px';
+  }catch(_){}
+}
+
+function parsePackedId(v){
+  const s = String(v||'');
+  const i = s.indexOf('|');
+  if(i<0) return { id:s.trim(), name:'' };
+  return { id:s.slice(0,i).trim(), name:s.slice(i+1).trim() };
+}
+
+function setSelectDisplay(wrapEl, selEl, f){
+  if(!wrapEl || !selEl) return;
+
+  let d = wrapEl.querySelector('.select-display');
+  if(!d){
+    d = document.createElement('div');
+    d.className = 'select-display';
+    wrapEl.appendChild(d);
+  }
+
+  const fid = String(f?.id || '').toLowerCase();
+  const flabel = String(f?.label || '').toLowerCase();
+
+  const isDeviceSelect =
+    fid === 'deviceid' ||
+    fid === 'device' ||
+    fid.includes('단말') ||
+    fid.includes('모델') ||
+    fid.includes('핸드폰모델명') ||
+    flabel.includes('단말') ||
+    flabel.includes('모델') ||
+    flabel.includes('핸드폰모델명');
+
+  d.classList.remove('device-one-line');
+
+  const text = (selEl.options[selEl.selectedIndex] || {}).textContent || '';
+  d.textContent = text;
+
+  const maxPx = Number.isFinite(f?.fontSize) ? f.fontSize : 20;
+
+if (isDeviceSelect) {
+  d.classList.add('device-one-line');
+
+  const style = getComputedStyle(selEl);
+  const padL = parseFloat(style.paddingLeft) || 0;
+  const padR = parseFloat(style.paddingRight) || 0;
+  const inner = selEl.clientWidth - padL - padR;
+
+  const fitted = fitStringToWidth(text, inner, selEl, maxPx, 10);
+  d.style.fontSize = fitted + 'px';
+} else {
+  fitSelectDisplay(d, maxPx, 10);
+}
+}
+
+const refitAllSelects = () => {
+  overlay.querySelectorAll('.field.selectLike').forEach(w => {
+    const sel = w.querySelector('select');
+    const idx = Number(w.dataset.i);
+    const f = (Number.isFinite(idx) ? (cur().fields || [])[idx] : null);
+    if(sel) setSelectDisplay(w, sel, f);
+  });
+};
+
+/* ===== textarea 자동 높이 ===== */
+function autosizeTA(el){
+  try{
+    if (el.dataset.fixedH) {
+      el.style.height = el.dataset.fixedH + 'px';
+      return;
+    }
+    const minH = parseFloat(el.dataset.minH || '') || 5;
+    el.style.height = 'auto';
+    el.style.height = Math.max(el.scrollHeight, minH) + 'px';
+  }catch(_){}
+}
+function autosizeAllTextareas(root){
+  (root || document).querySelectorAll('textarea').forEach(autosizeTA);
+}
+
+/* =========================================================
+   ✅ 단말/요금제/공시 분리 로드
+========================================================= */
+const PATH_DEVICE_CATALOG = ABS('data/device_catalog.json');
+const PATH_PLAN_CATALOG   = ABS('data/plan_catalog.json');
+const PATH_SUBSIDY_LATEST = ABS('data/subsidy/latest.json');
+
+let DEVICE_DB = null;
+
+function won(n){
+  if(n==null || n==='') return '';
+  const x = Number(n);
+  if(!isFinite(x)) return '';
+  return String(Math.round(x));
+}
+function numOnly(v){
+  const n = Number(String(v??'').replace(/[^\d.-]/g,''));
+  return isFinite(n) ? n : 0;
+}
+function displayOnlyName(packed){
+  const { id, name } = parsePackedId(packed);
+  return name || id || '';
+}
+
+function findDeviceById(id){
+  return (DEVICE_DB?.devices||[]).find(d => d.id === id) || null;
+}
+function findPlanById(id){
+  return (DEVICE_DB?.plans||[]).find(p => p.id === id) || null;
+}
+function getSubsidy(deviceId, planId){
+  if(!DEVICE_DB) return 0;
+
+  const norm = s => String(s||'')
+    .trim()
+    .toLowerCase()
+    .replace(/-/g,'_');
+
+  const key = `${norm(deviceId)}|${norm(planId)}`;
+  const v = DEVICE_DB.subsidyMap ? DEVICE_DB.subsidyMap[key] : 0;
+  return Number(v)||0;
+}
+
+function calcMonthlyFeeAvg(principal, months, feePercent){
+  principal = Number(principal) || 0;
+  months = Number(months) || 0;
+  feePercent = Number(feePercent) || 0;
+
+  if (principal <= 0 || months <= 0 || feePercent <= 0) return 0;
+
+  const r = feePercent / 100 / 12;
+
+  // 월 납부액 (원리금균등) - 원단위 반올림
+  const pmt = Math.round(
+    principal * r * Math.pow(1+r, months) /
+    (Math.pow(1+r, months) - 1)
+  );
+
+  let balance = principal;
+  let totalInterest = 0;
+
+  for (let i = 0; i < months; i++){
+    const interest = Math.floor(balance * r); // ★ 월이자 원단위 버림
+    const principalPay = pmt - interest;
+    balance -= principalPay;
+    totalInterest += interest;
+  }
+
+  return Math.round(totalInterest / months);
+}
+
+async function fetchJson(url){
+  const r = await fetch(url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(), { cache:'no-store' });
+  if(!r.ok) throw new Error(`${url} not found (${r.status})`);
+  return await r.json();
+}
+
+async function loadDevicePricingSeparated(){
+  try{
+    const [deviceCatalog, planCatalog, subsidyLatest] = await Promise.all([
+      fetchJson(PATH_DEVICE_CATALOG),
+      fetchJson(PATH_PLAN_CATALOG),
+      fetchJson(PATH_SUBSIDY_LATEST),
+    ]);
+
+    const devices = Array.isArray(deviceCatalog.devices) ? deviceCatalog.devices : [];
+    const plans   = Array.isArray(planCatalog.plans) ? planCatalog.plans : [];
+
+    const subsidyMap = subsidyLatest.subsidyMap || {};
+    const subsidyMeta = {
+      effectiveFrom: subsidyLatest.effectiveFrom || '',
+      effectiveTo: subsidyLatest.effectiveTo || '',
+      memo: subsidyLatest.memo || '',
+    };
+
+    const aprPercent = (subsidyLatest.aprPercent != null)
+      ? Number(subsidyLatest.aprPercent)
+      : 5.8;
+
+    const defaultInstallmentMonths = (subsidyLatest.defaultInstallmentMonths != null)
+      ? Number(subsidyLatest.defaultInstallmentMonths)
+      : 24;
+
+    DEVICE_DB = {
+      aprPercent,
+      defaultInstallmentMonths,
+      devices,
+      plans,
+      subsidyMeta,
+      subsidyMap
+    };
+
+    console.log('[pricing] loaded OK', {
+      deviceCount: devices.length,
+      planCount: plans.length,
+      subsidyKeys: Object.keys(subsidyMap||{}).length
+    });
+  }catch(err){
+    console.warn('[pricing separated] load fail:', err);
+    DEVICE_DB = null;
+  }
+}
+
+/* ===== id로 전체 필드 탐색 ===== */
+const getFieldsByIdAll=id=>{
+  id=String(id||'').toLowerCase();
+  const out=[];
+  pages.forEach((pg,pi)=>(pg.fields||[]).forEach((f,idx)=>{
+    if(String(f.id||'').toLowerCase()===id) out.push({f,pi,idx});
+  }));
+  return out;
+};
+
+function setOptionsByFieldId(fieldId, optionsArr){
+  const list = getFieldsByIdAll(fieldId);
+  list.forEach(({f})=>{
+    if(f.type !== 'select') return;
+    f.options = Array.isArray(optionsArr) ? optionsArr.slice() : [];
+    if(f.value && !f.options.includes(f.value)) f.value = '';
+  });
+}
+
+function applyDeviceDbToDesign(){
+  if(!DEVICE_DB) return;
+
+  const deviceOpts = (DEVICE_DB.devices||[]).map(d => `${d.id}|${d.name}`);
+  setOptionsByFieldId('deviceId', deviceOpts);
+  setOptionsByFieldId('deviceid', deviceOpts);
+
+  const planOpts = (DEVICE_DB.plans||[]).map(p => `${p.id}|${p.name}`);
+  setOptionsByFieldId('planId', planOpts);
+  setOptionsByFieldId('plan', planOpts);
+
+  const monthOpts = ['0','12','24','30','36'];
+  setOptionsByFieldId('installMonths', monthOpts);
+
+  const defM = String(Number(DEVICE_DB.defaultInstallmentMonths || 24));
+  
+  getFieldsByIdAll('installMonths').forEach(({f})=>{
+    if(f.type==='select' && !f.value) f.value = defM;
+  });
+  // ✅ 기본값을 valuesById에도 확정(미러/텍스트필드가 바로 인식하게)
+setValueById('installMonths', defM);
+setValueById('installmonths', defM); // 혹시 소문자 id도 쓰면 같이
+
+  render();
+}
+
+/* =========================================================
+   ✅✅✅ 조건부 필수 함수 (정상 위치로 이동 완료)
+   - getFieldsByIdAll 아래에 있어야 안전합니다.
+========================================================= */
+function normalizeVal(v){
+  return (v ?? '').toString().trim();
+}
+
+function getFieldCurrentValueById(id){
+  const key = String(id || '').trim();
+  const v = valuesById[key];
+  if (v != null) return v;
+
+  // checkmark 그룹명으로 조건부필수 기준을 잡을 수 있게 처리
+  for (const pg of pages) {
+    for (const f of (pg.fields || [])) {
+      if (f.type !== 'checkmark') continue;
+      const groupId = String(f.groupId || f.checkGroup || '').trim();
+      if (groupId === key && !!f.value) return f.checkValue || f.id || 'true';
+    }
+  }
+
+  const found = getFieldsByIdAll(key)[0]?.f;
+  return found ? found.value : '';
+}
+
+function getConditionalRequiredSet(){
+  const set = new Set();
+
+  (CONDITIONAL_REQUIRED || []).forEach(rule => {
+    const curVal = normalizeVal(getFieldCurrentValueById(rule.sourceId));
+    if (curVal === normalizeVal(rule.whenValue)) {
+      (rule.requiredOn || []).forEach(tid => set.add(tid));
+    }
+  });
+
+  return set;
+}
+
+function refreshConditionalInvalid(){
+   if (!SHOW_INVALID) return;
+  const condReq = getConditionalRequiredSet();
+
+  // 현재 페이지 invalid 초기화
+  overlay.querySelectorAll('.field.invalid').forEach(el=>el.classList.remove('invalid'));
+
+  const pg = cur();
+  (pg.fields || []).forEach((f, idx) => {
+    const fid = (f.id || '').toString();
+    const isRequired = !!f.required || (fid && condReq.has(fid));
+    if(!isRequired) return;
+
+    const v = (f.type==='checkbox') ? !!f.value : (f.value ?? '').toString().trim();
+    if(!v){
+      const el = overlay.querySelector(`.field[data-i="${idx}"]`);
+      if(el) el.classList.add('invalid');
+    }
+  });
+}
+
+/* =========================================================
+   ✅ 요금 계산
+========================================================= */
+let LAST_SPLIT_EDIT = '';
+
+function getRemainAmount(msrp, commonSubsidy, otherDiscount){
+  return Math.max(
+    0,
+    (Number(msrp) || 0) - (Number(commonSubsidy) || 0) - (Number(otherDiscount) || 0)
+  );
+}
+
+function clampSplitByLastEdited(msrp, commonSubsidy, otherDiscount, extraSub, downPayment){
+  const remain = getRemainAmount(msrp, commonSubsidy, otherDiscount);
+
+  let extra = Math.max(0, Number(extraSub) || 0);
+  let down  = Math.max(0, Number(downPayment) || 0);
+
+  if (extra + down <= remain) {
+    return { extra, down, remain };
+  }
+
+  if (LAST_SPLIT_EDIT === 'extraSubsidy') {
+    down = Math.max(0, remain - extra);
+  } else if (LAST_SPLIT_EDIT === 'downPayment') {
+    extra = Math.max(0, remain - down);
+  } else {
+    down = Math.max(0, remain - extra);
+  }
+
+  if (extra > remain) {
+    extra = remain;
+    down = 0;
+  }
+
+  if (down > remain) {
+    down = remain;
+    extra = 0;
+  }
+
+  return { extra, down, remain };
+}
+let EXTRA_SUBSIDY_LIMIT_POPUP_LOCK = false;
+
+function getExtraSubsidyMax(commonSubsidy){
+  return Math.max(0, Math.floor((Number(commonSubsidy) || 0) * 0.15));
+}
+
+function clampExtraSubsidy(extraSub, commonSubsidy){
+  const maxExtra = getExtraSubsidyMax(commonSubsidy);
+  const safeExtra = Math.max(0, Number(extraSub) || 0);
+
+  return {
+    value: Math.min(safeExtra, maxExtra),
+    max: maxExtra,
+    exceeded: safeExtra > maxExtra
+  };
+}
+
+function recalcDevicePricing(){
+  if(!DEVICE_DB) return;
+
+// ✅ (KT) 특정 단말+요금제 조합 추가지원금(원) 강제
+// 키 형식: "deviceId|planId" (둘 다 소문자 기준으로 비교)
+const EXTRA_SUBSIDY_OVERRIDES = {};
+  const rawDevice = (valuesById.deviceId || valuesById.deviceid || '');
+  const rawPlan   = (valuesById.planId   || valuesById.plan     || '');
+
+  const dv = parsePackedId(rawDevice);
+  const pl = parsePackedId(rawPlan);
+
+  // ✅ payType는 1번만
+  const payType = (valuesById.payType ?? '').toString().trim();
+{
+  const apr = Number(DEVICE_DB?.aprPercent ?? 0);
+  if (payType === '일시불') setValueById('aprEcho', '0');
+  else setValueById('aprEcho', String(apr)); // 필요하면 apr.toFixed(1)
+}
+  // ✅ payType에 따라 installMonths 자동 변경(계산 전에 1번만)
+  if (payType === '일시불') {
+    if (String(valuesById.installMonths ?? '') !== '0') {
+      setValueById('installMonths', '0');
+
+      const mSel = elById['installMonths'];
+      if (mSel && mSel.tagName === 'SELECT') {
+        mSel.value = '0';
+        const found = getFieldsByIdAll('installMonths')[0];
+        if (found) {
+          const wrapEl = overlay.querySelector(`.field[data-i="${found.idx}"]`);
+          if (wrapEl) setSelectDisplay(wrapEl, mSel, found.f);
+        }
+      }
+    }
+  } else {
+    if (String(valuesById.installMonths ?? '') === '0') {
+      const defM = String(Number(DEVICE_DB?.defaultInstallmentMonths || 24));
+      setValueById('installMonths', defM);
+
+      const mSel = elById['installMonths'];
+      if (mSel && mSel.tagName === 'SELECT') {
+        mSel.value = defM;
+        const found = getFieldsByIdAll('installMonths')[0];
+        if (found) {
+          const wrapEl = overlay.querySelector(`.field[data-i="${found.idx}"]`);
+          if (wrapEl) setSelectDisplay(wrapEl, mSel, found.f);
+        }
+      }
+    }
+  }
+
+
+// ✅ 이제 months 계산
+const months = numOnly(valuesById.installMonths ?? DEVICE_DB.defaultInstallmentMonths ?? 24);
+
+if(!dv.id || !pl.id){
+[
+  'deviceName','msrp','commonSubsidy','extraSubsidy','otherDiscount',
+  'principal','monthlyInstall','monthlyFeeAvg','monthlyPayTotal',
+  'baseFee','discountFee','totalFee','monthlyBasePay','planEcho','aprEcho',
+  'penalty12','penalty18','penaltyTotal','supportTotal','totalSubsidy'
+].forEach(id => setValueById(id,''));
+  return;
+}
+  // ✅ 특정 단말+요금제 조합이면 추가지원금 강제 주입
+{
+  const comboKey = `${String(dv.id).trim().toLowerCase()}|${String(pl.id).trim().toLowerCase()}`;
+  const forcedExtra = EXTRA_SUBSIDY_OVERRIDES[comboKey];
+
+  if (forcedExtra != null) {
+    valuesById.extraSubsidy = String(forcedExtra);
+    setValueById('extraSubsidy', won(Number(forcedExtra) || 0));
+  }
+  // forcedExtra가 없으면 사용자가 입력한 extraSubsidy 값을 유지
+}
+  const dev  = findDeviceById(dv.id);
+  const plan = findPlanById(pl.id);
+
+  const planName = plan?.name || '';
+setValueById('planEcho', planName);
+mirrorPlanNameIntoBoxes(planName);
+
+
+  const msrp         = Number(dev?.msrp) || 0;
+  const commonSubsidy= getSubsidy(dv.id, pl.id);
+{
+  const CONTRACT_MONTHS = 24;
+  const S = Number(commonSubsidy) || 0;
+
+  const pTotal = S;
+  const p12 = Math.round(S * Math.max(0, CONTRACT_MONTHS - 12) / CONTRACT_MONTHS);
+  const p18 = Math.round(S * Math.max(0, CONTRACT_MONTHS - 18) / CONTRACT_MONTHS);
+
+  setValueById('penaltyTotal', won(pTotal));
+  setValueById('penalty12',    won(p12));
+  setValueById('penalty18',    won(p18));
+}
+const rawDown   = numOnly(valuesById.downPayment ?? 0);
+const otherDis  = numOnly(valuesById.otherDiscount ?? 0);
+
+let rawExtra = numOnly(valuesById.extraSubsidy ?? 0);
+
+// ✅ 처음 진입 시 추가지원금 기본세팅
+if (String(valuesById.extraSubsidy ?? '').trim() === '') {
+  rawExtra = 0;
+  valuesById.extraSubsidy = '0';
+}
+
+let extraSub = 0;
+let down = 0;
+let principal = 0;
+
+// ✅ 추가지원금 15% 제한
+const extraLimit = clampExtraSubsidy(rawExtra, commonSubsidy);
+const limitedExtra = extraLimit.value;
+
+// ✅ 15% 초과 입력 시 최대치로 보정 + 팝업
+if (extraLimit.exceeded && !EXTRA_SUBSIDY_LIMIT_POPUP_LOCK) {
+  EXTRA_SUBSIDY_LIMIT_POPUP_LOCK = true;
+  alert(`추가지원금은 공통지원금의 15%까지만 입력할 수 있습니다.\n최대 입력 가능 금액: ${won(extraLimit.max)}원`);
+  setTimeout(() => {
+    EXTRA_SUBSIDY_LIMIT_POPUP_LOCK = false;
+  }, 100);
+}
+
+const remain = getRemainAmount(msrp, commonSubsidy, otherDis);
+
+if (payType === '일시불') {
+  // ✅ 일시불:
+  // 추가지원금은 공통지원금의 15%까지만 적용
+  // 남는 금액은 전부 고객수납금으로 자동 입력
+  extraSub = limitedExtra;
+  down = Math.max(0, remain - extraSub);
+  principal = 0;
+
+  valuesById.extraSubsidy = String(extraSub);
+  valuesById.downPayment = String(down);
+
+  setValueById('extraSubsidy', won(extraSub));
+  setValueById('downPayment', won(down));
+}
+else {
+  // ✅ 할부:
+  // 기존처럼 추가지원금 / 고객수납금 수동 분배 유지
+  const split = clampSplitByLastEdited(
+    msrp,
+    commonSubsidy,
+    otherDis,
+    limitedExtra,
+    rawDown
+  );
+
+  extraSub = split.extra;
+  down = split.down;
+
+  principal = Math.max(0, msrp - commonSubsidy - otherDis - extraSub - down);
+
+  valuesById.extraSubsidy = String(extraSub);
+  valuesById.downPayment = String(down);
+
+  setValueById('extraSubsidy', won(extraSub));
+  setValueById('downPayment', won(down));
+}
+  // ✅ 월 할부/수수료 계산
+  const monthlyInstallRaw = (months > 0) ? (principal / months) : 0;
+  const monthlyFeeAvgRaw  = calcMonthlyFeeAvg(principal, months, DEVICE_DB.aprPercent ?? 0);
+  const monthlyInstallWon  = Math.round(monthlyInstallRaw);
+  const monthlyFeeAvgWon   = Math.round(monthlyFeeAvgRaw);
+  const monthlyPayTotalWon = monthlyInstallWon + monthlyFeeAvgWon;
+  const totalFeeByAvgWon = Math.round(monthlyFeeAvgWon * months);
+setValueById('totalFeeByAvg', String(totalFeeByAvgWon));
+
+
+  setValueById('deviceName',     dev?.name || '');
+  setValueById('msrp',           won(msrp));
+  setValueById('commonSubsidy',  won(commonSubsidy));
+  setValueById('extraSubsidy',   won(extraSub));
+  setValueById('otherDiscount',  won(otherDis));
+  setValueById('principal',      won(principal));
+
+const totalSupport = extraSub + down;
+setValueById('supportTotal', won(totalSupport));
+
+// ✅ 공통지원금 + 추가지원금 합계
+const totalSubsidy = commonSubsidy + extraSub;
+setValueById('totalSubsidy', won(totalSubsidy));
+
+if (payType === '일시불') {
+  setValueById('monthlyInstall', '0');
+  setValueById('monthlyFeeAvg',  '0');
+  setValueById('monthlyPayTotal','0');
+
+  // ✅ 총 할부수수료도 0
+  setValueById('installFeeTotal','0');
+} else {
+  setValueById('monthlyInstall',  String(monthlyInstallWon));
+  setValueById('monthlyFeeAvg',   String(monthlyFeeAvgWon));
+  setValueById('monthlyPayTotal', String(monthlyPayTotalWon));
+
+  // ✅ 총 할부수수료 = 월 평균할부수수료 * 할부개월수
+  const installFeeTotalWon = monthlyFeeAvgWon * Math.max(0, months);
+  setValueById('installFeeTotal', String(installFeeTotalWon));
+}
+
+
+  // ✅ 요금제 금액
+  if (plan) {
+    const base  = Number(plan.baseFee);
+    const total = Number(plan.totalFee);
+
+    let discount = plan.discountFee;
+    if (discount == null || discount === '') {
+      discount = (isFinite(base) && isFinite(total)) ? (base - total) : 0;
+    }
+    discount = Number(discount);
+    if (!isFinite(discount)) discount = 0;
+
+    setValueById('baseFee',     won(isFinite(base) ? base : 0));
+    setValueById('discountFee', won(discount));
+    setValueById('totalFee',    won(isFinite(total) ? total : (isFinite(base) ? base - discount : 0)));
+  } else {
+    setValueById('baseFee', '');
+    setValueById('discountFee', '');
+    setValueById('totalFee', '');
+  }
+
+  // ✅ A(단말 월납부) + B(통신요금 월납부)
+  const A = numOnly(valuesById.monthlyPayTotal ?? 0);
+  const B = numOnly(valuesById.totalFee ?? 0);
+  setValueById('monthlyBasePay', won(A + B));
+}
+
+function hookDeviceRecalc(){
+  const ids = ['deviceId','deviceid','planId','plan','installMonths','downPayment','extraSubsidy','otherDiscount','payType'];
+
+  ids.forEach(id=>{
+    const el = elById[id];
+    if(!el || !el.addEventListener) return;
+
+    const markLastEdit = () => {
+      if (id === 'downPayment') LAST_SPLIT_EDIT = 'downPayment';
+      if (id === 'extraSubsidy') LAST_SPLIT_EDIT = 'extraSubsidy';
+    };
+
+    el.addEventListener('input', () => {
+      markLastEdit();
+      recalcDevicePricing();
+    });
+
+    el.addEventListener('change', () => {
+      markLastEdit();
+      recalcDevicePricing();
+    });
+  });
+}
+let __MIRROR_PLAN__ = false;
+
+function mirrorPlanNameIntoBoxes(planName){
+  if (__MIRROR_PLAN__) return;
+  __MIRROR_PLAN__ = true;
+
+  const targets = [];
+  const idExact = /^(planecho|planname|selectedplan|plan_text)$/i;
+  const fuzzy   = /(선택\s*요금(제|상품)\s*명?|요금제\s*명)/i;
+
+  pages.forEach(pg => (pg.fields || []).forEach(f => {
+    const id = String(f.id || '');
+    const label = String(f.label || '');
+    const byIdExact = idExact.test(id);
+    const byFuzzy   = fuzzy.test(id) || fuzzy.test(label);
+
+    if ((byIdExact || byFuzzy) && (f.type === 'text' || f.type === 'textarea')) {
+      targets.push(f);
+    }
+  }));
+
+  targets.forEach(f => {
+    f.value = planName || '';
+    setValueById(f.id, planName || '');
+
+    const node = overlay.querySelector(
+      `.field[data-id="${f.id}"] textarea, .field[data-id="${f.id}"] input[type="text"]`
+    );
+
+    if (node) {
+      node.value = planName || '';
+      if (node.tagName === 'TEXTAREA') autosizeTA(node);
+    }
+  });
+
+  __MIRROR_PLAN__ = false;
+}
+/* =========================
+   ✅ 설계 로드
+========================= */
+function seedDevicePages(){
+  const age = (new URLSearchParams(location.search).get('age') || 'adult').toLowerCase();
+  const safeAge = (age === 'teen') ? 'teen' : 'adult';
+
+  const pageCount = 8;
+
+  pages = [...Array(pageCount)].map((_, i) => ({
+    bg: ABS(`images/${safeAge}-${i+1}.jpg`),
+    fields: []
+  }));
+}
+
+function designFileOf(doc){
+  doc = String(doc||'device').toLowerCase();
+  if (doc !== 'device') doc = 'device';
+
+  const age = getSafeAge(); // teen/adult
+
+  return [
+    `overlay-design.${doc}.${age}.json`,   // ✅ 1순위: age별
+    `overlay-design.${doc}.json`,          // 2순위: 공통
+    `overlay-design.json`                  // 3순위: 최후 fallback
+  ];
+}
+
+
+function buildDesignUrls(){
+  return designFileOf(DOC).map(f => ABS(f) + (f.includes('?') ? '&' : '?') + 'v=' + Date.now());
+}
+
+function normalizeBgUrls(){
+  pages.forEach(pg=>{
+    if (!pg) return;
+    if (pg.bg) pg.bg = ABS(pg.bg);
+    else pg.bg = ABS('images/device-1.jpg');
+    if (!Array.isArray(pg.fields)) pg.fields = [];
+  });
+}
+
+async function loadDesign(){
+  const urls = buildDesignUrls();
+  console.log('[loadDesign] try urls:', urls);
+
+  let ok = false;
+
+  for (const url of urls){
+    try{
+      const r = await fetch(url, { cache: 'no-store' });
+      console.log('[loadDesign] fetch', r.status, url, 'ct=', r.headers.get('content-type'));
+
+      if (!r.ok) continue;
+
+      // 서버가 404 HTML을 200으로 주는 케이스 방지
+      const txt = await r.text();
+      try{
+        const j = JSON.parse(txt);
+        if (Array.isArray(j.pages) && j.pages.length){
+          pages = j.pages;
+          if (Array.isArray(j.conditionalRequired)) CONDITIONAL_REQUIRED = j.conditionalRequired;
+          if (j.formPopup && typeof j.formPopup === 'object') {
+            USE_FORM_POPUP = !!j.formPopup.enabled;
+            FORM_POPUP_DATA = { title: j.formPopup.title || '양식', text: j.formPopup.text || '' };
+          }
+          ok = true;
+          console.log('[loadDesign] loaded OK from:', url, 'pages=', pages.length);
+          break;
+        } else {
+          console.warn('[loadDesign] JSON ok but no pages:', url, j);
+        }
+      }catch(e){
+        console.warn('[loadDesign] JSON parse fail:', url, e, 'first200=', txt.slice(0,200));
+      }
+
+    }catch(e){
+      console.warn('[loadDesign] fetch fail:', url, e);
+    }
+  }
+
+  if (!ok){
+    console.warn('[loadDesign] no design found => seedDevicePages()');
+    seedDevicePages();
+  }
+
+  forceAgeBgOnPages();
+  normalizeBgUrls();
+  pageIndex = 0;
+}
+
+/* ===== 자필(잠금) 키 입력 방지 ===== */
+function blockTyping(el){
+  const prevent = e=>{ if(e.key !== 'Tab') e.preventDefault(); };
+  el.addEventListener('keydown', prevent);
+  el.addEventListener('beforeinput', e=>e.preventDefault());
+  el.addEventListener('paste', e=>e.preventDefault());
+}
+
+/* =========================
+   ✅ render()
+========================= */
+function render(){
+  Object.keys(elById).forEach(k => delete elById[k]);
+
+  const p = cur();
+ bg.src = (p.bg ? (p.bg + (p.bg.includes('?') ? '&' : '?') + 'v=' + Date.now()) : ''); 
+  overlay.innerHTML = '';
+
+  (p.fields || []).forEach((f, i) => {
+    if (Number.isFinite(f.fontSize))     f.fontSize     = clamp(f.fontSize, 5, 32);
+    if (Number.isFinite(f.inputHeight))  f.inputHeight  = clamp(f.inputHeight, 5, 60);
+
+    const w = document.createElement('div');
+    w.className = 'field '
+      + (f.type === 'radio'    ? 'radio '    : '')
+      + (f.type === 'checkbox' ? 'checkbox ' : '')
+      + (f.type === 'checkmark' ? 'checkmark ' : '')
+      + (i === selected        ? ' sel'      : '');
+
+    if (f.type === 'checkbox' || f.type === 'radio' || f.type === 'checkmark') {
+      const tickColor = (f.borderTransparent) ? 'transparent' : (f.borderColor || '#000');
+      const tickWidth = Number.isFinite(Number(f.borderWidth))
+        ? Math.max(0, Math.min(8, Number(f.borderWidth)))
+        : 1.6;
+      w.style.setProperty('--tick-bdc', tickColor);
+      w.style.setProperty('--tick-bdw', tickWidth + 'px');
+    }
+
+const _w = (f.w ?? 24);
+w.style.left  = `${f.x}%`;
+w.style.top   = `${f.y}%`;
+w.style.width = `${_w}%`;
+
+if (f.fontSize) w.style.setProperty('--fs', f.fontSize + 'px');
+
+if (f.color) w.style.setProperty('--fgc', f.color);
+if (f.textAlign) w.style.setProperty('--ta', f.textAlign);
+else w.style.removeProperty('--ta');
+
+if (f.inputHeight) {
+  w.style.setProperty('--ih', f.inputHeight + 'px');
+  w.style.height = f.inputHeight + 'px';
+} else {
+  w.style.removeProperty('--ih');
+  w.style.height = '';
+}
+
+w.dataset.va = f.verticalAlign || 'middle';
+
+w.dataset.i = i;
+if (f.id) w.dataset.id = f.id;
+
+    if (f.type === 'radio') {
+      w.style.setProperty('--rsize', (f.radioSize ?? 18) + 'px');
+      w.style.setProperty('--rgap',  (f.radioGap  ?? 12) + 'px');
+
+      const rs = (f.radioStyle || 'dot');
+      w.classList.remove('rd-dot','rd-solid','rd-tick');
+      w.classList.add('rd-' + rs);
+
+      if (f.radioShowText === false) w.classList.add('noText');
+      else w.classList.remove('noText');
+
+      const outerColor = (f.radioOuterBorderTransparent || f.borderTransparent) ? 'transparent'
+                        : (f.radioOuterBorderColor || 'rgba(0,0,0,.25)');
+      const outerWidth = Number.isFinite(Number(f.radioOuterBorderWidth))
+        ? Math.max(0, Math.min(8, Number(f.radioOuterBorderWidth)))
+        : 1;
+
+      w.style.setProperty('--rbc', outerColor);
+      w.style.setProperty('--rbw', outerWidth + 'px');
+    }
+    const lab = document.createElement('div');
+    lab.className   = 'label';
+    lab.textContent = f.label || '';
+    w.appendChild(lab);
+
+    let ctrl;
+    const lockByPlaceholder = !!f.lockOnPh && !!f.placeholder && !f.value;
+
+const isNameBox = isNameField(f);
+
+const treatAsTextarea =
+  (f.type === 'textarea') ||
+  (f.type === 'text' && f.wrap && !isNameBox && !isAddressField(f));
+
+    if (treatAsTextarea) {
+      ctrl = document.createElement('textarea');
+      ctrl.spellcheck = false;
+      ctrl.style.resize = 'none';
+
+const initRaw = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+const init = (lockByPlaceholder && !String(initRaw).trim()) ? '' : initRaw;
+
+ctrl.value = init;
+f.value = init;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.placeholder) ctrl.placeholder = f.placeholder;
+      if (f.maxLength)   ctrl.maxLength = f.maxLength;
+
+      if (f.inputHeight) {
+        ctrl.dataset.fixedH = f.inputHeight;
+        ctrl.style.height = f.inputHeight + 'px';
+      }
+
+      if (f.locked || lockByPlaceholder) {
+        ctrl.readOnly = true;
+        ctrl.dataset.locked = '1';
+        blockTyping(ctrl);
+      }
+
+      ctrl.oninput = () => {
+        if (f.locked || lockByPlaceholder) return;
+        let v = ctrl.value;
+        if (f.maxLength) v = v.slice(0, f.maxLength);
+        if (ctrl.value !== v) ctrl.value = v;
+
+        f.value = v;
+        setValueById(f.id, v);
+        applyMirror(f, v);
+
+        autosizeTA(ctrl);
+        scheduleSave();
+        if (f.id === 'downPayment') {
+  LAST_SPLIT_EDIT = 'downPayment';
+  recalcDevicePricing();
+}
+
+if (f.id === 'extraSubsidy') {
+  LAST_SPLIT_EDIT = 'extraSubsidy';
+
+  const commonSubsidyNow = numOnly(valuesById.commonSubsidy ?? 0);
+  const maxExtra = getExtraSubsidyMax(commonSubsidyNow);
+  const nowExtra = numOnly(valuesById.extraSubsidy ?? 0);
+
+  if (valuesById.extraSubsidy === '') {
+    recalcDevicePricing();
+    return;
+  }
+
+  if (nowExtra > maxExtra) {
+    const fixed = String(maxExtra);
+    valuesById.extraSubsidy = fixed;
+
+    if (ctrl.value !== fixed) {
+      ctrl.value = fixed;
+    }
+
+    alert(`추가지원금은 공통지원금의 15%까지만 입력할 수 있습니다.\n최대 입력 가능 금액: ${won(maxExtra)}원`);
+  }
+
+  recalcDevicePricing();
+}
+        refreshConditionalInvalid();
+      };
+    }
+    else if (f.type === 'select') {
+      const sel = document.createElement('select');
+      w.classList.add('selectLike');
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+      f.value = init;
+
+      const phText = (f.placeholder || '').trim();
+      if (phText) {
+        const op0 = document.createElement('option');
+        op0.value = '';
+        op0.textContent = phText;
+        op0.disabled = true;
+        op0.hidden = true;
+        sel.appendChild(op0);
+      }
+
+      (f.options || []).forEach(o => {
+        const packed = String(o ?? '');
+        const { id, name } = parsePackedId(packed);
+
+        const op = document.createElement('option');
+        op.value = id || packed;
+        op.textContent = name || id || packed;
+        sel.appendChild(op);
+      });
+
+      sel.value = parsePackedId(init ?? '').id || '';
+
+      sel.style.color = (f.color || '#000');
+      sel.style.caretColor = (f.color || '#000');
+      sel.style.backgroundColor = (f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+      sel.querySelectorAll('option').forEach(op => {
+        op.style.color = '#000';
+        op.style.backgroundColor = '#fff';
+      });
+
+      if (f.id) elById[f.id] = sel;
+      if (f.inputHeight) sel.style.height = f.inputHeight + 'px';
+
+      if (f.locked || lockByPlaceholder) {
+        sel.disabled = true;
+        sel.dataset.locked = '1';
+      }
+
+sel.onchange = () => {
+  if (sel.value === '') return;
+
+  f.value = sel.value;
+  setValueById(f.id, sel.value);
+  applyMirror(f, sel.value);
+
+  scheduleSave();
+  setSelectDisplay(w, sel, f);
+
+  if (
+    f.id === 'deviceId' ||
+    f.id === 'deviceid' ||
+    f.id === 'planId' ||
+    f.id === 'plan' ||
+    f.id === 'installMonths'
+  ) {
+    recalcDevicePricing();
+  }
+
+  refreshConditionalInvalid();
+};
+      requestAnimationFrame(() => setSelectDisplay(w, sel, f));
+      ctrl = sel;
+    }
+else if (f.type === 'label') {
+  ctrl = document.createElement('div');
+  ctrl.className = 'fixed-label';
+
+  const labelText = String(f.value ?? f.id ?? '');
+  ctrl.textContent = labelText;
+
+  ctrl.style.pointerEvents = 'none';
+  ctrl.style.width = '100%';
+  ctrl.style.height = '100%';
+  ctrl.style.display = 'flex';
+  ctrl.style.alignItems = 'center';
+  ctrl.style.whiteSpace = 'nowrap';
+  ctrl.style.overflow = 'hidden';
+  ctrl.style.textOverflow = 'clip';
+
+  if (f.color) ctrl.style.color = f.color;
+  if (f.textAlign) ctrl.style.justifyContent =
+    f.textAlign === 'center' ? 'center' :
+    f.textAlign === 'right' ? 'flex-end' : 'flex-start';
+
+  if (f.id) elById[f.id] = ctrl;
+}
+
+    else if (f.type === 'checkmark') {
+      ctrl = document.createElement('div');
+      ctrl.className = 'checkmark-box';
+      ctrl.setAttribute('role','checkbox');
+      ctrl.tabIndex = 0;
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? false) : (f.value ?? false));
+      f.value = !!init;
+      if (f.value) ctrl.classList.add('checked');
+      if (f.id) elById[f.id] = { type:'checkmark', value: !!f.value, el: ctrl };
+
+      w.style.setProperty('--cksize', (f.checkSize ?? f.radioSize ?? 18) + 'px');
+      const style = (f.checkStyle || 'tick');
+      w.classList.remove('ck-tick','ck-solid','ck-dot');
+      w.classList.add('ck-' + style);
+
+      const setChecked = (next) => {
+        f.value = !!next;
+        ctrl.classList.toggle('checked', !!f.value);
+        if (f.id) setValueById(f.id, !!f.value);
+
+        const groupId = String(f.groupId || f.checkGroup || '').trim();
+        if (groupId && f.value) {
+          pages.forEach(pg => (pg.fields || []).forEach(other => {
+            if (other === f) return;
+            if (other.type !== 'checkmark') return;
+            const otherGroup = String(other.groupId || other.checkGroup || '').trim();
+            if (otherGroup === groupId) {
+              other.value = false;
+              if (other.id) valuesById[other.id] = false;
+            }
+          }));
+          overlay.querySelectorAll('.field.checkmark').forEach(el => {
+            const oi = Number(el.dataset.i);
+            const of = cur().fields[oi];
+            if (!of || of === f) return;
+            const og = String(of.groupId || of.checkGroup || '').trim();
+            if (og === groupId) {
+              const box = el.querySelector('.checkmark-box');
+              if (box) box.classList.remove('checked');
+            }
+          });
+        }
+        scheduleSave();
+        refreshConditionalInvalid();
+      };
+
+      ctrl.addEventListener('click', (ev)=>{ ev.stopPropagation(); setChecked(!f.value); });
+      ctrl.addEventListener('keydown', (ev)=>{ if(ev.key === ' ' || ev.key === 'Enter'){ ev.preventDefault(); setChecked(!f.value); } });
+
+      lab.style.top  = '0';
+      lab.style.left = '24px';
+    }
+    else if (f.type === 'checkbox') {
+      ctrl = document.createElement('input');
+      ctrl.type = 'checkbox';
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? false) : (f.value ?? false));
+      ctrl.checked = !!init;
+      f.value = !!init;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.locked || lockByPlaceholder){
+        ctrl.disabled = true;
+        ctrl.dataset.locked = '1';
+      }
+
+      w.style.setProperty('--cksize', (f.checkSize ?? f.radioSize ?? 18) + 'px');
+
+      const style = (f.checkStyle || 'tick');
+      w.classList.remove('ck-tick','ck-solid','ck-dot');
+      w.classList.add('ck-' + style);
+
+      ctrl.onchange = () => {
+        f.value = ctrl.checked;
+        setValueById(f.id, ctrl.checked);
+        applyMirror(f, ctrl.checked);
+        scheduleSave();
+
+        refreshConditionalInvalid();
+      };
+
+      lab.style.top  = '0';
+      lab.style.left = '24px';
+    }
+    else if (f.type === 'radio') {
+      ctrl = document.createElement('div');
+      const opts = (f.options && f.options.length)
+        ? f.options
+        : Array.from({ length: (f.radioCount || 2) }, (_, k) => String(k + 1));
+        // ✅ 라디오 전체 컨테이너 테두리(필드 박스)
+if (f.radioBoxBorder) {
+  w.classList.add('radioBox');
+  w.style.setProperty('--box-bdc', f.radioBoxBorderTransparent ? 'transparent' : (f.radioBoxBorderColor || '#000'));
+  w.style.setProperty('--box-bdw', ((Number.isFinite(Number(f.radioBoxBorderWidth)) ? Number(f.radioBoxBorderWidth) : 2)) + 'px');
+  w.style.setProperty('--box-bdr', ((Number.isFinite(Number(f.radioBoxBorderRadius)) ? Number(f.radioBoxBorderRadius) : 6)) + 'px');
+  w.style.setProperty('--box-pad', ((Number.isFinite(Number(f.radioBoxPadding)) ? Number(f.radioBoxPadding) : 2)) + 'px');
+  w.style.setProperty('--box-bg',  (f.radioBoxBgTransparent ? 'transparent' : (f.radioBoxBgColor || 'transparent')));
+} else {
+  w.classList.remove('radioBox');
+}
+
+
+      const init = (f.id ? (valuesById[f.id] ?? f.value ?? '') : (f.value ?? ''));
+      f.value = init;
+      if (f.id) elById[f.id] = { type:'radio', value:init };
+
+      opts.forEach(o => {
+        const it = document.createElement('label');
+        it.className = 'radio-item';
+
+        const cb = document.createElement('input');
+        cb.type  = 'checkbox';
+        cb.value = o;
+        cb.checked = (f.value === o);
+        if (f.locked || lockByPlaceholder) cb.disabled = true;
+
+        cb.onchange = () => {
+          if (!cb.checked) return;
+          ctrl.querySelectorAll('input[type="checkbox"]').forEach(x => {
+            if (x !== cb) x.checked = false;
+          });
+          f.value = o;
+          setValueById(f.id, o);
+          applyMirror(f, o);
+          scheduleSave();
+
+            // ✅✅✅ 추가: 라디오 변경 즉시 재계산
+  if (f.id === 'payType') recalcDevicePricing();
+
+
+          refreshConditionalInvalid();
+        };
+        const hideText = (f.radioShowText === false) || /^\d+$/.test(String(o).trim());
+        if (!hideText) {
+          const s = document.createElement('span');
+          s.textContent = o;
+          it.appendChild(s);
+        }
+        it.appendChild(cb);
+        ctrl.appendChild(it);
+      });
+    }
+    else {
+      ctrl = document.createElement('input');
+      ctrl.type = 'text';
+
+const initRaw = (f.id ? (valuesById[f.id] ?? f.value ?? "") : (f.value ?? ""));
+const init = (lockByPlaceholder && !String(initRaw).trim()) ? '' : initRaw;
+
+ctrl.value = init;
+f.value = init;
+      if (f.id) elById[f.id] = ctrl;
+
+      if (f.placeholder) ctrl.placeholder = f.placeholder;
+      if (f.maxLength)   ctrl.maxLength  = f.maxLength;
+
+      if (f.locked || lockByPlaceholder){
+        ctrl.readOnly = true;
+        ctrl.dataset.locked = '1';
+        blockTyping(ctrl);
+      }
+
+      ctrl.oninput = () => {
+        if (f.locked || lockByPlaceholder) return;
+        let v = ctrl.value;
+        if (f.maxLength) v = v.slice(0, f.maxLength);
+        if (ctrl.value !== v) ctrl.value = v;
+
+        f.value = v;
+        setValueById(f.id, v);
+        applyMirror(f, v);
+
+        scheduleSave();
+        if (f.id === 'downPayment') {
+  LAST_SPLIT_EDIT = 'downPayment';
+  recalcDevicePricing();
+}
+
+if (f.id === 'extraSubsidy') {
+  LAST_SPLIT_EDIT = 'extraSubsidy';
+
+  const commonSubsidyNow = numOnly(valuesById.commonSubsidy ?? 0);
+  const maxExtra = getExtraSubsidyMax(commonSubsidyNow);
+  const nowExtra = numOnly(valuesById.extraSubsidy ?? 0);
+
+  if (valuesById.extraSubsidy === '') {
+    recalcDevicePricing();
+    return;
+  }
+
+  if (nowExtra > maxExtra) {
+    const fixed = String(maxExtra);
+    valuesById.extraSubsidy = fixed;
+
+    if (ctrl.value !== fixed) {
+      ctrl.value = fixed;
+    }
+
+    alert(`추가지원금은 공통지원금의 15%까지만 입력할 수 있습니다.\n최대 입력 가능 금액: ${won(maxExtra)}원`);
+  }
+
+  recalcDevicePricing();
+}
+const shouldShrink = (f.autoShrink !== false);
+const maxPx = Number.isFinite(f.inputHeight) ? (f.inputHeight - 4) : (f.fontSize ?? 20);
+const minPx = isAddressField(f) ? 6 : (isNameField(f) ? 8 : 12);
+
+if (shouldShrink) {
+  fitTextToWidth(ctrl, maxPx, minPx);
+} else {
+  ctrl.classList.remove('fit-one-line');
+  ctrl.style.fontSize = maxPx + 'px';
+}
+
+        refreshConditionalInvalid();
+      };
+    }
+
+    if (f.color) ctrl.style.color = f.color;
+
+    if (f.textAlign) {
+      ctrl.style.textAlign = f.textAlign;
+      w.style.setProperty('--ta', f.textAlign);
+    } else {
+      w.style.removeProperty('--ta');
+      ctrl.style.textAlign = '';
+    }
+
+    if ((f.type === 'text' || f.type === 'textarea' || f.type === 'select') && (f.borderColor || f.borderTransparent)) {
+      w.classList.add('hasBorder');
+      w.style.setProperty('--bdc', f.borderTransparent ? 'transparent' : (f.borderColor || '#ff3b3b'));
+      w.style.setProperty('--bdw', (f.borderWidth ?? 2) + 'px');
+    } else {
+      w.classList.remove('hasBorder');
+      w.style.removeProperty('--bdc');
+      w.style.removeProperty('--bdw');
+    }
+
+    if ((f.type === 'text' || f.type === 'textarea' || f.type === 'select') && (f.bgColor || f.bgTransparent)) {
+      w.classList.add('hasBG');
+      w.style.setProperty('--bgc', f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+    } else {
+      w.classList.remove('hasBG');
+      w.style.removeProperty('--bgc');
+    }
+
+if (ctrl && ctrl.tagName === 'INPUT' && ctrl.type === 'text') {
+  requestAnimationFrame(() => {
+    const shouldShrink = (f.autoShrink !== false);
+    const maxPx = Number.isFinite(f.inputHeight) ? (f.inputHeight - 4) : (f.fontSize ?? 20);
+    const minPx = isAddressField(f) ? 6 : (isNameField(f) ? 8 : 12);
+
+    if (shouldShrink) {
+      fitTextToWidth(ctrl, maxPx, minPx);
+    } else {
+      ctrl.classList.remove('fit-one-line');
+      ctrl.style.fontSize = maxPx + 'px';
+    }
+  });
+}
+
+    if (FILL) ctrl.addEventListener('mousedown', e => e.stopPropagation());
+
+    bindAddressSearchToControl(f, w, ctrl);
+
+    if (f.id) {
+      w.setAttribute('data-fid', f.id);
+      if (ctrl && ctrl.setAttribute) {
+        ctrl.id = f.id;
+        ctrl.name = f.id;
+        ctrl.setAttribute('data-fid', f.id);
+      }
+    }
+
+w.appendChild(ctrl);
+bindRequiredFieldVisual(f, w, ctrl);
+overlay.appendChild(w);
+
+    if (!FILL && (f.type === 'text' || f.type === 'textarea' || f.type === 'select' || f.type === 'radio')) {
+      const rh = document.createElement('div');
+      rh.className = 'resize-handle';
+      rh.addEventListener('mousedown', ev => startResize(ev, i, w));
+      w.appendChild(rh);
+    }
+
+if (!FILL) {
+  w.addEventListener('click', e => {
+    e.stopPropagation();
+    select(i);
+  });
+
+  w.addEventListener('mousedown', e => {
+    const isControl =
+      e.target.closest('input, textarea, select, label, .resize-handle');
+
+    if (isControl) return;
+
+    startDrag(e, i, w);
+  });
+}
+  });
+
+  if (!FILL) updatePanel();
+  pageInfo.textContent = `${pageIndex + 1} / ${pages.length}`;
+
+  requestAnimationFrame(refitAllSelects);
+  requestAnimationFrame(() => autosizeAllTextareas(overlay));
+
+requestAnimationFrame(() => {
+  hookDeviceRecalc();
+  recalcDevicePricing();
+
+  const rawPlan = (valuesById.planId || valuesById.plan || '');
+  const pl = parsePackedId(rawPlan);
+  const plan = findPlanById(pl.id);
+  mirrorPlanNameIntoBoxes(plan?.name || '');
+
+  refreshConditionalInvalid();
+});
+}
+
+/* ===== 속성 패널 ===== */
+const pLabel=document.getElementById('p_label'),
+      pRadioSize=document.getElementById('p_radioSize'),
+      pRadioGap=document.getElementById('p_radioGap'),
+      pColor=document.getElementById('p_color'),
+      pHeight=document.getElementById('p_height'),
+      pId=document.getElementById('p_id'),
+      pGroupId=document.getElementById('p_groupId'),
+      pCheckValue=document.getElementById('p_checkValue'),
+      pOptions=document.getElementById('p_options'),
+      pRequired=document.getElementById('p_required'),
+      pBorderColor=document.getElementById('p_borderColor'),
+      pBorderWidth=document.getElementById('p_borderWidth'),
+      pBorderTransparent=document.getElementById('p_borderTransparent'),
+      pBgColor=document.getElementById('p_bgColor'),
+      pBgTransparent=document.getElementById('p_bgTransparent'),
+      pFontSize=document.getElementById('p_fontSize'),
+      pTextAlign=document.getElementById('p_textAlign'),
+      pVerticalAlign=document.getElementById('p_verticalAlign'),
+      pAutoShrink=document.getElementById('p_autoShrink'),
+      pMask=document.getElementById('p_mask'),
+      pMaskRe=document.getElementById('p_maskRe'),
+      pMaxLen=document.getElementById('p_maxlen'),
+      pPlaceholder=document.getElementById('p_placeholder'),
+      pAutoDate=document.getElementById('p_autoDate'),
+      pLocked=document.getElementById('p_locked'),
+      pLockOnPh=document.getElementById('p_lockOnPh'),
+      pCheckStyle=document.getElementById('p_checkStyle');
+
+function updatePanel(){
+  const info=document.getElementById('selInfo'),
+        px=document.getElementById('p_x'),
+        py=document.getElementById('p_y'),
+        pw=document.getElementById('p_w'),
+        rowOpts=document.getElementById('row_opts'),
+        rowReq=document.getElementById('row_req');
+
+if(selected<0){
+  info.textContent='없음'; px.value=py.value=pw.value='';
+  pLabel.value=''; pRadioSize.value=''; pRadioGap.value='';
+  pColor.value='#000000'; pHeight.value=''; pId.value=''; if(pGroupId) pGroupId.value=''; if(pCheckValue) pCheckValue.value='';
+  pBorderColor.value='#ff3b3b'; pBorderWidth.value=2; pBorderTransparent.checked=false;
+  pBgColor.value='#000000'; pBgTransparent.checked=false;
+  pFontSize.value=''; pTextAlign.value=''; pVerticalAlign.value='middle';
+  pAutoShrink.checked=true;
+  pMask.value=''; pMaskRe.value=''; pMaxLen.value=''; pPlaceholder.value='';
+  pAutoDate.value=''; pLocked.checked=false; pLockOnPh.checked=false;
+  if(rowOpts) rowOpts.style.display='none';
+  if(rowReq) rowReq.style.display='none';
+  if (pCheckStyle) pCheckStyle.value = 'tick';
+  return;
+}
+
+  const f=cur().fields[selected];
+  info.textContent=(f.label||f.id||('필드'+(selected+1)));
+  px.value=f.x; py.value=f.y; pw.value=f.w ?? 24;
+  pLabel.value = f.label || '';
+
+  pRadioSize.value = (f.type === 'checkbox') ? (f.checkSize ?? 18) : (f.radioSize ?? 18);
+  pRadioGap.value = (f.radioGap ?? 12);
+
+  pColor.value=(f.color || '#000000');
+  pHeight.value=(f.inputHeight ?? '');
+  pId.value=f.id || '';
+  if(pGroupId) pGroupId.value = f.groupId || f.checkGroup || '';
+  if(pCheckValue) pCheckValue.value = f.checkValue || '';
+
+  pBorderColor.value=f.borderTransparent?'#000000':(f.borderColor||'#ff3b3b');
+  pBorderWidth.value=(f.borderWidth ?? 2);
+  pBorderTransparent.checked=!!f.borderTransparent;
+
+  pBgColor.value=f.bgTransparent?'#000000':(f.bgColor||'#000000');
+  pBgTransparent.checked=!!f.bgTransparent;
+
+  if(rowReq) rowReq.style.display='';
+  if(pRequired) pRequired.checked=!!f.required;
+
+  if(rowOpts) rowOpts.style.display=(f.type==='select'||f.type==='radio')?'':'none';
+  if(pOptions) pOptions.value=Array.isArray(f.options)? f.options.join(', ') : '';
+
+  pFontSize.value = (f.fontSize ?? 14);
+  pTextAlign.value = f.textAlign || '';
+pVerticalAlign.value = f.verticalAlign || 'middle';
+pAutoShrink.checked = (f.autoShrink !== false);
+  pMask.value = f.mask || '';
+  pMaskRe.value = (f.maskRe || '');
+  pMaxLen.value = f.maxLength || '';
+  pPlaceholder.value = f.placeholder || '';
+  pAutoDate.value = f.autoDate || '';
+  pLocked.checked = !!f.locked;
+  pLockOnPh.checked = !!f.lockOnPh;
+
+  if (pCheckStyle) {
+    if (f.type === 'checkbox') pCheckStyle.value = (f.checkStyle || 'tick');
+    else if (f.type === 'radio') pCheckStyle.value = (f.radioStyle || 'dot');
+    else pCheckStyle.value = 'tick';
+  }
+}
+const select=i=>{selected=i; render();};
+
+/* ===== 드래그 ===== */
+function startDrag(e, i, el){
+  if (FILL) return;
+  e.stopPropagation(); e.preventDefault();
+
+  const f    = cur().fields[i];
+  const rect = stage.getBoundingClientRect();
+  const fieldRect = el.getBoundingClientRect();
+  const offsetX   = e.clientX - fieldRect.left;
+  const offsetY   = e.clientY - fieldRect.top;
+
+  document.body.style.userSelect = 'none';
+  paper.style.cursor = 'move';
+
+  function move(ev){
+    const relX = ev.clientX - rect.left - offsetX;
+    const relY = ev.clientY - rect.top  - offsetY;
+
+    const nx = clamp((relX / rect.width)  * 100, 0, 100);
+    const ny = clamp((relY / rect.height) * 100, 0, 100);
+
+    f.x = nx; f.y = ny;
+    el.style.left = nx + '%';
+    el.style.top  = ny + '%';
+  }
+  function up(){
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    document.body.style.userSelect = '';
+    paper.style.cursor = '';
+    scheduleSave();
+  }
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
+/* ===== 리사이즈 ===== */
+function startResize(e, i, el){
+  e.stopPropagation(); e.preventDefault();
+
+  const f = cur().fields[i];
+  const r = stage.getBoundingClientRect();
+
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const startWpx = ((f.w ?? 24) / 100) * r.width;
+  const startHpx = f.inputHeight || el.offsetHeight;
+
+  document.body.style.userSelect = 'none';
+  paper.style.cursor = 'nwse-resize';
+
+  function mv(ev){
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+
+    const newWpx = Math.max(40, startWpx + dx);
+    const newW   = clamp((newWpx / r.width) * 100, 2, 95);
+    f.w = newW;
+    el.style.width = newW + '%';
+const newH = clamp(startHpx + dy, 5, 200);
+f.inputHeight = newH;
+el.style.setProperty('--ih', newH + 'px');
+el.style.height = newH + 'px';
+
+const inner = el.querySelector('input[type="text"], textarea, select');
+if (inner) inner.style.height = newH + 'px';
+
+if (inner && inner.tagName === 'TEXTAREA') {
+  inner.dataset.fixedH = newH;
+  inner.style.height = newH + 'px';
+}
+if (inner && inner.tagName === 'INPUT' && inner.type === 'text') {
+  const shouldShrink = (f.autoShrink !== false);
+  const maxPx = Number.isFinite(f.inputHeight) ? (f.inputHeight - 4) : (f.fontSize ?? 20);
+  const minPx = isAddressField(f) ? 6 : (isNameField(f) ? 8 : 12);
+
+  if (shouldShrink) {
+    fitTextToWidth(inner, maxPx, minPx);
+  } else {
+    inner.classList.remove('fit-one-line');
+    inner.style.fontSize = maxPx + 'px';
+  }
+}
+  }
+  function up(){
+    window.removeEventListener('mousemove', mv);
+    window.removeEventListener('mouseup', up);
+    document.body.style.userSelect = '';
+    paper.style.cursor = '';
+    scheduleSave();
+  }
+  window.addEventListener('mousemove', mv);
+  window.addEventListener('mouseup', up);
+}
+
+/* ===== 필드 추가/적용/삭제 ===== */
+document.getElementById('addField').onclick=()=>{
+  const t=document.getElementById('newType').value,
+        id=document.getElementById('newId').value.trim(),
+        label=document.getElementById('newLabel').value.trim(),
+        opts=document.getElementById('newOpts').value.split(',').map(s=>s.trim()).filter(Boolean),
+        req=document.getElementById('newReq').checked;
+
+  const base={id:(id||`${t}_${Date.now()}`),label,type:t,x:50,y:50,w:30,required:req};
+
+  if(t==='select'||t==='radio') base.options=opts;
+  if(t==='radio'){ base.radioSize=18; base.radioGap=12; }
+  if(t==='checkmark'){ base.checkSize=18; base.checkStyle='tick'; base.groupId=''; base.checkGroup=''; base.checkValue=label || id || ''; }
+
+  // ✅ 고정텍스트는 입력한 ID를 표시문구로도 같이 저장
+  if (t === 'label') {
+    base.value = id || '';
+  }
+
+  cur().fields.push(base);
+  selected=cur().fields.length-1;
+  render();
+  scheduleSave();
+};
+
+document.getElementById('applyProp').onclick = () => {
+  if (selected < 0) return;
+
+  const f = cur().fields[selected];
+  const style = (pCheckStyle?.value || 'tick');
+
+  if (f.type === 'checkbox') f.checkStyle = style;
+  if (f.type === 'radio')    f.radioStyle = style;
+
+  f.x = clamp(num(document.getElementById('p_x').value, f.x), 0, 100);
+  f.y = clamp(num(document.getElementById('p_y').value, f.y), 0, 100);
+  f.w = clamp(num(document.getElementById('p_w').value, f.w ?? 24), 2, 95);
+  f.label = (pLabel?.value || '').trim();
+
+  const sizeInput = num(pRadioSize?.value, (f.checkSize ?? f.radioSize ?? 18));
+  const safeSize  = clamp(sizeInput, 8, 40);
+  f.radioSize = safeSize;
+  f.checkSize = safeSize;
+  f.radioGap  = clamp(num(pRadioGap?.value, f.radioGap ?? 12), 0, 200);
+
+  f.color = pColor?.value || '#000000';
+
+  const h = parseInt(pHeight?.value, 10);
+  f.inputHeight = Number.isFinite(h) ? clamp(h, 5, 60) : undefined;
+
+  f.wrap = !!document.getElementById('p_wrap')?.checked;
+
+  f.id = (pId?.value || '').trim() || f.id;
+  f.groupId = (pGroupId?.value || '').trim();
+  f.checkGroup = f.groupId;
+  f.checkValue = (pCheckValue?.value || '').trim();
+  f.required = !!pRequired?.checked;
+
+  f.borderTransparent = !!pBorderTransparent?.checked;
+  f.borderColor = f.borderTransparent
+    ? 'transparent'
+    : ((pBorderColor?.value || '').trim() || undefined);
+
+  const bw = parseInt(pBorderWidth?.value, 10);
+  f.borderWidth = Number.isFinite(bw) ? clamp(bw, 1, 8) : undefined;
+
+  f.bgTransparent = !!pBgTransparent?.checked;
+  f.bgColor = f.bgTransparent
+    ? 'transparent'
+    : ((pBgColor?.value || '').trim() || undefined);
+
+const fs = parseInt(pFontSize?.value, 10);
+const autoFs = Number.isFinite(f.inputHeight)
+  ? Math.max(8, Math.min(f.inputHeight - 6, 20))
+  : 14;
+
+f.fontSize = clamp(Number.isFinite(fs) ? fs : autoFs, 5, 32);
+
+  f.textAlign = (pTextAlign?.value || '');
+f.verticalAlign = (pVerticalAlign?.value || 'middle');
+f.autoShrink = !!pAutoShrink?.checked;
+  f.mask      = (pMask?.value || '');
+  f.maskRe    = (pMaskRe?.value || '').trim();
+
+  const ml = parseInt(pMaxLen?.value, 10);
+  f.maxLength = Number.isFinite(ml) ? clamp(ml, 1, 500) : undefined;
+
+  f.placeholder = (pPlaceholder?.value || '').trim();
+  f.autoDate    = (pAutoDate?.value || '');
+  f.locked      = !!pLocked?.checked;
+  f.lockOnPh    = !!pLockOnPh?.checked;
+
+  render();
+  scheduleSave();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+};
+
+document.getElementById('delField').onclick = () => {
+  if (selected < 0) {
+    alert('삭제할 필드를 먼저 클릭해서 선택해주세요.');
+    return;
+  }
+
+  const f = cur().fields[selected];
+  if (f && f.id) {
+    delete valuesById[f.id];
+    delete elById[f.id];
+  }
+
+  cur().fields.splice(selected, 1);
+  selected = -1;
+  render();
+  scheduleSave();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+};
+
+/* ===== 정렬 버튼 ===== */
+function alignSelectedX(mode){
+  if(selected<0) return;
+  const f=cur().fields[selected];
+  if(mode==='left')   f.x = 0;
+  if(mode==='center') f.x = clamp(50 - (f.w??24)/2, 0, 100);
+  if(mode==='right')  f.x = clamp(100 - (f.w??24), 0, 100);
+  render(); scheduleSave(); recalcDevicePricing(); refreshConditionalInvalid();
+}
+function alignSelectedY(mode){
+  if(selected<0) return;
+  const f=cur().fields[selected];
+  if(mode==='top')    f.y = 0;
+  if(mode==='middle') f.y = 50;
+  if(mode==='bottom') f.y = 100;
+  render(); scheduleSave(); recalcDevicePricing(); refreshConditionalInvalid();
+}
+document.getElementById('alignLeft').onclick = ()=>alignSelectedX('left');
+document.getElementById('alignCX').onclick   = ()=>alignSelectedX('center');
+document.getElementById('alignRight').onclick= ()=>alignSelectedX('right');
+document.getElementById('alignTop').onclick  = ()=>alignSelectedY('top');
+document.getElementById('alignCY').onclick   = ()=>alignSelectedY('middle');
+document.getElementById('alignBottom').onclick=()=>alignSelectedY('bottom');
+
+/* ===== 페이지 ===== */
+const changePage=d=>{
+  pageIndex=clamp(pageIndex+d,0,pages.length-1);
+  selected=-1;
+  render();
+  scheduleSave();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+};
+document.getElementById('prev').onclick=()=>changePage(-1);
+document.getElementById('next').onclick=()=>changePage(1);
+
+/* ===== 저장/초기화 ===== */
+document.getElementById('saveJson').onclick=()=>{
+  const age = getSafeAge();
+  const payload = {
+    pages,
+    conditionalRequired: CONDITIONAL_REQUIRED || [],
+    formPopup: {
+      enabled: !!USE_FORM_POPUP,
+      title: FORM_POPUP_DATA?.title || '양식',
+      text: FORM_POPUP_DATA?.text || ''
+    }
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`overlay-design.device.${age}.json`; // ✅
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+document.getElementById('resetValues').onclick=()=>{
+  pages.forEach(pg=>(pg.fields||[]).forEach(f=>delete f.value));
+  Object.keys(valuesById).forEach(k=>delete valuesById[k]);
+  selected=-1;
+  clearAutosave();
+  render();
+  if (window.renderConditionalRequiredRules) window.renderConditionalRequiredRules();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+};
+function isRequiredFieldFilled(f, ctrl){
+  if (!f) return true;
+  if (!ctrl) return false;
+
+  const condSet = getConditionalRequiredSet();
+  const isCondRequired = f.id && condSet.has(f.id);
+
+  if (!f.required && !isCondRequired) return true;
+
+  if (f.type === 'checkbox') return !!ctrl.checked;
+  if (f.type === 'checkmark') return !!f.value;
+  if (f.type === 'radio') return !!ctrl.querySelector('input[type="checkbox"]:checked');
+
+  return String(ctrl.value ?? '').trim() !== '';
+}
+
+function updateRequiredFieldVisual(f, wrap, ctrl){
+  if (!f || !wrap) return;
+
+  const condSet = getConditionalRequiredSet();
+  const isCondRequired = f.id && condSet.has(f.id);
+
+  if (!f.required && !isCondRequired) {
+    wrap.classList.remove('required-pending');
+    return;
+  }
+if (f.locked) {
+  wrap.classList.remove('required-pending');
+  return;
+}
+
+if (f.lockOnPh && !String(f.value ?? '').trim()) {
+  wrap.classList.remove('required-pending');
+  return;
+}
+  const filled = isRequiredFieldFilled(f, ctrl);
+
+  if (filled) wrap.classList.remove('required-pending');
+  else wrap.classList.add('required-pending');
+}
+
+function bindRequiredFieldVisual(f, wrap, ctrl){
+  if (!f || !wrap || !ctrl) return;
+
+  const apply = () => updateRequiredFieldVisual(f, wrap, ctrl);
+
+  if (f.type === 'radio') {
+    ctrl.querySelectorAll('input[type="checkbox"]').forEach(r => {
+      r.addEventListener('change', apply);
+    });
+  } else if (f.type === 'checkbox' || f.type === 'select') {
+    ctrl.addEventListener('change', apply);
+    ctrl.addEventListener('input', apply);
+  } else {
+    ctrl.addEventListener('input', apply);
+    ctrl.addEventListener('change', apply);
+    ctrl.addEventListener('blur', apply);
+  }
+
+  apply();
+}
+/* ===== 필수 검증/토스트 ===== */
+function findMissingAll(){
+  const miss=[];
+  const condReq = getConditionalRequiredSet();
+
+  pages.forEach((pg,pi)=>{
+    (pg.fields||[]).forEach((f,fi)=>{
+      const fid = (f.id || '').toString();
+      const isRequired = !!f.required || (fid && condReq.has(fid));
+
+      if(!isRequired) return;
+      if (f.locked) return;
+if (f.lockOnPh && !String(f.value ?? '').trim()) return;
+
+      const v=(f.type==='checkbox')?!!f.value:(f.value??'').toString().trim();
+      if(!v) miss.push({page:pi,idx:fi,label:(f.label||f.id||`필드${fi+1}`), id: fid});
+    });
+  });
+  return miss;
+}
+
+function markInvalidForPage(pIdx,list){
+  if(pIdx!==pageIndex) return;
+  overlay.querySelectorAll('.field.invalid').forEach(el=>el.classList.remove('invalid'));
+  list.forEach(m=>{
+    const el=overlay.querySelector(`.field[data-i="${m.idx}"]`);
+    if(el) el.classList.add('invalid');
+  });
+}
+function showToast(items){
+  const toast=document.getElementById('toast'), list=document.getElementById('missList');
+  list.innerHTML=items.map(m=>`<li>${m}</li>`).join('');
+  toast.style.display='flex';
+  document.getElementById('tClose').onclick=()=>toast.style.display='none';
+}
+
+/* ===== 이미지/폰트 대기 ===== */
+async function waitForImages(root){
+  const imgs=Array.from(root.querySelectorAll('img'));
+  if(!imgs.length) return;
+  await Promise.all(imgs.map(img=>{
+    if(img.complete && img.naturalWidth>0) return Promise.resolve();
+    return new Promise(res=>{
+      const done=()=>{ img.removeEventListener('load',done); img.removeEventListener('error',done); res(); };
+      img.addEventListener('load',done,{once:true});
+      img.addEventListener('error',done,{once:true});
+    });
+  }));
+}
+
+/* ===== 인쇄 DOM ===== */
+function isFieldEffectivelyEmpty(f){
+  if (!f) return true;
+
+  const type = String(f.type || '').toLowerCase();
+  const val = f.value;
+
+  if (type === 'radio') {
+    return !val || String(val).trim() === '';
+  }
+
+  if (type === 'checkbox') {
+    return !val;
+  }
+
+  if (Array.isArray(val)) {
+    return val.length === 0;
+  }
+
+  return String(val ?? '').trim() === '';
+}
+
+function getRequiredTargetFields(){
+  if (!Array.isArray(fields)) return [];
+
+  return fields.filter(f => {
+    if (!f) return false;
+    if (!f.required) return false;
+    if (f.hidden) return false;
+    if (f.printOnly) return false;
+    return true;
+  });
+}
+
+function collectMissingRequiredFields(){
+  const requiredFields = getRequiredTargetFields();
+  return requiredFields.filter(f => isFieldEffectivelyEmpty(f));
+}
+
+function clearMissingFieldMarks(){
+  document.querySelectorAll('.field.is-missing').forEach(el => {
+    el.classList.remove('is-missing');
+  });
+}
+
+function findFieldElementById(fieldId){
+  if (!fieldId) return null;
+
+  const all = Array.from(document.querySelectorAll('.field'));
+  return all.find(el => {
+    return (
+      el.dataset?.id === fieldId ||
+      el.getAttribute('data-id') === fieldId ||
+      el.dataset?.fieldId === fieldId ||
+      el.getAttribute('data-field-id') === fieldId
+    );
+  }) || null;
+}
+
+function markMissingFields(missingFields){
+  clearMissingFieldMarks();
+
+  missingFields.forEach(f => {
+    const el = findFieldElementById(f.id);
+    if (el) el.classList.add('is-missing');
+  });
+}
+
+function focusFirstMissingField(missingFields){
+  if (!missingFields || !missingFields.length) return;
+
+  const wrap = findFieldElementById(missingFields[0].id);
+  if (!wrap) return;
+
+  const ctrl = wrap.querySelector('input, textarea, select, button');
+  if (ctrl && !ctrl.disabled && typeof ctrl.focus === 'function') {
+    ctrl.focus({ preventScroll:false });
+    if (typeof ctrl.scrollIntoView === 'function') {
+      ctrl.scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+    return;
+  }
+
+  if (typeof wrap.scrollIntoView === 'function') {
+    wrap.scrollIntoView({ behavior:'smooth', block:'center' });
+  }
+}
+
+function ensureMissingGuideToast(){
+  let el = document.getElementById('missingGuideToast');
+  if (el) return el;
+
+  el = document.createElement('div');
+  el.id = 'missingGuideToast';
+  document.body.appendChild(el);
+  return el;
+}
+
+let missingGuideToastTimer = null;
+
+function showMissingGuideToast(message){
+  const el = ensureMissingGuideToast();
+  el.textContent = message;
+  el.classList.add('show');
+
+  if (missingGuideToastTimer) clearTimeout(missingGuideToastTimer);
+  missingGuideToastTimer = setTimeout(() => {
+    el.classList.remove('show');
+  }, 2600);
+}
+
+function validateRequiredBeforePrint(){
+  const missingFields = collectMissingRequiredFields();
+
+  if (!missingFields.length) {
+    clearMissingFieldMarks();
+    return {
+      ok: true,
+      missingFields: []
+    };
+  }
+
+  markMissingFields(missingFields);
+  focusFirstMissingField(missingFields);
+
+  const names = missingFields
+    .slice(0, 5)
+    .map(f => f.label || f.id)
+    .filter(Boolean);
+
+  const summary = names.length
+    ? `필수 입력 누락: ${names.join(', ')}${missingFields.length > 5 ? ` 외 ${missingFields.length - 5}건` : ''}`
+    : `필수 입력 누락 항목이 있습니다.`;
+
+  showMissingGuideToast(summary);
+
+  return {
+    ok: false,
+    missingFields
+  };
+}
+function createPrintDOM(page){
+  const wrap = document.createElement('div');
+  wrap.className = 'paper';
+
+  const st = document.createElement('div');
+  st.className = 'stage';
+  st.style.transform = 'scale(1)';
+
+  const img = document.createElement('img');
+  img.src = page.bg || '';
+
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+
+  st.appendChild(img);
+  st.appendChild(ov);
+  wrap.appendChild(st);
+
+  (page.fields || []).forEach(f => {
+      // ✅ 요금제명 / 유심모델명은 값이 없을 때만 출력 제외
+  const idText = String(f.id || '').toLowerCase().trim();
+  const labelText = String(f.label || '').trim();
+  const valueText = String(f.value ?? '').trim();
+
+    const isPlanField =
+    ['plan', 'planecho', 'plan_echo', 'planname','deviceId'].includes(idText) ||
+    /요금제.*단말|/.test(labelText);
+
+      const isSimField =
+    ['usim', 'sim', 'simmodel', '부가서비스','0'].includes(idText) ||
+    /유심.*모델|유심모델/.test(labelText);
+
+  if ((isPlanField || isSimField) && !valueText) return;
+    
+    const w = document.createElement('div');
+    w.className =
+      'field ' +
+      (f.type === 'radio' ? 'radio ' : '') +
+      (f.type === 'checkbox' ? 'checkbox ' : '') +
+      (f.type === 'checkmark' ? 'checkmark ' : '');
+w.dataset.id = f.id || '';
+    w.style.left = `${f.x}%`;
+    w.style.top  = `${f.y}%`;
+    w.style.width = `${(f.w ?? 24)}%`;
+
+    if (f.type === 'checkbox' || f.type === 'radio' || f.type === 'checkmark') {
+      const tickColor = (f.borderTransparent) ? 'transparent' : (f.borderColor || '#000');
+      const tickWidth = Number.isFinite(Number(f.borderWidth))
+        ? Math.max(0, Math.min(8, Number(f.borderWidth)))
+        : 1.6;
+      w.style.setProperty('--tick-bdc', tickColor);
+      w.style.setProperty('--tick-bdw', tickWidth + 'px');
+    }
+
+    if (f.fontSize) w.style.setProperty('--fs', f.fontSize + 'px');
+    if (f.color) w.style.setProperty('--fgc', f.color);
+if (f.textAlign) w.style.setProperty('--ta', f.textAlign);
+else w.style.removeProperty('--ta');
+
+if (f.inputHeight) {
+  w.style.setProperty('--ih', f.inputHeight + 'px');
+  w.style.height = f.inputHeight + 'px';
+} else {
+  w.style.removeProperty('--ih');
+  w.style.height = '';
+}
+
+w.dataset.va = f.verticalAlign || 'middle';
+
+if (f.type === 'radio') {
+  const rs = (f.radioStyle || 'dot');
+  w.classList.remove('rd-dot','rd-solid','rd-tick');
+  w.classList.add('rd-' + rs);
+
+  w.style.setProperty('--rsize', (f.radioSize ?? 18) + 'px');
+  w.style.setProperty('--rgap',  (f.radioGap  ?? 12) + 'px');
+
+  if (f.radioShowText === false) w.classList.add('noText');
+
+  // ✅✅✅ 여기 추가: 라디오 "박스(.radio-item)" 테두리 변수도 인쇄 DOM에 세팅
+  const outerColor =
+    (f.radioOuterBorderTransparent || f.borderTransparent)
+      ? 'transparent'
+      : (f.radioOuterBorderColor || 'rgba(0,0,0,.25)');
+
+  const outerWidth = Number.isFinite(Number(f.radioOuterBorderWidth))
+    ? Math.max(0, Math.min(8, Number(f.radioOuterBorderWidth)))
+    : 1;
+
+  w.style.setProperty('--rbc', outerColor);
+  w.style.setProperty('--rbw', outerWidth + 'px');
+}
+    const lab = document.createElement('div');
+    lab.className = 'label';
+    lab.textContent = f.label || '';
+    w.appendChild(lab);
+
+    let ctrl;
+    const lockByPlaceholder = !!f.lockOnPh && !!f.placeholder && !f.value;
+    if (f.locked || lockByPlaceholder) {
+  return;
+}
+
+const isNameBox = isNameField(f);
+const treatAsTextarea =
+  (f.type === 'textarea') ||
+  (f.type === 'text' && f.wrap && !isNameBox && !isAddressField(f));
+if (treatAsTextarea) {
+  ctrl = document.createElement('textarea');
+  ctrl.spellcheck = false;
+  ctrl.style.resize = 'none';
+  ctrl.value = lockByPlaceholder ? '' : (f.value ?? '');
+
+  if (f.inputHeight) {
+    ctrl.style.minHeight = f.inputHeight + 'px';
+    ctrl.style.height    = f.inputHeight + 'px';
+  } else {
+    ctrl.style.minHeight = '5px';
+    ctrl.style.height    = 'auto';
+  }
+
+  if (f.locked || lockByPlaceholder) ctrl.readOnly = true;
+
+const pv = document.createElement('div');
+pv.className = 'print-value print-value-ta';
+  pv.textContent = ctrl.value || '';
+  pv.style.fontSize = (f.fontSize ?? 14) + 'px';
+  pv.style.whiteSpace = 'pre-wrap';
+  pv.style.wordBreak = 'break-word';
+  pv.style.overflowWrap = 'anywhere';
+  w.appendChild(pv);
+}
+    else if (f.type === 'select') {
+      ctrl = document.createElement('select');
+      const phText = (f.placeholder || '').trim();
+      if (phText) {
+        const op0 = document.createElement('option');
+        op0.value = '';
+        op0.textContent = phText;
+        op0.disabled = true;
+        op0.hidden = true;
+        ctrl.appendChild(op0);
+      }
+      (f.options || []).forEach(o => {
+        const packed = String(o ?? '');
+        const { id, name } = parsePackedId(packed);
+
+        const op = document.createElement('option');
+        op.value = id || packed;
+        op.textContent = name || id || packed;
+        ctrl.appendChild(op);
+      });
+      ctrl.value = parsePackedId(f.value ?? '').id || '';
+
+      ctrl.style.color = (f.color || '#000');
+      ctrl.style.caretColor = (f.color || '#000');
+      ctrl.style.backgroundColor = (f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+      ctrl.querySelectorAll('option').forEach(op => {
+        op.style.color = '#000';
+        op.style.backgroundColor = '#fff';
+      });
+
+      if (f.locked || lockByPlaceholder) ctrl.disabled = true;
+
+const pv = document.createElement('div');
+pv.className = 'print-value';
+
+const fid = String(f.id || '').toLowerCase();
+const flabel = String(f.label || '').toLowerCase();
+
+const isDeviceSelect =
+  fid === 'deviceid' ||
+  fid === 'device' ||
+  fid.includes('단말') ||
+  fid.includes('모델') ||
+  fid.includes('핸드폰모델명') ||
+  flabel.includes('단말') ||
+  flabel.includes('모델') ||
+  flabel.includes('핸드폰모델명');
+
+const selText = (ctrl.options[ctrl.selectedIndex] || {}).text || ctrl.value || '';
+pv.textContent = selText;
+pv.style.fontSize = (f.fontSize ?? 14) + 'px';
+w.appendChild(pv);
+
+requestAnimationFrame(() => {
+  const maxPx = Number.isFinite(f.inputHeight) ? (f.inputHeight - 4) : (f.fontSize ?? 20);
+
+if (isDeviceSelect) {
+  const style = getComputedStyle(ctrl);
+  const padL = parseFloat(style.paddingLeft) || 0;
+  const padR = parseFloat(style.paddingRight) || 0;
+  const inner = ctrl.clientWidth - padL - padR;
+
+  const fitted = fitStringToWidth(selText, inner, ctrl, maxPx, 9);
+  pv.style.fontSize = fitted + 'px';
+  pv.style.whiteSpace = 'nowrap';
+  pv.style.wordBreak = 'normal';
+  pv.style.overflowWrap = 'normal';
+  pv.style.overflow = 'hidden';
+  pv.style.textOverflow = 'clip';
+  pv.style.lineHeight = '1.0';
+  pv.style.transform = 'translateY(-0.02em)';
+  pv.style.justifyContent = 'flex-start';
+  pv.style.paddingLeft = '1px';
+} else {
+  fitSelectDisplay(pv, Number(f.fontSize || 20), 10);
+}
+});
+    }
+else if (f.type === 'label') {
+  ctrl = document.createElement('div');
+  ctrl.className = 'fixed-label';
+
+  const labelText = String(f.value ?? f.id ?? '');
+  ctrl.textContent = labelText;
+
+  ctrl.style.width = '100%';
+  ctrl.style.height = '100%';
+  ctrl.style.display = 'flex';
+  ctrl.style.alignItems = 'center';
+  ctrl.style.whiteSpace = 'nowrap';
+  ctrl.style.overflow = 'hidden';
+  ctrl.style.textOverflow = 'clip';
+
+  if (f.color) ctrl.style.color = f.color;
+  if (f.textAlign) ctrl.style.justifyContent =
+    f.textAlign === 'center' ? 'center' :
+    f.textAlign === 'right' ? 'flex-end' : 'flex-start';
+
+  const pv = document.createElement('div');
+  pv.className = 'print-value';
+  pv.textContent = labelText;
+  w.appendChild(pv);
+}
+
+    else if (f.type === 'checkmark') {
+      ctrl = document.createElement('div');
+      ctrl.className = 'checkmark-box' + (f.value ? ' checked' : '');
+      w.style.setProperty('--cksize', (f.checkSize ?? f.radioSize ?? 18) + 'px');
+      const style = (f.checkStyle || 'tick');
+      w.classList.remove('ck-tick','ck-solid','ck-dot');
+      w.classList.add('ck-' + style);
+    }
+    else if (f.type === 'checkbox') {
+      ctrl = document.createElement('input');
+      ctrl.type = 'checkbox';
+      ctrl.checked = !!f.value;
+      if (f.locked || lockByPlaceholder) ctrl.disabled = true;
+    }
+    else if (f.type === 'radio') {
+      ctrl = document.createElement('div');
+      const opts = Array.isArray(f.options) ? f.options : [];
+      opts.forEach(o => {
+        const it = document.createElement('label');
+        it.className = 'radio-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = (f.value === o);
+        if (f.locked || lockByPlaceholder) cb.disabled = true;
+
+        const hideText = (f.radioShowText === false) || /^\d+$/.test(String(o).trim());
+        it.appendChild(cb);
+        if (!hideText) {
+          const s = document.createElement('span');
+          s.textContent = o;
+          it.appendChild(s);
+        }
+        ctrl.appendChild(it);
+      });
+    }
+else {
+  ctrl = document.createElement('input');
+  ctrl.type = 'text';
+  ctrl.value = lockByPlaceholder ? '' : (f.value ?? '');
+  if (f.locked || lockByPlaceholder) ctrl.readOnly = true;
+  if (f.inputHeight) ctrl.style.height = f.inputHeight + 'px';
+
+const shouldShrink = (f.autoShrink !== false);
+
+const pv = document.createElement('div');
+pv.className = 'print-value';
+pv.textContent = ctrl.value || '';
+w.appendChild(pv);
+
+requestAnimationFrame(() => {
+  const maxPx = Number.isFinite(f.inputHeight) ? (f.inputHeight - 4) : (f.fontSize ?? 20);
+
+if (shouldShrink) {
+  const minPx = isAddressField(f) ? 6 : (isNameField(f) ? 8 : 12);
+  fitTextToWidth(ctrl, maxPx, minPx);
+  pv.style.fontSize = ctrl.style.fontSize || (maxPx + 'px');
+  pv.classList.add('fit-one-line');
+  pv.style.whiteSpace = 'nowrap';
+  pv.style.overflow = 'hidden';
+  pv.style.textOverflow = 'clip';
+} else {
+    ctrl.classList.remove('fit-one-line');
+    ctrl.style.fontSize = maxPx + 'px';
+
+    pv.style.fontSize = maxPx + 'px';
+    pv.classList.remove('fit-one-line');
+    pv.style.whiteSpace = 'pre-wrap';
+    pv.style.overflow = 'hidden';
+    pv.style.textOverflow = 'clip';
+  }
+});
+}
+if (f.color) ctrl.style.color = f.color;
+if (f.textAlign) { ctrl.style.textAlign = f.textAlign; w.style.setProperty('--ta', f.textAlign); }
+
+if ((f.type === 'text' || f.type === 'textarea' || f.type === 'select') && (f.borderColor || f.borderTransparent)) {
+  w.classList.add('hasBorder');
+  w.style.setProperty('--bdc', f.borderTransparent ? 'transparent' : (f.borderColor || '#ff3b3b'));
+  w.style.setProperty('--bdw', (f.borderWidth ?? 2) + 'px');
+} else {
+  w.classList.remove('hasBorder');
+  w.style.removeProperty('--bdc');
+  w.style.removeProperty('--bdw');
+}
+
+if ((f.type === 'text' || f.type === 'textarea' || f.type === 'select') && (f.bgColor || f.bgTransparent)) {
+  w.classList.add('hasBG');
+  w.style.setProperty('--bgc', f.bgTransparent ? 'transparent' : (f.bgColor || 'transparent'));
+} else {
+  w.classList.remove('hasBG');
+  w.style.removeProperty('--bgc');
+}
+
+w.appendChild(ctrl);
+ov.appendChild(w);
+  });
+
+  return wrap;
+}
+
+function buildPrintAll(){
+  const container = document.getElementById('printAll');
+  container.innerHTML = '';
+
+  pages.forEach((pg) => {
+    const pageWrap = document.createElement('div');
+    pageWrap.className = 'pageWrap';
+    const printed = createPrintDOM(pg);
+    pageWrap.appendChild(printed);
+    container.appendChild(pageWrap);
+  });
+
+container.style.display = 'block';
+container.style.visibility = 'hidden';
+container.style.position = 'fixed';
+container.style.left = '-99999px';
+container.style.top = '0';
+container.style.width = '210mm';
+
+requestAnimationFrame(() => {
+  autosizeAllTextareas(container);
+});
+
+return container;
+}
+
+function isPrintNoticeHiddenToday(){
+  try{
+    const saved = localStorage.getItem(PRINT_NOTICE_HIDE_KEY);
+    if (!saved) return false;
+
+    const expireAt = Number(saved);
+    if (!Number.isFinite(expireAt)) {
+      localStorage.removeItem(PRINT_NOTICE_HIDE_KEY);
+      return false;
+    }
+
+    if (Date.now() > expireAt) {
+      localStorage.removeItem(PRINT_NOTICE_HIDE_KEY);
+      return false;
+    }
+
+    return true;
+  }catch(_){
+    return false;
+  }
+}
+
+function hidePrintNoticeForToday(){
+  try{
+    const now = new Date();
+    const expire = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1,
+      0, 0, 0, 0
+    ).getTime();
+
+    localStorage.setItem(PRINT_NOTICE_HIDE_KEY, String(expire));
+  }catch(_){}
+}
+
+function showPrintNoticeModal(){
+  return new Promise((resolve) => {
+    const modal  = document.getElementById('printNoticeModal');
+    const textEl = document.getElementById('printNoticeText');
+    const chkEl  = document.getElementById('printNoticeHideToday');
+    const btnOk  = document.getElementById('printNoticeConfirm');
+    const btnNo  = document.getElementById('printNoticeCancel');
+
+    if (!modal || !textEl || !chkEl || !btnOk || !btnNo) {
+      resolve(false);
+      return;
+    }
+
+    textEl.innerHTML = `부가서비스(캐치콜플러스) 가입 여부를 반드시 확인 후 진행해 주세요.
+
+<span class="notice-danger">※ 정책 미확인으로 인한 문제는 책임지지 않습니다.</span>`;
+    chkEl.checked = false;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+
+    const close = (result) => {
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+
+      btnOk.removeEventListener('click', onOk);
+      btnNo.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onEsc, true);
+
+      if (result && chkEl.checked) {
+        hidePrintNoticeForToday();
+      }
+
+      resolve(result);
+    };
+
+    const onOk = () => close(true);
+    const onCancel = () => close(false);
+    const onBackdrop = (e) => {
+      if (e.target === modal) close(false);
+    };
+    const onEsc = (e) => {
+      if (e.key === 'Escape') close(false);
+    };
+
+    btnOk.addEventListener('click', onOk);
+    btnNo.addEventListener('click', onCancel);
+    modal.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onEsc, true);
+  });
+}
+
+
+async function printAllNow(){
+  if (USE_PRINT_POLICY_NOTICE && !isPrintNoticeHiddenToday()) {
+  const agreed = await showPrintNoticeModal();
+  if (!agreed) return;
+}
+  const container = buildPrintAll();
+
+  if (document.fonts && document.fonts.ready) {
+    try { await document.fonts.ready; } catch {}
+  }
+
+  await waitForImages(container);
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  let cleaned = false;
+
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+
+    container.style.display = '';
+    container.style.visibility = '';
+    container.style.position = '';
+    container.style.left = '';
+    container.style.top = '';
+    container.style.width = '';
+
+    window.removeEventListener('afterprint', cleanup);
+  };
+
+  window.addEventListener('afterprint', cleanup);
+
+  setTimeout(() => {
+    window.print();
+
+    // afterprint가 안 오는 환경 대비
+    setTimeout(cleanup, 10000);
+  }, 0);
+}
+/* ===== 인쇄 버튼 ===== */
+document.getElementById('btnPdf').onclick = async () => {
+  await forcePrintBlankForm();
+};
+async function forcePrintBlankForm(){
+  overlay.querySelectorAll('.field.invalid').forEach(el => el.classList.remove('invalid'));
+
+  const toast = document.getElementById('toast');
+  if (toast) toast.style.display = 'none';
+
+  await printAllNow();
+}
+/* ===== text → textarea 전환 스위치 ===== */
+function enableWrapAllTextFields(){
+  pages.forEach(pg => {
+    (pg.fields || []).forEach(f => {
+      if (f.type === 'text' && !isAddressField(f)) {
+        f.wrap = true;
+        if (!f.inputHeight) f.inputHeight = 28;
+      }
+    });
+  });
+  render(); scheduleSave(); recalcDevicePricing(); refreshConditionalInvalid();
+}
+const wrapBtn = document.getElementById('enableWrapAll');
+if (wrapBtn) wrapBtn.onclick = enableWrapAllTextFields;
+
+
+
+/* ===== 조건부 필수 설정 도구 ===== */
+(function initConditionalRequiredTool(){
+  let selectedRuleIndex = -1;
+  const $ = id => document.getElementById(id);
+  const sourceEl = $('cr_sourceId');
+  const whenEl = $('cr_whenValue');
+  const reqEl = $('cr_requiredOn');
+  const listEl = $('cr_list');
+  const addBtn = $('cr_add');
+  const updateBtn = $('cr_update');
+  const delBtn = $('cr_delete');
+  if (!sourceEl || !whenEl || !reqEl || !listEl) return;
+
+  function parseRequired(v){
+    return String(v || '').split(',').map(x=>x.trim()).filter(Boolean);
+  }
+  function renderRules(){
+    listEl.innerHTML = (CONDITIONAL_REQUIRED || []).map((r, i)=>{
+      const active = i === selectedRuleIndex ? ' active' : '';
+      return `<div class="cond-rule-item${active}" data-rule-index="${i}">${r.sourceId || ''} = ${r.whenValue || ''} → ${(r.requiredOn || []).join(', ')}</div>`;
+    }).join('') || '<div class="hint">등록된 규칙이 없습니다.</div>';
+  }
+  function readForm(){
+    return {
+      sourceId: sourceEl.value.trim(),
+      whenValue: whenEl.value.trim(),
+      requiredOn: parseRequired(reqEl.value)
+    };
+  }
+  function writeForm(rule){
+    sourceEl.value = rule?.sourceId || '';
+    whenEl.value = rule?.whenValue || '';
+    reqEl.value = Array.isArray(rule?.requiredOn) ? rule.requiredOn.join(', ') : '';
+  }
+  function valid(rule){
+    if (!rule.sourceId || !rule.whenValue || !rule.requiredOn.length) {
+      alert('기준 필드 ID, 기준 값, 필수 필드 ID를 모두 입력해 주세요.');
+      return false;
+    }
+    return true;
+  }
+  addBtn?.addEventListener('click', ()=>{
+    const rule = readForm();
+    if (!valid(rule)) return;
+    CONDITIONAL_REQUIRED.push(rule);
+    selectedRuleIndex = CONDITIONAL_REQUIRED.length - 1;
+    renderRules();
+    render();
+  });
+  updateBtn?.addEventListener('click', ()=>{
+    if (selectedRuleIndex < 0) { alert('수정할 규칙을 먼저 선택해 주세요.'); return; }
+    const rule = readForm();
+    if (!valid(rule)) return;
+    CONDITIONAL_REQUIRED[selectedRuleIndex] = rule;
+    renderRules();
+    render();
+  });
+  delBtn?.addEventListener('click', ()=>{
+    if (selectedRuleIndex < 0) { alert('삭제할 규칙을 먼저 선택해 주세요.'); return; }
+    CONDITIONAL_REQUIRED.splice(selectedRuleIndex, 1);
+    selectedRuleIndex = -1;
+    writeForm(null);
+    renderRules();
+    render();
+  });
+  listEl.addEventListener('click', e=>{
+    const item = e.target.closest('[data-rule-index]');
+    if (!item) return;
+    selectedRuleIndex = Number(item.dataset.ruleIndex);
+    writeForm(CONDITIONAL_REQUIRED[selectedRuleIndex]);
+    renderRules();
+  });
+  window.renderConditionalRequiredRules = renderRules;
+  renderRules();
+})();
+
+/* ===== 양식 팝업: 기본값 false 비활성 ===== */
+(function initFormPopup(){
+  const modal = document.getElementById('formModal');
+  const title = document.getElementById('formTitle');
+  const body = document.getElementById('formTextarea');
+  const toast = document.getElementById('formToast');
+  const closeX = document.getElementById('formCloseX');
+  const copyBtn = document.getElementById('formCopyBtn');
+  const selBtn = document.getElementById('formSelectAll');
+  if (!modal || !title || !body) return;
+
+  function close(){ modal.setAttribute('aria-hidden','true'); }
+  function open(){
+    if (!USE_FORM_POPUP) return;
+    title.textContent = FORM_POPUP_DATA?.title || '양식';
+    body.textContent = FORM_POPUP_DATA?.text || '';
+    modal.setAttribute('aria-hidden','false');
+  }
+  window.openFormPopup = open;
+  closeX?.addEventListener('click', close);
+  modal.addEventListener('click', e=>{ if(e.target?.dataset?.formClose === '1') close(); });
+  selBtn?.addEventListener('click', ()=>{
+    const range = document.createRange();
+    range.selectNodeContents(body);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  copyBtn?.addEventListener('click', async ()=>{
+    const text = body.innerText || body.textContent || '';
+    try { await navigator.clipboard.writeText(text); }
+    catch(_) { document.execCommand('copy'); }
+    if (toast) { toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 1200); }
+  });
+})();
+
+/* ===== 부트 ===== */
+async function boot(){
+  await loadDesign();
+
+  applyAutoDateAll();
+
+  await loadDevicePricingSeparated();
+  if (DEVICE_DB) applyDeviceDbToDesign();
+
+  if(!FRESH) tryLoadAutosave();
+if (!valuesById.downPayment || String(valuesById.downPayment).trim() === '') {
+  valuesById.downPayment = '0';
+}
+  render();
+  recalcDevicePricing();
+  refreshConditionalInvalid();
+}
+document.getElementById('reload').onclick=boot;
+
+window.addEventListener('DOMContentLoaded',()=>{ boot(); applyZoom(); });
+</script>
+</body>
+</html>

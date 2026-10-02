@@ -26,6 +26,7 @@ import { LgActivationAudit } from '@/pages/LgActivationAudit';
 import { KtActivationAudit } from '@/pages/KtActivationAudit';
 import { TrainingCenter } from '@/pages/TrainingCenter';
 import { TrainingArticleDetail } from '@/pages/TrainingArticleDetail';
+import { TypingVersions } from '@/pages/TypingVersions';
 import { SheetViewer } from '@/pages/SheetViewer';
 
 // 판매점 관련 페이지
@@ -95,6 +96,9 @@ function AppRoutes() {
             접근 허용 — LG/KT 검수와 동일한 "내부 직원" 위상으로 취급(Sidebar/백엔드와 일관). */}
         <Route path="/training" component={TrainingCenter} />
         <Route path="/training/:id" component={TrainingArticleDetail} />
+        {/* [MCC_TYPING_VERSION_MANAGER_CURRENT_PREVIOUS_DRAFT_INTEGRATION_1] 영업과장도 타이핑
+            버전관리 접근 허용 — LG/KT 검수·교육자료와 동일한 "내부 직원" 위상. */}
+        <Route path="/typing" component={TypingVersions} />
         {/* [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 개통현황 조회가 개통 후
             자동검수 센터로 확장되면서 sales_manager 접근을 제거했다(감사 지시 §7 — 중간관리자
             검수 권한은 sales_manager 전체에 자동 부여하지 않는다). 서버 권한도 동일하게
@@ -210,6 +214,16 @@ function AppRoutes() {
           <Route path="/training" component={TrainingCenter} />
           <Route path="/training/:id" component={TrainingArticleDetail} />
         </>
+      )}
+
+      {/* [MCC_TYPING_VERSION_MANAGER_CURRENT_PREVIOUS_DRAFT_INTEGRATION_1] 타이핑 버전관리:
+          LG/KT 검수·교육자료와 동일한 권한 조건(admin/sales_manager/내부 WORKER, dealer
+          차단). 실제 게이트는 server/routes/typing-versions.ts의
+          requireTypingViewer/requireTypingAdmin(쓰기/개발도구/운영적용은 admin 전용). */}
+      {(user?.userType === 'admin' ||
+        user?.userType === 'sales_manager' ||
+        (user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId)) && (
+        <Route path="/typing" component={TypingVersions} />
       )}
 
       {/* [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 개통현황 조회가 개통 후

@@ -1,0 +1,8 @@
+{
+  "pages": [
+    { "bg": "images/change-1.jpg", "fields": [] },
+    { "bg": "images/change-2.jpg", "fields": [] },
+    { "bg": "images/change-3.jpg", "fields": [] },
+    { "bg": "images/change-4.jpg", "fields": [] }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "devices": [
+    { "id": "omd_sm_a165n", "name": "OMD-SM-A165N (갤럭시A16 공신폰3)","msrp": 319000 },
+    { "id": "omd_am_f2000", "name": "OMD-AM-F2000 (에이루트 A1프로)","msrp": 237600 },
+    { "id": "z2339k","name": "Z2339K (클래식폴더)",  "msrp": 205700 },
+    { "id": "sm_a175n", "name": "SM-A175NK (갤럭시A17)","msrp": 319000 },
+    { "id": "sm_a175n_omd", "name": "SM-A175N-OMD(공신폰4)","msrp": 319000 }
+  ]
+}

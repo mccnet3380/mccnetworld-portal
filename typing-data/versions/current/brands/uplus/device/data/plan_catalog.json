@@ -1,0 +1,23 @@
+{
+  "plans": [
+    { "id": "lte_2gb_120m",          "name": "LTE (2GB/120분)",           "baseFee": 20900, "totalFee": 20900, "discountFee": 0 },
+    { "id": "lte_4gb_200m",          "name": "LTE (4GB/200분)",           "baseFee": 29900, "totalFee": 29900, "discountFee": 0 },
+    { "id": "lte_10gbp_200m",        "name": "LTE (10GB+/200분)",         "baseFee": 36900, "totalFee": 36900, "discountFee": 0 },
+
+    { "id": "lte_1_5gb_voicebase",   "name": "LTE (1.5GB/통화기본)",       "baseFee": 25900, "totalFee": 25900, "discountFee": 0 },
+    { "id": "lte_4_5gbp_voicebase",  "name": "LTE (4.5GB+/통화기본)",      "baseFee": 34900, "totalFee": 34900, "discountFee": 0 },
+    { "id": "lte_6gbp_voicebase",    "name": "LTE (6GB+/통화기본)",        "baseFee": 34900, "totalFee": 34900, "discountFee": 0 },
+
+    { "id": "lte_15gbp_100m",        "name": "LTE (15GB+/100분)",          "baseFee": 45900, "totalFee": 45900, "discountFee": 0 },
+    { "id": "lte_special",           "name": "LTE 스페셜",                 "baseFee": 49000, "totalFee": 49000, "discountFee": 0 },
+
+    { "id": "alddul_300mb_90m",      "name": "알뜰한(300MB/90분)",          "baseFee": 18500, "totalFee": 18500, "discountFee": 0 },
+    { "id": "alddul_1gb_120m",       "name": "알뜰한(1GB/120분)",           "baseFee": 24500, "totalFee": 24500, "discountFee": 0 },
+    { "id": "alddul_1gbp_voicebase", "name": "알뜰한(1GB+/통화기본)",        "baseFee": 30900, "totalFee": 30900, "discountFee": 0 },
+
+    { "id": "data_block",            "name": "데이터 차단",                 "baseFee": 27900, "totalFee": 27900, "discountFee": 0 },
+    { "id": "alddul_2gb_200m",       "name": "알뜰한(2GB/200분)",           "baseFee": 29500, "totalFee": 29500, "discountFee": 0 },
+
+    { "id": "lte_7gbp_voicebase",    "name": "LTE (7GB+/통화기본)",         "baseFee": 39900, "totalFee": 39900, "discountFee": 0 }
+  ]
+}

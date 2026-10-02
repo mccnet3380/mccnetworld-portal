@@ -1,0 +1,203 @@
+:root{
+  --bg:#f6f8fb; 
+  --card:#ffffff; 
+  --line:#e5e9f2; 
+  --fg:#0b1220;
+
+  /* 기본 스케일(브라우저 조정용) */
+  --zoom:1;
+
+  /* 배경 원본 크기 (A4 세로 기준) */
+  --natw:595px; 
+  --nath:842px;
+}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font:15px/1.6 system-ui,"Noto Sans KR",sans-serif;
+}
+
+.viewer{
+  max-width:980px;
+  margin:18px auto;
+  padding:10px;
+}
+
+/* -------------------------------------------------------
+   Toolbar – 화면에서만 보임 / 출력에서는 숨김
+--------------------------------------------------------*/
+.toolbar{
+  max-width:980px;
+  margin:14px auto 0;
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+}
+.toolbar button{
+  padding:8px 12px;
+  border:1px solid #d0d5dd;
+  border-radius:10px;
+  background:#fff;
+  cursor:pointer;
+}
+.toolbar button.primary{
+  background:#111827;
+  color:#fff;
+  border-color:#111827;
+}
+
+/* -------------------------------------------------------
+   미리보기 캔버스
+--------------------------------------------------------*/
+.paper{
+  position:relative;
+  width:100%;
+  margin:0 auto 24px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  overflow:hidden;
+  background:#fff;
+
+  /* 화면에서는 스케일 기반으로 높이 자동 조정 */
+  height:calc(var(--nath) * var(--zoom));
+}
+
+/* -------------------------------------------------------
+   Stage (배경 원본 픽셀 크기 유지)
+--------------------------------------------------------*/
+.stage{
+  position:relative;
+  width:var(--natw);
+  height:var(--nath);
+  transform-origin:top left;
+  transform:scale(var(--zoom));
+  margin:0 auto;
+}
+
+/* -------------------------------------------------------
+   배경 이미지
+   - contain: 원본 비율 그대로
+--------------------------------------------------------*/
+.stage > img{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  image-rendering:auto;
+}
+
+.overlay{ position:absolute; inset:0; }
+
+/* -------------------------------------------------------
+   필드 스타일
+--------------------------------------------------------*/
+.field{
+  position:absolute;
+  --fs:14px; /* 기본 글자 크기 */
+}
+
+.field .label{
+  position:absolute;
+  top:-16px;
+  left:0;
+  font-size:12px;
+  font-weight:800;
+  color:#475467;
+}
+
+.field input,
+.field select,
+.field textarea{
+  width:100%;
+  padding:6px 8px;
+  border:1px solid #d0d5dd;
+  border-radius:8px;
+  background:#fff;
+  color:#0b1220;
+  font:600 var(--fs)/1.25 system-ui;
+}
+
+/* -------------------------------------------------------
+   ★ 자필 서명(싸인) 박스 출력 제거용 클래스
+   - JS에서 해당 필드에 .hand-sign 추가 가능
+   - 화면에는 보이지만, 출력에서는 숨김
+--------------------------------------------------------*/
+.hand-sign{
+  /* 화면에서는 그대로 사용 */
+}
+
+@media print{
+  .hand-sign{
+    /* ★ 인쇄 시 자필/싸인/서명 문구는 출력되지 않게 함 */
+    visibility:hidden !important;
+  }
+}
+
+/* -------------------------------------------------------
+   ★ STAGING 배지 화면 전용
+   - 인쇄(PDF)에서는 절대 출력되지 않음
+--------------------------------------------------------*/
+.env-badge{
+  position:fixed;
+  top:10px;
+  left:10px;
+  z-index:9999;
+  padding:6px 10px;
+  border-radius:6px;
+  font-weight:700;
+  background:#f59e0b;
+  color:#111827;
+  box-shadow:0 2px 6px rgba(0,0,0,.2);
+  user-select:none;
+  pointer-events:none;
+}
+
+@media print{
+  /* ★ STAGING 배지 제거 */
+  .env-badge{
+    display:none !important;
+  }
+}
+
+/* -------------------------------------------------------
+   출력(PDF) 최적화
+--------------------------------------------------------*/
+@media print{
+
+  /* A4 세로 + 8mm 기본 여백 */
+  @page{ 
+    size:A4 portrait; 
+    margin:8mm; 
+  }
+
+  /* 인쇄는 항상 1:1 비율 */
+  :root{ 
+    --zoom:1 !important; 
+  }
+
+  body{
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+    background:#fff;
+  }
+
+  /* 화면 전용 요소 숨김 */
+  .toolbar{ 
+    display:none !important; 
+  }
+
+  .viewer{
+    max-width:none;
+    margin:0;
+    padding:0;
+  }
+
+  .paper{
+    border:0;
+    border-radius:0;
+    break-after:page;
+  }
+}

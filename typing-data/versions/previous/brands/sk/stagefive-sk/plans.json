@@ -1,0 +1,30 @@
+{
+  "LTE 핀다이렉트 11GB+": {
+    "base": 55000,
+    "discount": 19800,
+    "final": 35200,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE 핀다이렉트Z 100GB+": {
+    "base": 61600,
+    "discount": 22000,
+    "final": 39600,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE 핀다이렉트 10GB+": {
+    "base": 29700,
+    "discount": 9900,
+    "final": 19800,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE 핀다이렉트 7GB+": {
+    "base": 26400,
+    "discount": 8800,
+    "final": 17600,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  }
+}

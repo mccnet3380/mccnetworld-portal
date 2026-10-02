@@ -1,0 +1,222 @@
+ {
+         "plans": {
+
+  "LTE 스페셜 [약정형1]": {
+    "base": 43800,
+    "discount": 9900,
+    "extraDataGb": 20,
+    "bundleAnyone": false
+  },
+  "LTE (7GB+/통화기본) [약정형1]": {
+    "base": 27500,
+    "discount": 9900,
+    "extraDataGb": 5,
+    "bundleAnyone": false
+  },
+  "LTE (1GB+/통화기본) [약정형1]": {
+    "base": 22300,
+    "discount": 9900,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE 스페셜 플러스 [약정형1]": {
+    "base": 50800,
+    "discount": 9900,
+    "extraDataGb": 20,
+    "bundleAnyone": false
+  },
+  "LTE (15GB+/100분) [약정형1]": {
+    "base": 36100,
+    "discount": 9900,
+    "extraDataGb": 10,
+    "bundleAnyone": false
+  },
+  "LTE (10GB+/통화기본) [약정형1]": {
+    "base": 31800,
+    "discount": 9900,
+    "extraDataGb": 10,
+    "bundleAnyone": false
+  },
+      "데이터플러스 (15GB+/100분) [약정형1]": {
+    "base": 38400,
+    "discount": 9900,
+    "extraDataGb": 10,
+    "bundleAnyone": false
+  },  
+  "데이터플러스 (10GB+/통화기본) [약정형1]": {
+    "base": 34300,
+    "discount": 9900,
+    "extraDataGb": 10,
+    "bundleAnyone": false
+  },
+  "LTE 스페셜 플러스 N": {
+    "base": 46600,
+    "discount": 4700,
+    "extraDataGb": 20,
+    "bundleAnyone": false
+  },
+  "LTE 스페셜 프로": {
+    "base": 45900,
+    "discount": 4000,
+    "extraDataGb": 20,
+    "bundleAnyone": false
+  },
+  "LTE 스페셜": {
+    "base": 49390,
+    "discount": 14490,
+    "extraDataGb": 20,
+    "bundleAnyone": false
+  },
+     "다성비 (71GB+/통화기본)": {
+    "base": 50390,
+    "discount": 14790,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+    "다성비 (7GB+/통화기본)": {
+    "base": 40800,
+    "discount": 21500,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  }, 
+    "LTE (15GB+/100분)": {
+    "base": 47300,
+    "discount": 20100,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+    "데이터플러스 (17GB+/통화기본)": {
+    "base": 32600,
+    "discount": 9700,
+    "extraDataGb": 5,
+    "bundleAnyone": false
+  },  
+  "데이터플러스 (10GB+/통화기본)": {
+    "base": 43550,
+    "discount": 18150,
+    "extraDataGb": 10,
+    "bundleAnyone": false
+  },
+  "데이터플러스 (15GB+/100분)": {
+    "base": 51550,
+    "discount": 22050,
+    "extraDataGb": 10,
+    "bundleAnyone": false
+  },  
+  "LTE (10GB+/통화기본)": {
+    "base": 41950,
+    "discount": 19050,
+    "extraDataGb": 10,
+    "bundleAnyone": false
+  },
+  "LTE (7GB+/통화기본)": {
+    "base": 39800,
+    "discount": 21200,
+    "extraDataGb": 5,
+    "bundleAnyone": false
+  },
+  "LTE (6GB+/통화기본)": {
+    "base": 37800,
+    "discount": 20200,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+    "LTE (9GB/3000분)": {
+    "base": 37800,
+    "discount": 21900,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+    "LTE (5GB+/200분)": {
+    "base": 28200,
+    "discount": 13300,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (1GB+/통화기본)": {
+    "base": 25300,
+    "discount": 11900,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (1.5GB/통화기본)": {
+    "base": 23000,
+    "discount": 15100,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (2.5GB/통화기본)": {
+    "base": 29000,
+    "discount": 19500,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (4GB/통화기본)": {
+    "base": 33500,
+    "discount": 22600,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (4.5GB+/통화기본)": {
+    "base": 36600,
+    "discount": 20700,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (6GB/통화기본)": {
+    "base": 35000,
+    "discount": 23500,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (1GB+/100분)": {
+    "base": 17800,
+    "discount": 7900,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (1.5GB/150분)": {
+    "base": 12100,
+    "discount": 5600,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (2.5GB/200분)": {
+    "base": 20900,
+    "discount": 14000,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "LTE (2.5GB+/200분)": {
+    "base": 22500,
+    "discount": 9600,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+"LTE (7GB+3M/500분)": {
+  "base": 32800,
+  "discount": 9900,
+  "extraDataGb": 5,
+  "bundleAnyone": false,
+  "label": "LTE (7GB+3M/500분) [외국인 전용]"
+},
+  "5G (5GB/통화기본)": {
+    "base": 27700,
+    "discount": 16800,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "5G (5GB/200분)": {
+    "base": 24200,
+    "discount": 15300,
+    "extraDataGb": 0,
+    "bundleAnyone": false
+  },
+  "5G (31GB+/통화기본)": {
+    "base": 48300,
+    "discount": 11650,
+    "extraDataGb": 10,
+    "bundleAnyone": false
+  }
+}
+}
