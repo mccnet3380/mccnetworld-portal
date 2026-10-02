@@ -40,7 +40,11 @@ import { cn } from '@/lib/utils';
 type Row = Record<string, any>;
 type ColumnKey =
   | 'date' | 'channel' | 'subscriber' | 'billing' | 'name' | 'customerType'
-  | 'openPlan' | 'currentPlan' | 'openType' | 'pos' | 'status' | 'product';
+  | 'openPlan' | 'currentPlan' | 'openType' | 'pos' | 'status' | 'product'
+  // MCC_KT_ACTIVATION_AUDIT_SIGNUP_FEE_PAYMENT_AND_PHONE_COLUMN_DEV_1:
+  // signupFeeMethod = 가입비 납부방법 검수(신규 COMPARE 대상).
+  // activationNumber = 결과표 "개통번호" 표시 전용(매칭키 아님, COMPARE 대상 아님).
+  | 'signupFeeMethod' | 'activationNumber';
 type ProviderType = '스카이' | '엠모바일' | '기타';
 type MatchRule = 'subscriber' | 'billing';
 
@@ -53,13 +57,28 @@ const ALIASES: Record<ColumnKey, string[]> = {
   customerType: ['명의구분', '고객구분', '가입자유형', '개인법인', '고객유형'],
   openPlan: ['최초요금제', '개통요금제명', '가입요금제', '개통요금제', '요금제명', '요금제'],
   currentPlan: ['현재요금제명', '현재요금제', '사용요금제'],
-  openType: ['개통유형', '가입유형', '업무구분', '신규번이', '이전사업자명'],
+  // MCC_ACTIVATION_AUDIT_KT_OPEN_TYPE_ALIAS_FIX_1: 실제 live "개통처리부" 원장 헤더가
+  // '유형'(단독)임을 조회로 확인(기존 5개 alias와 매칭되지 않아 원장 쪽 openType이
+  // 항상 빈 문자열로 읽혀 비교가 전부 skip되던 버그). 기존 alias는 순서/삭제 없이
+  // 그대로 두고 '유형'만 맨 뒤에 추가.
+  openType: ['개통유형', '가입유형', '업무구분', '신규번이', '이전사업자명', '유형'],
   pos: ['실판매POS코드', 'POS코드', '판매점코드', '대리점코드', '접점코드'],
   status: ['현재상태명', '현재상태', '처리상태', '가입상태', '상태'],
   product: ['상품번호', '상품ID', '서비스상품번호'],
+  // MCC_KT_ACTIVATION_AUDIT_SIGNUP_FEE_PAYMENT_AND_PHONE_COLUMN_DEV_1: 실제 파일로 확인한
+  // 헤더 — KT 업로드 엑셀(개통관리_...xlsx)은 '가입비납부방법'(값: 일시납/3개월분납),
+  // live Google Sheets "개통처리부" 원장은 'Q열=가입비'(값: 즉납(면제)/분납)를 쓴다.
+  // 두 헤더명이 서로 달라 한쪽에만 있는 이름이라도, '가입비납부방법'을 먼저 둬야
+  // KT 업로드 파일 쪽 columns 감지가 (파일에 별도로 존재하는 금액 컬럼 '가입비'가 아니라)
+  // 정확히 이 필드에 매칭된다 — getValue()의 preferred 경로가 이 순서에 의존한다.
+  signupFeeMethod: ['가입비납부방법', '가입비'],
+  // '개통번호'는 KT 업로드 파일에는 없고(실제 파일로 확인) live 원장에만 존재하는
+  // 헤더다. '휴대폰번호'는 KT 업로드 파일에만 존재(마스킹된 값) — 매칭키로는 쓰지
+  // 않고 결과표 표시(activationNumberDisplayFor)에서 원장 값이 없을 때만 폴백으로 쓴다.
+  activationNumber: ['개통번호', '휴대폰번호'],
 };
 
-const COMPARE: ColumnKey[] = ['openPlan', 'currentPlan', 'openType', 'pos', 'status', 'product', 'name'];
+const COMPARE: ColumnKey[] = ['openPlan', 'currentPlan', 'openType', 'pos', 'status', 'product', 'name', 'signupFeeMethod'];
 
 const LABELS: Record<string, string> = {
   subscriber: '가입번호 ↔ 계약번호',
@@ -72,6 +91,8 @@ const LABELS: Record<string, string> = {
   pos: '실판매POS코드',
   status: '현재상태명',
   product: '상품번호',
+  // MCC_KT_ACTIVATION_AUDIT_SIGNUP_FEE_PAYMENT_AND_PHONE_COLUMN_DEV_1: 문제항목 표시 라벨.
+  signupFeeMethod: '가입비',
 };
 
 const RULES_STORAGE_KEY = 'KT_AUDIT_CHANNEL_RULES_V1';
@@ -126,8 +147,17 @@ function normalize(v: unknown, key: string): string {
   if (key === 'pos') return s.replace(/\s/g, '').replace(/\.0$/, '').toUpperCase();
   if (key === 'openType') {
     const t = s.replace(/\s/g, '').toUpperCase();
-    if (['1', '10', '010', '신규'].includes(t)) return 'NEW';
-    if (['2', 'MNP', '번호이동'].includes(t)) return 'MNP';
+    // MCC_ACTIVATION_AUDIT_KT_OPEN_TYPE_ACTUAL_VALUE_NORMALIZATION_1: 실제 DEV 검수 결과
+    // CSV(KT_개통검수_2026-09-15.csv)에서 KT 전산측 실제 openType 값이 "신규개통"임을
+    // 확인(39건 전부 스프레드시트="1"/KT파일="신규개통" 불일치로 오탐). 같은 신규 그룹에
+    // '신규개통'만 추가(사용자 승인 — docs/MCC_DEVELOPMENT_LOG.md PROJECT: ACTIVATION_AUDIT
+    // 참고). 번호이동측 실제 값(번호이동개통/번이 등)은 이번 조사에서 확인되지 않아 추가하지
+    // 않음(추측 금지).
+    if (['1', '10', '010', '신규', '신규개통'].includes(t)) return 'NEW';
+    // MCC_ACTIVATION_AUDIT_TYPE_3_MNP_NORMALIZATION_1: '3'은 신규 가입유형이 아니라
+    // 기존 2/번호이동과 완전히 동일한 번호이동 그룹이다(사용자 승인 — docs/MCC_DEVELOPMENT_LOG.md
+    // PROJECT: ACTIVATION_AUDIT 참고). 기존 '2'/'MNP'/'번호이동' 매칭 조건에 '3'만 추가.
+    if (['2', '3', 'MNP', '번호이동'].includes(t)) return 'MNP';
     return t;
   }
   if (key === 'openPlan' || key === 'currentPlan') {
@@ -138,8 +168,49 @@ function normalize(v: unknown, key: string): string {
       .replace(/\s/g, '')
       .toUpperCase();
   }
+  if (key === 'signupFeeMethod') {
+    // MCC_KT_ACTIVATION_AUDIT_SIGNUP_FEE_PAYMENT_AND_PHONE_COLUMN_DEV_1: 실제 live
+    // 원장/KT 업로드 파일에서 확인된 값만 그룹화한다(추측 리터럴 추가 금지).
+    // 원장: 즉납(면제)/분납, KT: 일시납/3개월분납 — 둘 다 live 데이터로 직접 확인.
+    const t = s.replace(/\s/g, '');
+    if (['즉납(면제)', '일시납'].includes(t)) return 'IMMEDIATE';
+    if (['분납', '3개월분납'].includes(t)) return 'INSTALLMENT';
+    return t; // 미인식 값은 원문 그대로 통과(임의로 그룹 단정하지 않음)
+  }
   return s.replace(/\s/g, '').toUpperCase();
 }
+
+// MCC_ACTIVATION_AUDIT_RESULT_TYPE_COLUMN_1: 결과 테이블 "유형" 컬럼 표시용 — 내부 정규화
+// 코드(NEW/MNP)를 그대로 재사용하고, 사용자 화면에는 "신규"/"번호이동"만 노출한다. 새 가입유형
+// 판정 로직이 아니며, normalize('openType')가 기존 매칭/불일치 판정에 쓰는 것과 동일한 결과를
+// 그대로 가져와 사람이 읽는 라벨로만 바꾼다.
+function openTypeUserLabel(norm: string): string {
+  if (norm === 'NEW') return '신규';
+  if (norm === 'MNP') return '번호이동';
+  return norm; // 매칭되지 않는 리터럴(예: '번이')은 그대로 노출 — 임의로 신규/번호이동으로 단정하지 않음
+}
+/** 원장(base)과 KT 전산(kt) 양쪽의 openType을 각각 normalize해서 사용자 라벨로 합친다.
+ *  둘 다 있고 같으면 하나만, 다르면 "A ↔ B"로 보여줘 오해를 막는다(섹션4 요구사항). */
+function typeDisplayFor(base: Row, kt: Row, columns: Record<string, string>): string {
+  const bv = getValue(base, 'openType', columns);
+  const kv = getValue(kt, 'openType', columns);
+  const bn = bv ? openTypeUserLabel(normalize(bv, 'openType')) : '';
+  const kn = kv ? openTypeUserLabel(normalize(kv, 'openType')) : '';
+  if (bn && kn) return bn === kn ? bn : `${bn} ↔ ${kn}`;
+  return bn || kn || '-';
+}
+
+/** MCC_KT_ACTIVATION_AUDIT_SIGNUP_FEE_PAYMENT_AND_PHONE_COLUMN_DEV_1: 결과표 "개통번호"
+ *  표시 전용(매칭키 아님, 새 match key로 쓰지 않음). 원장(live Sheets)의 '개통번호'가
+ *  있으면 그 값을 우선 쓰고(실측 확인: "7609-3839" 형태의 참조번호), 없을 때만 KT
+ *  업로드 파일의 '휴대폰번호'(마스킹된 그대로, 복원 시도 없음)로 폴백한다. */
+function activationNumberDisplayFor(base: Row, kt: Row, columns: Record<string, string>): string {
+  const bv = getValue(base, 'activationNumber', columns);
+  if (bv) return bv;
+  const kv = getValue(kt, 'activationNumber', columns);
+  return kv || '-';
+}
+
 /** masked(원장 기준 마스킹 값)의 '*'를 정규식 와일드카드로 바꿔 full(비교 대상 전체 이름)과 대조.
  *  full이 '/' 또는 '|'로 여러 이름을 병기하면 그중 하나라도 매칭되면 호환으로 본다. */
 function maskedNameCompatible(masked: unknown, full: unknown): boolean {
@@ -318,6 +389,13 @@ interface ResultRow {
   base: string;
   kt: string;
   reason: string;
+  /** MCC_ACTIVATION_AUDIT_RESULT_TYPE_COLUMN_1: 사용자 표시용 가입유형("신규"/"번호이동").
+   *  기존 openType normalize()를 그대로 재사용 — 새 판정 로직 아님. 고객이 아직 확정되지
+   *  않은 행(매칭키 누락/미매칭/중복후보)은 '-'. */
+  typeDisplay: string;
+  /** MCC_KT_ACTIVATION_AUDIT_SIGNUP_FEE_PAYMENT_AND_PHONE_COLUMN_DEV_1: 결과표 "개통번호"
+   *  표시 전용(activationNumberDisplayFor). 고객이 아직 확정되지 않은 행은 '-'. */
+  activationNumber: string;
 }
 interface Summary {
   kt: number;
@@ -370,6 +448,8 @@ function computeResults(
         worker: '-',
         status: '매칭키 누락', kind: 'review', channel, key: '', id: '', name: ktName,
         field: '매칭 기준', base: '', kt: '', reason: '이 채널에 매칭 기준이 설정되지 않았습니다.',
+        typeDisplay: '-',
+        activationNumber: '-',
       });
       review++;
       continue;
@@ -384,6 +464,8 @@ function computeResults(
         worker: '-',
         status: '매칭키 누락', kind: 'review', channel, key: keyLabel, id: '', name: ktName,
         field: LABELS[rule], base: '', kt: text(raw), reason: `${LABELS[rule]} 값이 없어 매칭할 수 없습니다.`,
+        typeDisplay: '-',
+        activationNumber: '-',
       });
       review++;
       continue;
@@ -406,6 +488,8 @@ function computeResults(
         status: '미매칭', kind: 'missing', channel, key: keyLabel, id, name: ktName,
         field: keyLabel, base: '원장에 없음', kt: text(raw),
         reason: `${keyLabel}가 스프레드시트에 존재하지 않습니다.`,
+        typeDisplay: '-',
+        activationNumber: '-',
       });
       unmatched++;
       continue;
@@ -416,6 +500,8 @@ function computeResults(
         status: '중복후보', kind: 'review', channel, key: keyLabel, id, name: ktName,
         field: keyLabel, base: `${candidates.length}건`, kt: text(raw),
         reason: '동일 식별값이 여러 건이라 자동 확정하지 않았습니다.',
+        typeDisplay: '-',
+        activationNumber: '-',
       });
       review++;
       continue;
@@ -427,6 +513,8 @@ function computeResults(
     matched++;
     let rowIssue = 0;
     const corp = isCorporate(base, columns);
+    const typeDisplay = typeDisplayFor(base, kt, columns);
+    const activationNumber = activationNumberDisplayFor(base, kt, columns);
 
     for (const field of COMPARE) {
       const bv = getValue(base, field, columns);
@@ -444,6 +532,8 @@ function computeResults(
             status: '법인명/대표자명 차이', kind: 'info', channel, key: keyLabel, id, name: displayName,
             field: LABELS[field], base: text(bv), kt: text(kv),
             reason: '법인 건으로 확인되어 법인명과 대표자명 차이를 오류에서 제외했습니다.',
+            typeDisplay,
+            activationNumber,
           });
           corpInfo++;
           continue;
@@ -454,6 +544,8 @@ function computeResults(
             status: '명의 확인 필요', kind: 'review', channel, key: keyLabel, id, name: displayName,
             field: LABELS[field], base: text(bv), kt: text(kv),
             reason: '마스킹 이름이 원장 이름과 연결되지 않아 확인이 필요합니다.',
+            typeDisplay,
+            activationNumber,
           });
           review++;
           rowIssue++;
@@ -469,6 +561,8 @@ function computeResults(
           status: '값 불일치', kind: 'mismatch', channel, key: keyLabel, id, name: displayName,
           field: LABELS[field], base: text(bv), kt: text(kv),
           reason: `${keyLabel} 정확 매칭 후 값이 다릅니다.`,
+          typeDisplay,
+          activationNumber,
         });
         mismatch++;
         rowIssue++;
@@ -480,6 +574,8 @@ function computeResults(
         worker,
         status: '정상', kind: 'ok', channel, key: keyLabel, id, name: displayName,
         field: '전체 비교', base: '', kt: '', reason: '비교 가능한 검수 항목이 모두 일치합니다.',
+        typeDisplay,
+        activationNumber,
       });
       normal++;
     }
@@ -745,8 +841,10 @@ export function KtActivationAudit() {
 
   function exportCsv() {
     const data = [
-      ['작업자', '상태', '적용키', '식별값', '고객명', '문제항목', '스프레드시트', 'KT파일', '판정사유'],
-      ...filteredResults.map((r) => [r.worker, r.status, r.key, r.id, r.name, r.field, r.base, r.kt, r.reason]),
+      // MCC_KT_ACTIVATION_AUDIT_SIGNUP_FEE_PAYMENT_AND_PHONE_COLUMN_DEV_1: '개통번호' 컬럼만
+      // 추가(식별값 다음). 기존 컬럼(적용키 포함) 순서/내용은 변경하지 않음.
+      ['작업자', '상태', '적용키', '식별값', '개통번호', '고객명', '문제항목', '스프레드시트', 'KT파일', '판정사유'],
+      ...filteredResults.map((r) => [r.worker, r.status, r.key, r.id, r.activationNumber, r.name, r.field, r.base, r.kt, r.reason]),
     ];
     const csv =
       '﻿' + data.map((row) => row.map((v) => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
@@ -966,31 +1064,35 @@ export function KtActivationAudit() {
               <CardContent>
                 <div className="overflow-auto border rounded-md max-h-[620px]">
                   <table className="w-full text-sm min-w-[1000px]">
+                    {/* MCC_ACTIVATION_AUDIT_KT_LG_RESULT_COLUMNS_ALIGNMENT_1: 판정사유는 화면에서
+                        제거(내부 reason 데이터/CSV는 그대로 유지), 문제항목은 가장 오른쪽으로
+                        이동, 작업자는 문제항목 바로 앞으로 재배치. 기존 판정 로직/다른 컬럼
+                        데이터는 전혀 변경하지 않음 — <th>/<td> 순서만 재배치. */}
                     <thead className="bg-muted sticky top-0 z-10">
                       <tr>
-                        <th className="p-2 text-left font-medium">작업자</th>
                         <th className="p-2 text-left font-medium">상태</th>
-                        <th className="p-2 text-left font-medium">적용키</th>
+                        <th className="p-2 text-left font-medium">유형</th>
                         <th className="p-2 text-left font-medium">식별값</th>
+                        <th className="p-2 text-left font-medium">개통번호</th>
                         <th className="p-2 text-left font-medium">고객명</th>
-                        <th className="p-2 text-left font-medium">문제항목</th>
                         <th className="p-2 text-left font-medium">스프레드시트</th>
                         <th className="p-2 text-left font-medium">KT 파일</th>
-                        <th className="p-2 text-left font-medium">판정 사유</th>
+                        <th className="p-2 text-left font-medium">작업자</th>
+                        <th className="p-2 text-left font-medium">문제항목</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredResults.map((r, i) => (
                         <tr key={i} className="border-t hover:bg-muted/40">
-                          <td className="p-2 font-semibold whitespace-nowrap">{r.worker}</td>
                           <td className="p-2"><StatusBadge kind={r.kind}>{r.status}</StatusBadge></td>
-                          <td className="p-2 text-xs text-muted-foreground">{r.key}</td>
+                          <td className="p-2 text-xs text-muted-foreground">{r.typeDisplay}</td>
                           <td className="p-2">{r.id}</td>
+                          <td className="p-2 whitespace-nowrap">{r.activationNumber}</td>
                           <td className="p-2">{r.name}</td>
-                          <td className="p-2">{r.field}</td>
                           <td className="p-2">{r.base || '-'}</td>
                           <td className="p-2">{r.kt || '-'}</td>
-                          <td className="p-2">{r.reason}</td>
+                          <td className="p-2 font-semibold whitespace-nowrap">{r.worker}</td>
+                          <td className="p-2">{r.field}</td>
                         </tr>
                       ))}
                     </tbody>

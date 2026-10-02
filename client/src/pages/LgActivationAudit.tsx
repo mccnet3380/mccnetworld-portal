@@ -70,11 +70,55 @@ function normalize(v: unknown, key: FieldKey): string {
   if (key === 'openType') {
     const type = s.replace(/\s/g, '').toUpperCase();
     if (['1', '10', '010'].includes(type)) return 'OPEN_010';
-    if (['2', 'MNP'].includes(type)) return 'MNP';
+    // MCC_ACTIVATION_AUDIT_TYPE_3_MNP_NORMALIZATION_1: '3'은 신규 가입유형이 아니라
+    // 기존 2/MNP와 완전히 동일한 번호이동 그룹이다(사용자 승인 — docs/MCC_DEVELOPMENT_LOG.md
+    // PROJECT: ACTIVATION_AUDIT 참고). 기존 '2'/'MNP' 매칭 조건에 '3'만 추가.
+    if (['2', '3', 'MNP'].includes(type)) return 'MNP';
     return type;
   }
   if (key === 'openPlan' || key === 'currentPlan') return normalizePlan(s);
   return s.replace(/\s/g, '').toUpperCase();
+}
+
+// MCC_ACTIVATION_AUDIT_RESULT_TYPE_COLUMN_1: 결과 테이블 "유형" 컬럼 표시용 — 내부 정규화
+// 코드(OPEN_010/MNP)를 그대로 재사용하고, 사용자 화면에는 "신규"/"번호이동"만 노출한다. 새
+// 가입유형 판정 로직이 아니며, normalize('openType')가 기존 매칭/불일치 판정에 쓰는 것과
+// 동일한 결과를 그대로 가져와 사람이 읽는 라벨로만 바꾼다. FIELDS는 이 함수 아래에서
+// 선언되지만, 이 함수는 실제 호출 시점(컴포넌트 렌더 중)에만 FIELDS를 참조하므로
+// 모듈 로드 순서상 문제 없다.
+function openTypeUserLabel(norm: string): string {
+  if (norm === 'OPEN_010') return '신규';
+  if (norm === 'MNP') return '번호이동';
+  return norm; // 매칭되지 않는 리터럴(예: '번이')은 그대로 노출 — 임의로 신규/번호이동으로 단정하지 않음
+}
+/** 원장(base)과 LG 전산(lg) 양쪽의 openType을 각각 normalize해서 사용자 라벨로 합친다.
+ *  둘 다 있고 같으면 하나만, 다르면 "A ↔ B"로 보여줘 오해를 막는다(섹션4 요구사항). */
+function typeDisplayFor(base: Row, lg: Row): string {
+  const f = FIELDS.find((x) => x.key === 'openType');
+  if (!f) return '-';
+  const bv = getValue(base, f.base);
+  const lv = getValue(lg, f.lg);
+  const bn = bv ? openTypeUserLabel(normalize(bv, 'openType')) : '';
+  const ln = lv ? openTypeUserLabel(normalize(lv, 'openType')) : '';
+  if (bn && ln) return bn === ln ? bn : `${bn} ↔ ${ln}`;
+  return bn || ln || '-';
+}
+
+// MCC_ACTIVATION_AUDIT_KT_LG_RESULT_COLUMNS_ALIGNMENT_1: KT와 동일한 live Google Sheets
+// "개통처리부" 원장을 쓰므로(server/routes/lg-audit.ts LEDGER_SHEET="개통처리부" —
+// kt-audit.ts와 동일 문자열), '작업자'/'개통번호' 헤더가 원장에 실제로 존재함을 KT 조사에서
+// 이미 실측 확인(이번 작업에서 재확인 — 같은 시트이므로 동일하게 적용). DISPLAY ONLY —
+// 매칭(가입번호/bySub)과 무관하게, 매칭이 끝난 base 행에서 읍기만 한다.
+/** 원장(base) 행의 "작업자" 값을 그대로 표시(가공 없음). 값이 없으면 공란('-')
+ *  — 다른 사람 이름으로 억지로 대체하지 않는다. */
+function workerDisplayFor(base: Row): string {
+  return getValue(base, ['작업자']) || '-';
+}
+/** 원장(base)의 "개통번호"를 표시(DISPLAY ONLY, 매칭키로 쓰지 않음). LG 업로드 CSV
+ *  쪽의 신뢰 가능한 전화번호/개통번호 필드는 이번 조사에서 확인되지 않아(실제 샘플 CSV
+ *  부재) 추측으로 폴백을 추가하지 않았다 — 원장에 없으면 '-'. */
+function activationNumberDisplayFor(base: Row): string {
+  return getValue(base, ['개통번호']) || '-';
 }
 
 /** 마스킹된 고객명(masked)의 visible 첫/끝 글자가 원장 고객명(full)의 시작/끝과 일치하는지 확인 */
@@ -209,6 +253,14 @@ interface ResultRow {
   base: string;
   lg: string;
   reason: string;
+  /** MCC_ACTIVATION_AUDIT_RESULT_TYPE_COLUMN_1: 사용자 표시용 가입유형("신규"/"번호이동").
+   *  기존 openType normalize()를 그대로 재사용 — 새 판정 로직 아님. 고객이 아직 확정되지
+   *  않은 행(미매칭/중복)은 '-'. */
+  typeDisplay: string;
+  /** MCC_ACTIVATION_AUDIT_KT_LG_RESULT_COLUMNS_ALIGNMENT_1: 결과표 "작업자"/"개통번호"
+   *  표시 전용(DISPLAY ONLY). 고객이 아직 확정되지 않은 행(미매칭/중복)은 '-'. */
+  worker: string;
+  activationNumber: string;
 }
 
 interface Summary {
@@ -260,6 +312,9 @@ export function computeResults(ledgerRows: Row[], lgRows: Row[]): { results: Res
         lg: subRaw || '빈 값',
         reason:
           '가입번호 원장 누락 — 가입번호가 원장에 존재하지 않습니다. 이름·전화번호 뒷자리·POS로 추정 매칭하지 않았습니다.',
+        typeDisplay: '-',
+        worker: '-',
+        activationNumber: '-',
       });
       continue;
     }
@@ -276,6 +331,9 @@ export function computeResults(ledgerRows: Row[], lgRows: Row[]): { results: Res
         base: '',
         lg: subRaw,
         reason: `동일 가입번호 원장 중복 — 동일 가입번호가 원장에 ${candidates.length}건 존재하여 자동 매칭을 보류했습니다.`,
+        typeDisplay: '-',
+        worker: '-',
+        activationNumber: '-',
       });
       continue;
     }
@@ -285,6 +343,9 @@ export function computeResults(ledgerRows: Row[], lgRows: Row[]): { results: Res
     const channel = resolveChannel(base);
     const baseName = getValue(base, ['고객명']) || lgName;
     let rowIssue = 0;
+    const typeDisplay = typeDisplayFor(base, lg);
+    const worker = workerDisplayFor(base);
+    const activationNumber = activationNumberDisplayFor(base);
 
     for (const f of FIELDS) {
       const bv = getValue(base, f.base);
@@ -317,6 +378,9 @@ export function computeResults(ledgerRows: Row[], lgRows: Row[]): { results: Res
           base: text(bv),
           lg: text(lv),
           reason: `고객 매칭 성공 / ${f.label} 불일치`,
+          typeDisplay,
+          worker,
+          activationNumber,
         });
       }
     }
@@ -333,6 +397,9 @@ export function computeResults(ledgerRows: Row[], lgRows: Row[]): { results: Res
         base: '',
         lg: '',
         reason: '비교 가능한 항목이 모두 일치합니다.',
+        typeDisplay,
+        worker,
+        activationNumber,
       });
     }
   }
@@ -500,8 +567,10 @@ export function LgActivationAudit() {
 
   function exportCsv() {
     const data = [
-      ['상태', '채널', '가입번호', '고객명', '문제항목', '스프레드시트', 'LG파일', '판정사유'],
-      ...filteredResults.map((r) => [r.status, r.channel, r.sub, r.name, r.field, r.base, r.lg, r.reason]),
+      // MCC_ACTIVATION_AUDIT_KT_LG_RESULT_COLUMNS_ALIGNMENT_1: '개통번호'/'작업자' 컬럼만
+      // 추가(가입번호 다음/판정사유 앞). 기존 컬럼(판정사유 포함) 순서/내용은 유지.
+      ['상태', '채널', '가입번호', '개통번호', '고객명', '문제항목', '스프레드시트', 'LG파일', '작업자', '판정사유'],
+      ...filteredResults.map((r) => [r.status, r.channel, r.sub, r.activationNumber, r.name, r.field, r.base, r.lg, r.worker, r.reason]),
     ];
     const csv =
       '﻿' + data.map((row) => row.map((v) => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
@@ -678,16 +747,21 @@ export function LgActivationAudit() {
                 </div>
                 <div className="overflow-auto border rounded-md max-h-[620px]">
                   <table className="w-full text-sm min-w-[900px]">
+                    {/* MCC_ACTIVATION_AUDIT_KT_LG_RESULT_COLUMNS_ALIGNMENT_1: 판정사유는 화면에서
+                        제거(내부 reason/CSV는 유지), 문제항목은 가장 오른쪽으로 이동, 개통번호/
+                        작업자 컬럼 추가(DISPLAY ONLY). 기존 판정 로직/매칭은 무변경. */}
                     <thead className="bg-muted sticky top-0 z-10">
                       <tr>
                         <th className="p-2 text-left font-medium">상태</th>
+                        <th className="p-2 text-left font-medium">유형</th>
                         <th className="p-2 text-left font-medium">채널</th>
                         <th className="p-2 text-left font-medium">가입번호</th>
+                        <th className="p-2 text-left font-medium">개통번호</th>
                         <th className="p-2 text-left font-medium">고객명</th>
-                        <th className="p-2 text-left font-medium">문제항목</th>
                         <th className="p-2 text-left font-medium">스프레드시트</th>
                         <th className="p-2 text-left font-medium">LG 파일</th>
-                        <th className="p-2 text-left font-medium">판정 사유</th>
+                        <th className="p-2 text-left font-medium">작업자</th>
+                        <th className="p-2 text-left font-medium">문제항목</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -696,13 +770,15 @@ export function LgActivationAudit() {
                           <td className="p-2">
                             <StatusBadge kind={r.kind}>{r.status}</StatusBadge>
                           </td>
+                          <td className="p-2 text-xs text-muted-foreground">{r.typeDisplay}</td>
                           <td className="p-2">{r.channel}</td>
                           <td className="p-2">{r.sub}</td>
+                          <td className="p-2 whitespace-nowrap">{r.activationNumber}</td>
                           <td className="p-2">{r.name}</td>
-                          <td className="p-2">{r.field}</td>
                           <td className="p-2">{r.base || '-'}</td>
                           <td className="p-2">{r.lg || '-'}</td>
-                          <td className="p-2">{r.reason}</td>
+                          <td className="p-2 font-semibold whitespace-nowrap">{r.worker}</td>
+                          <td className="p-2">{r.field}</td>
                         </tr>
                       ))}
                     </tbody>
