@@ -6667,13 +6667,28 @@ router.get('/api/admin/settlement/export', requireAdmin, async (req: any, res) =
 // inclusive)를 activation_records.activation_datetime 범위로 변환한다. to는 다음날 00:00
 // 미만(<)으로 변환해서 시간대 때문에 그날 데이터가 누락되는 일이 없게 한다(§4 요구사항).
 // export의 lte(...) 방식과 다르지만, export 자체는 이번 작업에서 건드리지 않는다.
+//
+// [MCC_SETTLEMENT_KST_UTC_MONTH_BOUNDARY_FIX_1] activation_datetime은 timezone-naive
+// timestamp 컬럼인데, 실제로 저장되는 값은 "KST 로컬 시각을 UTC 벽시계 숫자로 그대로
+// 옮겨적은" 값이다(개통일 파싱이 서버 로컬시각(KST)으로 Date를 만들고, Drizzle/pg가 그 Date를
+// toISOString()(UTC)로 직렬화해 naive 컬럼에 넣기 때문 — 운영 DB 실측: "2026-10-01" 개통일이
+// activation_datetime='2026-09-30 15:00:00'으로 저장됨, 정확히 KST 자정의 UTC 숫자다).
+// 과거에는 이 경계를 'T00:00:00.000Z'(UTC 고정)로 만들어서 각 달 1일 00:00~08:59 KST
+// 데이터가 전달 말일로 새서 조회에서 빠졌다(운영 실측 재현: 2026-10월 335건 전부 누락).
+// 따라서 여기서도 저장값과 동일한 경로(= KST 로컬시각으로 Date를 만들고 그 Date가
+// toISOString()될 때 naive 컬럼의 실제 저장값과 동일한 숫자가 나오도록)로 경계를 만든다 —
+// 'Z' 대신 '+09:00'을 써서 "그 날짜의 KST 자정"에 해당하는 instant를 구한다.
+// (운영 DB 재검증: 전체 8,863건을 이 방식으로 월별 재집계하면 합계가 정확히 일치하고,
+// 기존에 각각 다른 달로 새어 들어가 있던 36건(7월→8월)/344건(8월→9월)/335건(9월→10월)이
+// 전부 올바른 KST 월로 재분류된다. 재분류 대상 중 '정산완료'/locked 상태는 0건 — 이미 확정된
+// 정산 데이터에는 영향 없음.)
 function parseInclusiveDateRangeParam(fromStr: unknown, toStr: unknown): { from?: Date; toExclusive?: Date } {
   const result: { from?: Date; toExclusive?: Date } = {};
   if (typeof fromStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fromStr)) {
-    result.from = new Date(`${fromStr}T00:00:00.000Z`);
+    result.from = new Date(`${fromStr}T00:00:00.000+09:00`);
   }
   if (typeof toStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(toStr)) {
-    const d = new Date(`${toStr}T00:00:00.000Z`);
+    const d = new Date(`${toStr}T00:00:00.000+09:00`);
     d.setUTCDate(d.getUTCDate() + 1);
     result.toExclusive = d;
   }
