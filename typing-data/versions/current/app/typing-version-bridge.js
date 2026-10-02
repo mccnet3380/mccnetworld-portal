@@ -292,21 +292,55 @@
     });
   }
 
+  // ───────────────────────────────────────────────────────────
+  // 4) MCC_TYPING_DESIGN_UI_NON_INTRUSIVE_DOCUMENT_LAYOUT_FIX_1
+  //    관리용 UI(배너/저장 토스트/이미지 패널)가 신청서 DOCUMENT의 document flow에
+  //    끼어들어 top/height를 바꾸는 일이 없도록, 전부 position:fixed(또는 이미
+  //    fixed인 토스트/사이드바 안에 있는 이미지패널)로 두고 @media print에서는
+  //    예외 없이 display:none으로 제거한다. 신청서 본문(.wrap/.paper/.stage 등)
+  //    자체의 CSS/HTML은 이 스크립트가 전혀 건드리지 않는다.
+  // ───────────────────────────────────────────────────────────
+  function ensureAdminPrintStyle() {
+    if (document.getElementById('__typingAdminPrintStyle')) return;
+    var style = document.createElement('style');
+    style.id = '__typingAdminPrintStyle';
+    style.textContent =
+      '@media print {' +
+      '#__typingVersionBanner,#__typingVersionStatus,#__typingImagePanel{display:none !important;}' +
+      '}';
+    document.head.appendChild(style);
+  }
+
   function init() {
+    ensureAdminPrintStyle();
     hideWriteControlsOnCurrent();
     if (isDesignMode && ctx.version !== 'current') {
       buildImagePanel();
     }
-    if (ctx.version === 'previous') {
+    // 이 안내 배너는 "PREVIOUS를 수정 중"이라는 편집 경고이므로 design 모드에서만
+    // 보여준다(기존에는 mode 무관하게 떴다 — 실제화면/fill 모드는 원본 신청서
+    // 레이아웃과 100% 동일해야 하므로 관리 UI를 띄우지 않는다, 섹션5 요구사항).
+    if (isDesignMode && ctx.version === 'previous') {
       var banner = document.createElement('div');
+      banner.id = '__typingVersionBanner';
+      // document flow에 영향을 주지 않도록 fixed 오버레이로 띄운다(기존 버그: position
+      // 미지정 상태로 body.firstChild에 insertBefore되어 .wrap 전체가 그만큼 아래로
+      // 밀렸었다 — 신청서 자체의 margin/padding/transform은 건드리지 않고 배너만
+      // document flow 밖으로 분리). 상단 .hd 툴바를 가리지 않게 좌상단 작은 배지로 배치.
+      banner.style.position = 'fixed';
+      banner.style.top = '12px';
+      banner.style.left = '12px';
+      banner.style.zIndex = '99998';
+      banner.style.maxWidth = '280px';
       banner.style.background = '#fef3c7';
       banner.style.color = '#92400e';
       banner.style.padding = '8px 12px';
+      banner.style.borderRadius = '8px';
       banner.style.fontSize = '12px';
       banner.style.fontWeight = '600';
-      banner.style.textAlign = 'center';
+      banner.style.boxShadow = '0 4px 14px rgba(0,0,0,.2)';
       banner.textContent = '이전 버전(PREVIOUS)을 직접 수정합니다. 현재 운영 버전에는 영향을 주지 않습니다.';
-      document.body.insertBefore(banner, document.body.firstChild);
+      document.body.appendChild(banner);
     }
   }
 
