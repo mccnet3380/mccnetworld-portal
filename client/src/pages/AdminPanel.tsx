@@ -11872,8 +11872,8 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   {[
                     { label: '정책번호 *', key: 'policyNo', ph: 'POL-2025-001' },
                     { label: '정책명 *', key: 'policyName', ph: '2025년 1차 정책' },
-                    { label: '적용 시작일시 *', key: 'effectiveFrom', type: 'datetime-local' },
-                    { label: '적용 종료일시', key: 'effectiveTo', type: 'datetime-local' },
+                    { label: '적용 시작일 *', key: 'effectiveFrom', type: 'date' },
+                    { label: '적용 종료일', key: 'effectiveTo', type: 'date' },
                   ].map(f => (
                     <div key={f.key} className="space-y-1">
                       <Label className="text-sm">{f.label}</Label>
@@ -11896,7 +11896,9 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                         if (!pvForm.policyNo || !pvForm.policyName || !pvForm.effectiveFrom) {
                           toast({ title: '오류', description: '정책번호·정책명·적용시작일은 필수입니다.', variant: 'destructive' }); return;
                         }
-                        pvCreateMutation.mutate({ ...pvForm, effectiveTo: pvForm.effectiveTo || null });
+                        let _eto: string | null = null;
+                        if (pvForm.effectiveTo) { const _d = new Date(pvForm.effectiveTo + 'T00:00:00.000Z'); _d.setUTCDate(_d.getUTCDate() + 1); _eto = _d.toISOString().slice(0,10); }
+                        pvCreateMutation.mutate({ ...pvForm, effectiveTo: _eto });
                       }}
                     >
                       {pvCreateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}생성
@@ -11917,8 +11919,8 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   {[
                     { label: '정책번호', key: 'policyNo' },
                     { label: '정책명', key: 'policyName' },
-                    { label: '적용 시작일시', key: 'effectiveFrom', type: 'datetime-local' },
-                    { label: '적용 종료일시', key: 'effectiveTo', type: 'datetime-local' },
+                    { label: '적용 시작일', key: 'effectiveFrom', type: 'date' },
+                    { label: '적용 종료일', key: 'effectiveTo', type: 'date' },
                   ].map(f => (
                     <div key={f.key} className="space-y-1">
                       <Label className="text-sm">{f.label}</Label>
@@ -11937,7 +11939,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                     <Button variant="outline" onClick={() => setPvEditOpen(false)}>취소</Button>
                     <Button
                       disabled={pvUpdateMutation.isPending}
-                      onClick={() => pvUpdateMutation.mutate({ id: pvEditTarget.id, data: { ...pvForm, effectiveTo: pvForm.effectiveTo || null } })}
+                      onClick={() => { let _eto: string | null = null; if (pvForm.effectiveTo) { const _d = new Date(pvForm.effectiveTo + 'T00:00:00.000Z'); _d.setUTCDate(_d.getUTCDate() + 1); _eto = _d.toISOString().slice(0,10); } pvUpdateMutation.mutate({ id: pvEditTarget.id, data: { ...pvForm, effectiveTo: _eto } }); }}
                     >
                       {pvUpdateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}수정
                     </Button>
