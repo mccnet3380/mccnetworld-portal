@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { useAuth } from '@/lib/auth';
+import { useAuth, useApiRequest } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import {
   FileText,
@@ -39,6 +39,13 @@ const navigation = [
   // 작업자 기준 본인 실적만 표시. sales_manager는 이 기능 대상이 아니라 아래
   // isSalesManager 필터에서 제외한다(요구사항). dealer는 dealerAllowedMenus로 제외.
   { name: '개인 실적', href: '/performance/me', icon: TrendingUp },
+  // [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] 아래 7개는
+  // 과거 MCC_SIDEBAR_UNUSED_MENU_HIDE_1에서 정적 hidden:true로 숨겼던 항목이다.
+  // "사이드바 메뉴 관리"(DB 기반 visibility)가 생긴 이후로는 그 정적 플래그를
+  // 완전히 대체한다 — 더 이상 hidden 속성을 두지 않고, 아래 role 필터링도
+  // hidden을 더 이상 참조하지 않는다. 표시/숨김은 전부 sidebar_menu_visibility
+  // 테이블(관리자 패널 "사이드바 메뉴 관리")로만 제어한다. 페이지/App.tsx
+  // 라우트/서버 API/권한/컴포넌트는 전혀 삭제하지 않았다.
   { name: '접수 관리', href: '/documents', icon: FileText },
   { name: '업무 진행', href: '/work-requests', icon: Clock },
   { name: '개통 완료', href: '/completed', icon: CheckCircle },
@@ -88,12 +95,47 @@ const navigation = [
 
 const adminNavigation = [
   { name: '관리자', href: '/admin-panel', icon: Settings },
+  // [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] 과거 정적
+  // hidden:true 대신 "사이드바 메뉴 관리"(DB) 설정으로 표시 여부를 제어한다.
+  // /sales-team-management 라우트/권한/컴포넌트는 그대로 유지.
   { name: '영업 조직', href: '/sales-team-management', icon: Users },
 ];
 
 // MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1: 실적관리(전체 근무자 실적)는
 // 관리자만 볼 수 있다 — 일반 navigation에는 넣지 않고 isAdmin일 때만 앞에 붙인다.
 const performanceManagementNavItem = { name: '실적관리', href: '/performance', icon: BarChart3 };
+
+// [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 메뉴 이름(화면 표시 문자열) → 안정적인
+// 내부 menuKey 매핑. menuKey는 server/routes.ts의 SIDEBAR_MENU_KEYS와 1:1 대응한다.
+// 이 맵은 "표시 여부"만 조회하는 데 쓰이며, 기존 role 기반 필터링(canViewMenu에 해당하는
+// 위 baseNavigation/currentNavigation 로직)은 전혀 건드리지 않는다 — 그 결과 위에
+// AND 조건으로 한 번 더 좁히는 용도.
+const SIDEBAR_MENU_KEY_BY_NAME: Record<string, string> = {
+  '실적관리': 'performance',
+  '개인 실적': 'personal_performance',
+  '접수 관리': 'reception',
+  '업무 진행': 'work_progress',
+  '개통 완료': 'activation_complete',
+  '기타 완료': 'other_complete',
+  '개통 취소': 'activation_cancel',
+  '폐기': 'discard',
+  '서식지': 'forms',
+  '전사 공지용 당일실적': 'company_daily_performance',
+  '마감보고 · 공지텍스트': 'closing_report',
+  'LG 검수': 'lg_audit',
+  'KT 검수': 'kt_audit',
+  '교육자료': 'education',
+  '타이핑': 'typing',
+  '개통현황 조회': 'activation_lookup',
+  '관리자': 'admin',
+  '영업 조직': 'sales_organization',
+};
+
+interface SidebarMenuVisibilitySetting {
+  menuKey: string;
+  adminVisible: boolean;
+  workerVisible: boolean;
+}
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -103,7 +145,20 @@ interface SidebarProps {
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const [location] = useLocation();
   const { user } = useAuth();
-  
+  const apiRequest = useApiRequest();
+
+  // [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 관리자 패널에서 저장한 "사이드바 메뉴
+  // 표시/숨김" 설정. 기존 권한(ROLE) 체크(아래 baseNavigation/currentNavigation)는 전혀
+  // 바꾸지 않는다 — 이 데이터는 그 결과를 한 번 더 좁히는 용도로만 쓴다.
+  // FAIL-SAFE: 조회 실패/로딩 중(data===undefined)이면 필터링 자체를 하지 않는다 —
+  // DB/API 장애 때문에 사이드바 메뉴가 전부 사라지는 사고를 막기 위함(§6 요구사항).
+  const { data: sidebarVisibilityData } = useQuery<{ settings: SidebarMenuVisibilitySetting[] }>({
+    queryKey: ['/api/sidebar-menu-settings'],
+    queryFn: () => apiRequest('/api/sidebar-menu-settings'),
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
 
   const isAdmin = user?.userType === 'admin';
   const isSalesManager = user?.userType === 'sales_manager';
@@ -116,7 +171,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   // 딜러용 메뉴 (접수 관리, 업무 진행, 서식지만)
   const dealerAllowedMenus = ['접수 관리', '업무 진행', '서식지'];
 
-  // 메뉴 필터링
+  // 메뉴 필터링 — role(권한) 기준. hidden:true 정적 플래그는 더 이상 사용하지 않음
+  // (§ 위 설명 — "사이드바 메뉴 관리" DB 설정으로 완전히 대체됨).
   let baseNavigation = navigation;
   if (isAdmin) {
     // 관리자는 모든 메뉴 접근 가능
@@ -134,7 +190,9 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     // 근무자는 전체 메뉴 접근 가능
     baseNavigation = navigation;
   } else if (isDealer) {
-    // 판매점(딜러)은 제한된 메뉴만 접근
+    // 판매점(딜러)은 제한된 메뉴만 접근. 이 allowlist는 "사이드바 메뉴 관리"(DB
+    // visibility)와 완전히 독립 — 아래 visibleNavigation 계산에서도 isDealer는
+    // DB 필터를 적용하지 않고 그대로 통과시킨다(딜러의 실사용 기능 보호).
     baseNavigation = navigation.filter(item => dealerAllowedMenus.includes(item.name));
   } else if (isMiddleManager) {
     // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] 중간관리자: 일반 근무 메뉴 +
@@ -146,11 +204,37 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     // 개통현황 조회 메뉴 노출 안 함(서버도 동일하게 차단 — sheet-viewer.ts 참고).
     baseNavigation = navigation.filter(item => item.name !== '개통현황 조회');
   }
-  
+
   // 관리자만 관리자 패널 접근 가능. 실적관리(전체 근무자 실적)도 관리자만 — 맨 앞에 붙인다.
   const currentNavigation = isAdmin
     ? [performanceManagementNavItem, ...baseNavigation, ...adminNavigation]
     : baseNavigation;
+
+  // [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 위에서 계산된 기존 권한 기반
+  // currentNavigation(canViewMenu에 해당) 위에 "표시 설정"을 AND 조건으로 추가한다.
+  // 핵심 원칙: SIDEBAR_VISIBILITY ≠ PERMISSION — 이 필터는 currentNavigation에 이미
+  // 포함된 항목만 추가로 숨길 수 있고, 여기 없던 항목을 새로 보이게 할 수는 없다.
+  // isAdmin에는 admin_visible, 그 외 모든 role(sales_manager/worker/
+  // middle_manager)에는 worker_visible을 적용한다 — "작업자" 표시설정 그룹이 관리자
+  // 전용 메뉴 권한을 임의로 만들어내지 않는다는 점은 위 role 필터가 이미 보장한다.
+  // [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] isDealer는 이
+  // DB visibility 필터에서 완전히 제외한다 — 딜러는 접수관리/업무진행/서식지 3개를
+  // dealerAllowedMenus로 이미 고정 노출 중이며, 이 3개는 "작업자" 표시설정(내부
+  // 근무자 기준, 기본값 OFF)과 의미가 다르다. 같은 worker_visible 컬럼을 그대로
+  // 적용하면 관리자가 내부 근무자 기준으로 OFF를 유지해도 딜러의 유일한 메뉴가
+  // 사라지는 회귀가 생기므로, 과거 hidden:true 때와 동일하게 딜러는 예외로 둔다.
+  const visibilitySettings = sidebarVisibilityData?.settings;
+  const visibleNavigation = isDealer
+    ? currentNavigation
+    : visibilitySettings
+    ? currentNavigation.filter(item => {
+        const menuKey = SIDEBAR_MENU_KEY_BY_NAME[item.name];
+        if (!menuKey) return true; // 매핑되지 않은 항목은 영향받지 않음(안전한 기본값)
+        const setting = visibilitySettings.find(s => s.menuKey === menuKey);
+        if (!setting) return true; // 설정 없음 = 기본 표시
+        return isAdmin ? setting.adminVisible : setting.workerVisible;
+      })
+    : currentNavigation; // FAIL-SAFE: 설정 로딩/실패 시 기존 동작 그대로
 
   return (
     <>
@@ -199,7 +283,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
           {/* Navigation */}
           <nav className="flex-1 px-3 pb-4 space-y-1 overflow-y-auto overflow-x-hidden sidebar-scroll">
-            {currentNavigation.map((item) => {
+            {visibleNavigation.map((item) => {
               const isActive = location === item.href;
               
               return (

@@ -6847,4 +6847,108 @@ router.delete('/api/admin/settlement-results/items', requireAdmin, async (req: a
   }
 });
 
+// ============================================================
+// [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1]
+// 사이드바 메뉴 "표시/숨김" 설정 API. 기존 ROLE/권한 체크를 절대 대체하지 않는다 —
+// 이 값은 클라이언트 Sidebar.tsx에서 기존 권한 필터 결과에 AND 조건으로만 추가된다.
+// GET은 로그인한 사용자 전원이 "자기 사이드바 렌더링용" 설정을 읽을 수 있어야 하므로
+// requireAuth만 적용한다(관리자 전용 아님). PUT은 requireAdmin으로 기존 관리자
+// 권한 체크를 그대로 재사용한다 — 새로운 인증 체계를 만들지 않음.
+// ============================================================
+
+// Sidebar.tsx의 실제 메뉴와 1:1로 매핑되는 고정 key 목록(§1 조사 결과). 화면 표시
+// 문자열이 아니라 안정적인 내부 식별자를 PK로 사용한다(menuKey는 변경하지 않는다).
+const SIDEBAR_MENU_KEYS = [
+  'performance',
+  'personal_performance',
+  'reception',
+  'work_progress',
+  'activation_complete',
+  'other_complete',
+  'activation_cancel',
+  'discard',
+  'forms',
+  'company_daily_performance',
+  'closing_report',
+  'lg_audit',
+  'kt_audit',
+  'education',
+  'typing',
+  'activation_lookup',
+  'admin',
+  'sales_organization',
+] as const;
+type SidebarMenuKey = typeof SIDEBAR_MENU_KEYS[number];
+
+// [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] "사이드바 메뉴
+// 관리" 탭/변경 권한은 "관리자이면 누구나"가 아니라 특정 계정(owner) 전용이어야
+// 한다는 요구에 따라 추가. 실제 로그인 세션 로그(server-side, DEV)와 admins 테이블을
+// 직접 조회해 확인한 결과 — DEV DB에 admin 계정은 정확히 1개(id=1, username='Kksnan',
+// name='Super Admin')뿐이고, 실제 테스트 세션도 전부 user_id=1로 기록되어 있었다.
+// display name("Super Admin") 문자열이 아니라 admins.id(불변 PK, 우선순위 1)를
+// 기준으로 식별한다 — 계정명이 바뀌어도 이 값은 유지된다.
+const SIDEBAR_MENU_SETTINGS_OWNER_ADMIN_ID = 1;
+
+function isSidebarMenuSettingsOwner(req: any): boolean {
+  return req.session?.userType === 'admin' && req.session?.userId === SIDEBAR_MENU_SETTINGS_OWNER_ADMIN_ID;
+}
+
+router.get('/api/sidebar-menu-settings', requireAuth, async (req: any, res) => {
+  // Sidebar 렌더링용 조회는 로그인한 사용자 전원에게 필요하므로 requireAuth만 적용
+  // (관리 탭 접근 여부와는 별개). canManage만 owner 전용으로 계산해 함께 내려준다 —
+  // AdminPanel이 이 값으로 "사이드바 메뉴 관리" 탭 자체를 보여줄지 결정한다.
+  const canManage = isSidebarMenuSettingsOwner(req);
+  try {
+    const rows = await getStorage().getSidebarMenuVisibility();
+    const byKey = new Map(rows.map(r => [r.menuKey, r]));
+    // DB에 행이 없는 menuKey는 "설정 없음" = 기본 표시(true/true)로 취급한다 —
+    // 설정을 아직 저장하지 않은 메뉴가 갑자기 사라지는 일이 없도록 하는 fail-safe.
+    const settings = SIDEBAR_MENU_KEYS.map(menuKey => {
+      const row = byKey.get(menuKey);
+      return {
+        menuKey,
+        adminVisible: row ? row.adminVisible : true,
+        workerVisible: row ? row.workerVisible : true,
+      };
+    });
+    res.json({ success: true, settings, canManage });
+  } catch (error: any) {
+    console.error('[SIDEBAR_MENU_SETTINGS] GET 실패 — 클라이언트는 fallback(전체 표시)로 처리:', error);
+    // 장애 시에도 500을 내려 클라이언트가 당황하지 않도록, "전체 표시" 기본값을 success로 응답한다.
+    const settings = SIDEBAR_MENU_KEYS.map(menuKey => ({ menuKey, adminVisible: true, workerVisible: true }));
+    res.json({ success: true, settings, degraded: true, canManage });
+  }
+});
+
+router.put('/api/admin/sidebar-menu-settings', requireAdmin, async (req: any, res) => {
+  // requireAdmin은 "관리자인지"만 확인한다 — 이 설정은 그보다 더 좁은 owner 전용
+  // 기능이므로 추가로 owner 여부를 검증한다. 다른 admin 계정이 직접 API를 호출해도
+  // 여기서 403으로 막힌다(관리자 권한 메시지와 구분되는 별도 메시지).
+  if (!isSidebarMenuSettingsOwner(req)) {
+    return res.status(403).json({ error: '이 설정을 변경할 권한이 없습니다.' });
+  }
+  try {
+    const { settings } = req.body;
+    if (!Array.isArray(settings)) {
+      return res.status(400).json({ error: 'settings 배열이 필요합니다.' });
+    }
+
+    const results = [];
+    for (const item of settings) {
+      const menuKey = item?.menuKey;
+      if (typeof menuKey !== 'string' || !SIDEBAR_MENU_KEYS.includes(menuKey as SidebarMenuKey)) {
+        return res.status(400).json({ error: `알 수 없는 menuKey: ${menuKey}` });
+      }
+      const adminVisible = Boolean(item.adminVisible);
+      const workerVisible = Boolean(item.workerVisible);
+      results.push(await getStorage().upsertSidebarMenuVisibility(menuKey, adminVisible, workerVisible));
+    }
+
+    res.json({ success: true, settings: results });
+  } catch (error: any) {
+    console.error('[SIDEBAR_MENU_SETTINGS] PUT 실패:', error);
+    res.status(500).json({ error: error.message || '사이드바 메뉴 설정 저장 중 오류가 발생했습니다.' });
+  }
+});
+
 export default router;

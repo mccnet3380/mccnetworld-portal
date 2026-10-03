@@ -1337,3 +1337,20 @@ export type TrainingArticle = typeof trainingArticles.$inferSelect;
 export type InsertTrainingArticle = typeof trainingArticles.$inferInsert;
 export type TrainingAttachment = typeof trainingAttachments.$inferSelect;
 export type InsertTrainingAttachment = typeof trainingAttachments.$inferInsert;
+
+//===============================================
+// MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1
+// 사이드바 메뉴 "표시/숨김" 설정만 저장한다 — 기존 권한(ROLE) 체크와는 별개이며,
+// 이 테이블의 값은 Sidebar 렌더링에서 기존 권한 결과에 AND 조건으로만 추가된다
+// (권한을 부여하거나 완화하지 않음). menuKey는 화면 표시 문자열이 아니라 변경되지
+// 않는 내부 식별자를 사용한다(Sidebar.tsx 메뉴 이름이 바뀌어도 설정은 유지됨).
+//===============================================
+export const sidebarMenuVisibility = pgTable("sidebar_menu_visibility", {
+  menuKey: varchar("menu_key", { length: 50 }).primaryKey(),
+  adminVisible: boolean("admin_visible").notNull().default(true),
+  workerVisible: boolean("worker_visible").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type SidebarMenuVisibility = typeof sidebarMenuVisibility.$inferSelect;
+export type InsertSidebarMenuVisibility = typeof sidebarMenuVisibility.$inferInsert;

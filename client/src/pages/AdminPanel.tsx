@@ -25,6 +25,7 @@ import { createUserSchema, createWorkerSchema, updateDocumentStatusSchema, creat
 import type { User, Document, ServicePlan, Carrier, AdditionalService, SettlementUnitPrice, Dealer } from '../../../shared/sqlite-schema';
 import { apiRequest } from '@/lib/queryClient';
 import { McodeMasterUploadPanel } from '@/components/admin/mcode/McodeMasterUploadPanel';
+import { SidebarMenuVisibilityPanel } from '@/components/admin/sidebar/SidebarMenuVisibilityPanel';
 import { GoogleSheetsImportModal } from '@/components/admin/settlement/GoogleSheetsImportModal';
 import { 
   Building2, 
@@ -2656,7 +2657,18 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const apiRequest = useApiRequest();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  
+
+  // [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] "사이드바 메뉴
+  // 관리" 탭은 owner 전용 — 서버(GET /api/sidebar-menu-settings)가 내려주는
+  // canManage(owner 여부, admins.id 기준)로만 탭 트리거/컨텐츠 노출을 결정한다.
+  // 이 쿼리는 Sidebar.tsx와 동일 queryKey를 쓰므로 별도 요청을 늘리지 않고
+  // react-query 캐시를 공유한다.
+  const { data: sidebarMenuSettingsData } = useQuery<{ settings: any[]; canManage?: boolean }>({
+    queryKey: ['/api/sidebar-menu-settings'],
+    queryFn: () => apiRequest('/api/sidebar-menu-settings'),
+  });
+  const canManageSidebarMenus = sidebarMenuSettingsData?.canManage === true;
+
   // URL에서 탭 결정
   const currentPath = window.location.pathname;
   const actualDefaultTab = currentPath === '/admin/other-business-carriers' ? 'other-business-carriers' : (defaultTab || 'contact-codes');
@@ -6208,7 +6220,12 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
 
         {/* Admin Tabs */}
         <Tabs defaultValue={actualDefaultTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-12">
+          {/* [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] grid-cols-12 +
+              고정 h-10은 탭이 12개를 넘으면(현재 13~14개) 두 번째 줄이 아래 TabsContent
+              박스와 겹쳤다. flex-wrap + h-auto로 바꿔 줄이 늘어나는 만큼 컨테이너 높이가
+              자동으로 커지게 한다(아래 TabsContent는 Tabs 루트의 space-y-6로 항상 적절한
+              여백을 받으므로 추가 처리 불필요). 탭 목록/순서/동작은 전혀 바꾸지 않았다. */}
+          <TabsList className="flex h-auto w-full flex-wrap items-center justify-start gap-1.5 rounded-md bg-muted p-1.5">
             <TabsTrigger value="contact-codes" className="flex items-center space-x-2">
               <Settings className="h-4 w-4" />
               <span>접점코드</span>
@@ -6265,6 +6282,14 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
               <FileText className="h-4 w-4" />
               <span>정산 정책</span>
             </TabsTrigger>
+            {/* [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] owner 전용 — canManageSidebarMenus
+                가 false면 이 탭 자체가 존재하지 않는다(다른 관리자는 탭 흔적도 못 봄). */}
+            {canManageSidebarMenus && (
+              <TabsTrigger value="sidebar-menu-visibility" className="flex items-center space-x-2">
+                <Settings className="h-4 w-4" />
+                <span>사이드바 메뉴 관리</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
 
@@ -12272,6 +12297,18 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
               </DialogContent>
             </Dialog>
           </TabsContent>
+
+          {/* [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 사이드바 메뉴 표시/숨김 관리.
+              이 탭은 "표시 여부"만 다룬다 — 기존 ROLE/권한 로직은 별도 컴포넌트로 분리된
+              SidebarMenuVisibilityPanel 안에서도 전혀 건드리지 않는다.
+              [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] 컨텐츠도
+              트리거와 동일하게 owner 전용 — 다른 admin이 URL/탭 조작으로 value만 맞춰도
+              이 블록 자체가 렌더링되지 않는다(서버 PUT도 별도로 403 처리, 이중 방어). */}
+          {canManageSidebarMenus && (
+            <TabsContent value="sidebar-menu-visibility">
+              <SidebarMenuVisibilityPanel />
+            </TabsContent>
+          )}
 
         </Tabs>
 

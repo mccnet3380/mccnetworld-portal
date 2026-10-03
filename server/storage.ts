@@ -28,6 +28,7 @@ import {
   adjustmentRules,
   hiddenPolicyRows,
   workerPerformanceTargets,
+  sidebarMenuVisibility,
 } from "../shared/schema";
 import { getDatabase, getSchemaInfo } from "./db";
 
@@ -425,6 +426,13 @@ export interface IStorage {
     debug?: any;
   }>;
   diagnoseHiddenAmount(contactCode: string, dateFrom?: string, dateTo?: string): Promise<any>;
+
+  // [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 사이드바 메뉴 "표시/숨김" 설정 저장소.
+  // 기존 권한(ROLE) 체크와 완전히 별개 — 이 값은 Sidebar 렌더링에서 AND 조건으로만
+  // 추가된다(권한 부여/완화 아님). 조회 실패 시 호출부(routes.ts)에서 "전체 표시"로
+  // fallback하므로, 여기서는 DB 그대로의 값만 반환한다.
+  getSidebarMenuVisibility(): Promise<{ menuKey: string; adminVisible: boolean; workerVisible: boolean }[]>;
+  upsertSidebarMenuVisibility(menuKey: string, adminVisible: boolean, workerVisible: boolean): Promise<{ menuKey: string; adminVisible: boolean; workerVisible: boolean }>;
 }
 
 // 정책 차수 하드 삭제가 접근하는 테이블 중, 운영 DB에 아직 반영되지 않았을 수 있는 optional table 목록
@@ -4437,6 +4445,36 @@ export class PostgreSQLStorage implements IStorage {
       }
 
       return diag;
+    });
+  }
+
+  // [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 사이드바 메뉴 표시/숨김 설정 —
+  // 기존 ROLE/권한 체크와 무관한 순수 UI 표시 제어 값만 저장한다. 행이 없는
+  // menuKey는 "설정 없음" = 기본값(표시) 취급은 호출부(routes.ts GET 핸들러)에서
+  // 처리하고, 여기서는 DB에 실제로 존재하는 행만 그대로 반환한다.
+  async getSidebarMenuVisibility(): Promise<{ menuKey: string; adminVisible: boolean; workerVisible: boolean }[]> {
+    return this.withDatabase(async (db) => {
+      const rows = await db.select().from(sidebarMenuVisibility);
+      return rows.map((r: any) => ({
+        menuKey: r.menuKey,
+        adminVisible: r.adminVisible,
+        workerVisible: r.workerVisible,
+      }));
+    });
+  }
+
+  async upsertSidebarMenuVisibility(menuKey: string, adminVisible: boolean, workerVisible: boolean): Promise<{ menuKey: string; adminVisible: boolean; workerVisible: boolean }> {
+    return this.withDatabase(async (db) => {
+      const result = await db
+        .insert(sidebarMenuVisibility)
+        .values({ menuKey, adminVisible, workerVisible, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: sidebarMenuVisibility.menuKey,
+          set: { adminVisible, workerVisible, updatedAt: new Date() },
+        })
+        .returning();
+      const r = result[0];
+      return { menuKey: r.menuKey, adminVisible: r.adminVisible, workerVisible: r.workerVisible };
     });
   }
 }
