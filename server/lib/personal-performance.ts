@@ -106,21 +106,36 @@ const sharedLedgerCache = new Map<string, SharedLedgerCacheEntry>();
 // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] export만 추가(동작 무변경) —
 // 개통현황 조회 자동검수 엔진(server/lib/activation-audit.ts)이 개통처리부/■당일완료를
 // 읽을 때 이 프로세스 공유 캐시를 그대로 재사용한다. 새 캐시 구조를 중복으로 만들지 않는다.
-export async function fetchLedgerCached(date: Date, cache: LedgerCache, sheetName: string = LEDGER_SHEET): Promise<LedgerCacheEntry> {
+//
+// [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] PHASE 2 —
+// 4번째 인자 opts.forceRefresh를 추가했다(선택 인자, 기존 3개 인자 호출은 전부 동작
+// 무변경). "매미 새로고침"이 실제로 Google을 다시 읍도록 만들려면 이 함수의 local/
+// shared 캐시를 둘 다 건너뛰어야 한다 — forceRefresh일 때만 두 캐시 조회를 스킵하고
+// fetchSheetValuesById()에도 forceRefresh를 그대로 전달한다(PHASE 1에서 추가된 그
+// 레이어의 TTL 캐시까지 건너뛰어야 진짜 "최신"이 된다). 성공하면 두 캐시 모두
+// 최신값으로 갱신한다(다음 일반 조회도 이 최신값을 쓰게 됨).
+export async function fetchLedgerCached(
+  date: Date,
+  cache: LedgerCache,
+  sheetName: string = LEDGER_SHEET,
+  opts?: { forceRefresh?: boolean },
+): Promise<LedgerCacheEntry> {
   const resolved = await resolveActiveSpreadsheet(date);
   const key = `${resolved.id}::${sheetName}`;
 
-  const local = cache.get(key);
-  if (local) return local;
+  if (!opts?.forceRefresh) {
+    const local = cache.get(key);
+    if (local) return local;
 
-  const shared = sharedLedgerCache.get(key);
-  if (shared && shared.expiresAt > Date.now()) {
-    const entry: LedgerCacheEntry = { header: shared.header, rows: shared.rows };
-    cache.set(key, entry);
-    return entry;
+    const shared = sharedLedgerCache.get(key);
+    if (shared && shared.expiresAt > Date.now()) {
+      const entry: LedgerCacheEntry = { header: shared.header, rows: shared.rows };
+      cache.set(key, entry);
+      return entry;
+    }
   }
 
-  const values = await fetchSheetValuesById(resolved.id, sheetName);
+  const values = await fetchSheetValuesById(resolved.id, sheetName, undefined, { forceRefresh: opts?.forceRefresh });
   const header = values[0] || [];
   const rows = values.slice(1).filter((r) => r.some((c) => String(c ?? "").trim() !== ""));
   const entry: LedgerCacheEntry = { header, rows };

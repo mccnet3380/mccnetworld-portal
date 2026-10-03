@@ -20,8 +20,16 @@ import { Router } from "express";
 import * as XLSX from "xlsx";
 import { getStorage } from "../storage";
 import { createLedgerCache } from "../lib/personal-performance";
-import { computeActivationAudit, computeActivationAuditRange, type AuditedActivationRow, type AuditCode } from "../lib/activation-audit";
+import { computeActivationAudit, computeActivationAuditRange, AUDIT_SOURCE_SHEETS, type AuditedActivationRow, type AuditCode, type ActivationAuditOptions } from "../lib/activation-audit";
 import { invalidateMemiCache } from "../lib/memi-client";
+
+// [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] §10 — 상단
+// 자동검수 원본 선택 UI 전용 파라미터 파싱. 생략하면 undefined를 반환해 기존 날짜 기준
+// 자동 선택 동작을 그대로 유지한다(§7/§11 — "기존 정상 결과가 이유 없이 변하면 안 된다").
+function parseSourceOverride(v: unknown): ActivationAuditOptions["sourceOverride"] | undefined {
+  if (v === AUDIT_SOURCE_SHEETS.today || v === AUDIT_SOURCE_SHEETS.historical) return v;
+  return undefined;
+}
 
 const router = Router();
 
@@ -121,10 +129,11 @@ async function requireOwnActivationAuditAccess(req: any, res: any, next: any) {
 router.get("/api/activation-audit/summary", requireActivationAuditAccess, async (req, res) => {
   const range = resolveDateRange(req.query);
   if ("error" in range) return res.status(400).json({ error: range.error });
+  const sourceOverride = parseSourceOverride(req.query.source);
 
   try {
     const cache = createLedgerCache();
-    const result = await computeActivationAuditRange(range.start, range.end, cache);
+    const result = await computeActivationAuditRange(range.start, range.end, cache, { sourceOverride });
     res.set("Cache-Control", "no-store");
     res.json(result);
   } catch (err: any) {
@@ -186,6 +195,7 @@ function buildExportFilename(startYmd: string, endYmd: string, status: StatusFil
 router.get("/api/activation-audit/export", requireActivationAuditAccess, async (req, res) => {
   const range = resolveDateRange(req.query);
   if ("error" in range) return res.status(400).json({ error: range.error });
+  const sourceOverride = parseSourceOverride(req.query.source);
 
   const statusParam = (typeof req.query.status === "string" ? req.query.status : "all") as StatusFilterParam;
   if (!["all", "problem", "pass", "unavailable"].includes(statusParam)) {
@@ -196,7 +206,7 @@ router.get("/api/activation-audit/export", requireActivationAuditAccess, async (
 
   try {
     const cache = createLedgerCache();
-    const result = await computeActivationAuditRange(range.start, range.end, cache);
+    const result = await computeActivationAuditRange(range.start, range.end, cache, { sourceOverride });
     const filtered = applyAuditFilters(result.rows, { status: statusParam, code: codeParam, worker: workerParam });
 
     // §23 — 0건이면 빈 XLSX를 내려보내지 않는다.
@@ -297,16 +307,24 @@ router.get("/api/activation-audit/me", requireOwnActivationAuditAccess, async (r
  * 기능(§14) — 기본 업무 흐름은 자동(요청 시 cache 없으면 자동 fetch)이며, 이 엔드포인트는
  * cache가 stale하다고 판단될 때 강제로 다시 받아오는 보조 수단일 뿐이다. /summary와 동일한
  * 권한(admin/내부 middle_manager)만 허용 — 일반 WORKER는 호출할 수 없다.
+ *
+ * [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] PHASE 2 —
+ * 기존에는 이 버튼이 매미(단말 대사) 캐시만 무효화하고 Google Sheets 원본은 여전히 캐시된
+ * 값을 그대로 썼다(실측 확인 — 사용자가 Google Sheet에서 가입번호를 지워도 반영되지
+ * 않던 원인). 이제 body.source(현재 화면에서 선택된 자동검수 원본, 생략 시 기존과 동일한
+ * 날짜 기준 자동 선택)에 해당하는 "그 시트 하나만" forceRefresh로 강제로 다시 읍는다 —
+ * 전체 Spreadsheet나 다른 시트는 건드리지 않는다(§12 — 불필요한 재조회 금지).
  */
 router.post("/api/activation-audit/memi-refresh", requireActivationAuditAccess, async (req, res) => {
   const date = req.body?.date === undefined ? new Date() : parseDateParam(req.body.date);
   if (!date) return res.status(400).json({ error: "date는 YYYY-MM-DD 형식이어야 합니다." });
   const dateYmd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const sourceOverride = parseSourceOverride(req.body?.source);
   invalidateMemiCache(dateYmd);
   try {
     const cache = createLedgerCache();
-    const result = await computeActivationAudit(date, cache);
-    res.json({ memiSync: result.memiSync });
+    const result = await computeActivationAudit(date, cache, { sourceOverride, forceRefresh: true });
+    res.json({ memiSync: result.memiSync, sourceSheet: result.sourceSheet, total: result.total, summary: result.summary });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? String(err) });
   }

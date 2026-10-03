@@ -84,7 +84,25 @@ interface ActivationAuditResult {
   byCode: Partial<Record<AuditCode, number>>;
   rows: AuditedActivationRow[];
   memiSync: MemiSyncStatus;
+  // [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1]
+  // 시트별 캐시 신선도(§4) — 429로 최근 캐시를 대신 보여주고 있는지 화면에서 구분할 때 사용.
+  sourceFreshness?: Record<string, { stale: boolean; fetchedAt: string | null }>;
 }
+
+// [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] §10 —
+// 상단 "개통 후 자동검수" 원본 선택. 하단 "시트 선택"(selected/sheets state)과는 완전히
+// 독립적인 별도 state다(역할이 다르므로 억지로 같은 state로 묶지 않는다, §10 지시).
+// "auto"는 서버에 source 파라미터를 전혀 보내지 않는다 = 기존 날짜 기준 자동 선택
+// (오늘=■당일완료, 과거=개통처리부) 그대로. 기간이 과거로 바뀌어도 이유 없이 결과가
+// 달라지지 않도록 기본값은 반드시 "auto"여야 한다(§7/§11 — 명시적으로 고르기 전까지는
+// 기존 동작과 100% 동일해야 함).
+const AUDIT_SOURCE_OPTIONS = ["auto", "■당일완료", "개통처리부"] as const;
+type AuditSource = (typeof AUDIT_SOURCE_OPTIONS)[number];
+const AUDIT_SOURCE_LABEL: Record<AuditSource, string> = {
+  auto: "자동(날짜 기준)",
+  "■당일완료": "당일완료",
+  "개통처리부": "개통처리부",
+};
 
 const AUDIT_CODE_ORDER: AuditCode[] = [
   "ACTIVATION_PHONE_MISSING",
@@ -185,6 +203,11 @@ export function SheetViewer() {
   // 기본값 시작일=종료일=오늘이라 기존처럼 "오늘 하루만" 조회하는 사용 방식도 그대로 된다.
   const [auditStartDate, setAuditStartDate] = useState<string>(() => todayStr());
   const [auditEndDate, setAuditEndDate] = useState<string>(() => todayStr());
+  // [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] §10 —
+  // 기본값 "■당일완료"는 기존 동작(날짜 기준 자동 선택과 동일한 결과)을 그대로 유지한다.
+  // 사용자가 명시적으로 "개통처리부"를 고르기 전까지는 §7/§11에서 요구한 "기존 정상
+  // 결과가 이유 없이 변하면 안 된다" 원칙이 그대로 보장된다.
+  const [auditSource, setAuditSource] = useState<AuditSource>("auto");
   const [auditData, setAuditData] = useState<ActivationAuditResult | null>(null);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditError, setAuditError] = useState("");
@@ -197,11 +220,15 @@ export function SheetViewer() {
   // §2 — 시작일>종료일이면 API 요청을 아예 실행하지 않고 명확히 안내한다.
   const rangeInvalid = auditStartDate > auditEndDate;
 
-  async function loadAudit(startDate: string, endDate: string) {
+  async function loadAudit(startDate: string, endDate: string, source: AuditSource) {
     setAuditLoading(true);
     setAuditError("");
     try {
-      const res = await apiRequest(`/api/activation-audit/summary?startDate=${startDate}&endDate=${endDate}`);
+      // [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1]
+      // source==="auto"면 파라미터 자체를 보내지 않는다 — 서버 기본 동작(날짜 기준
+      // 자동 선택)과 완전히 동일하게 유지하기 위함(§7/§11).
+      const sourceParam = source === "auto" ? "" : `&source=${encodeURIComponent(source)}`;
+      const res = await apiRequest(`/api/activation-audit/summary?startDate=${startDate}&endDate=${endDate}${sourceParam}`);
       setAuditData(res);
     } catch (e: any) {
       setAuditData(null);
@@ -218,22 +245,26 @@ export function SheetViewer() {
       setAuditError("시작일이 종료일보다 늦을 수 없습니다.");
       return;
     }
-    loadAudit(auditStartDate, auditEndDate);
+    loadAudit(auditStartDate, auditEndDate, auditSource);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditStartDate, auditEndDate]);
+  }, [auditStartDate, auditEndDate, auditSource]);
 
   // [MCC_MEMI_REALTIME_DEVICE_RECONCILIATION_DEV_1] 보조 수동 새로고침(§14) — 기본 흐름은
   // 자동이므로 이 버튼은 캐시가 stale해 보일 때만 쓰는 보조 기능이다. 매미 새로고침 자체는
   // 단일 날짜 캐시 무효화(memi-client.ts LOCK, 기존 동작 그대로) — 기간 조회 중이면 종료일
   // 기준으로 무효화하고 전체 기간을 다시 계산한다.
+  // [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] §12 —
+  // 이제 매미 캐시 무효화뿐 아니라, 현재 선택된 자동검수 원본(auditSource)의 Google
+  // Sheets 캐시도 함께 강제로 다시 읍는다(필요한 시트 1개만, forceRefresh). source가
+  // "auto"면 서버가 날짜 기준으로 고른 그 시트 하나만 강제 새로고침한다.
   async function handleMemiRefresh() {
     setMemiRefreshing(true);
     try {
       await apiRequest(`/api/activation-audit/memi-refresh`, {
         method: "POST",
-        body: JSON.stringify({ date: auditEndDate }),
+        body: JSON.stringify({ date: auditEndDate, source: auditSource === "auto" ? undefined : auditSource }),
       });
-      await loadAudit(auditStartDate, auditEndDate);
+      await loadAudit(auditStartDate, auditEndDate, auditSource);
     } catch (e: any) {
       toast({ title: "매미 새로고침 실패", description: e.message, variant: "destructive" });
     } finally {
@@ -257,6 +288,7 @@ export function SheetViewer() {
       });
       if (codeFilter) params.set("code", codeFilter);
       if (workerFilter !== "ALL") params.set("worker", workerFilter);
+      if (auditSource !== "auto") params.set("source", auditSource);
 
       const sessionId = useAuth.getState().sessionId;
       const resp = await fetch(`/api/activation-audit/export?${params.toString()}`, {
@@ -435,7 +467,18 @@ export function SheetViewer() {
                 <h2 className="text-base font-semibold">개통 후 자동검수</h2>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium">검수 기간</span>
+                {/* [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1]
+                    §10 — 하단 "시트 선택"(selected/sheets)과는 완전히 독립된 상태. */}
+                <span className="text-sm font-medium">검수 원본</span>
+                <Select value={auditSource} onValueChange={(v) => setAuditSource(v as AuditSource)}>
+                  <SelectTrigger className="w-36 h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {AUDIT_SOURCE_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={s}>{AUDIT_SOURCE_LABEL[s]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-sm font-medium ml-2">검수 기간</span>
                 <Input
                   type="date"
                   className="w-40 h-9"
@@ -473,6 +516,11 @@ export function SheetViewer() {
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <p className="text-xs text-muted-foreground">
                     데이터 원본: {auditData.sourceSheets.length > 0 ? auditData.sourceSheets.join(" + ") : "(해당 기간 원본 없음)"} · {auditData.startDate === auditData.endDate ? `${auditData.startDate} 기준` : `${auditData.startDate} ~ ${auditData.endDate} 기준`}
+                    {/* [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1]
+                        §4 — Google 429 등으로 최근 캐시를 대신 보여주고 있을 때만 표시 */}
+                    {auditData.sourceFreshness && auditData.sourceSheets.some((s) => auditData.sourceFreshness?.[s]?.stale) && (
+                      <span className="text-amber-600 font-medium"> · Google Sheets 요청 제한으로 최근 조회 데이터를 표시 중입니다</span>
+                    )}
                   </p>
                   <div className="flex items-center gap-2 text-xs">
                     <span

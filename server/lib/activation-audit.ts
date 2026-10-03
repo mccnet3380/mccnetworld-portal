@@ -40,6 +40,21 @@
 import { fetchLedgerCached, type LedgerCache } from "./personal-performance";
 import { matchesDate } from "./performance-calc";
 import { getMemiDailyReconciliation, getMemiRangeReconciliation, normalizeSerial, type MemiSyncResult } from "./memi-client";
+import { resolveActiveSpreadsheet } from "./spreadsheet-resolver";
+import { getSheetCacheStatus } from "./google-sheets-client";
+
+/** [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] §4 — stale
+ * fallback이 쓰였을 수도 있는 상황을 화면에 구분해서 보여줄 수 있도록 하는 선택적 정보.
+ * PHASE 1의 getSheetCacheStatus()를 그대로 조회만 한다(별도 캐시를 새로 만들지 않음). */
+async function getSourceFreshness(date: Date, sheetName: string): Promise<{ stale: boolean; fetchedAt: string | null }> {
+  try {
+    const resolved = await resolveActiveSpreadsheet(date);
+    const status = getSheetCacheStatus(resolved.id, sheetName);
+    return { stale: status.stale, fetchedAt: status.fetchedAt ? new Date(status.fetchedAt).toISOString() : null };
+  } catch {
+    return { stale: false, fetchedAt: null };
+  }
+}
 
 export const AUDIT_SOURCE_SHEETS = {
   today: "■당일완료",
@@ -108,6 +123,10 @@ export interface ActivationAuditResult {
   rows: AuditedActivationRow[];
   /** §13 UI 상태 표시용 — credential/세션 등 민감정보 없음 */
   memiSync: { status: "ok" | "unavailable"; syncedAt: string | null; rowCount: number; error?: string };
+  /** [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] §4 —
+   * stale=true면 Google 429 등으로 최신 조회가 실패해 이전에 성공한 캐시 값을 대신
+   * 보여주고 있다는 뜻(화면에서 "최신이 아님" 표시에 사용 가능). */
+  dataFreshness: { stale: boolean; fetchedAt: string | null };
 }
 
 interface ColumnIndexes {
@@ -298,18 +317,38 @@ function isToday(date: Date): boolean {
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
 }
 
+// [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] PHASE 2 —
+// 상단 "개통 후 자동검수"가 참조할 원본을 사용자가 명시적으로 고를 수 있게 하는 선택적
+// override. 지정하지 않으면(undefined) 기존과 완전히 동일한 날짜 기준 자동 선택
+// (오늘=■당일완료, 과거=개통처리부)으로 동작한다 — 기존 호출부(여기·§11 "me" 엔드포인트)
+// 는 이 옵션을 넘기지 않으므로 결과가 전혀 달라지지 않는다.
+export interface ActivationAuditOptions {
+  /** 지정 시 날짜와 무관하게 이 시트 하나만 사용(§10 — 상단 원본 선택 UI 전용). */
+  sourceOverride?: typeof AUDIT_SOURCE_SHEETS.today | typeof AUDIT_SOURCE_SHEETS.historical;
+  /** true면 해당 시트의 Google Sheets 캐시(PHASE 1 공용 캐시 + 이 파일의 ledger 캐시)를
+   * 모두 건너뛰고 강제로 다시 읍는다(§12 — "매미 새로고침"이 실제로 최신 데이터를
+   * 반영하도록). 매미 자체의 재조회 여부와는 독립적이다. */
+  forceRefresh?: boolean;
+}
+
+function resolveSourceSheet(date: Date, sourceOverride?: ActivationAuditOptions["sourceOverride"]): string {
+  if (sourceOverride) return sourceOverride;
+  return isToday(date) ? AUDIT_SOURCE_SHEETS.today : AUDIT_SOURCE_SHEETS.historical;
+}
+
 /**
  * 지정한 날짜의 개통 완료 데이터를 자동검수한다. 오늘이면 ■당일완료, 과거면 개통처리부
  * 하나만 선택해서 읽는다(두 시트를 합산하지 않음 — 실측상 날짜 기준으로 배타적).
+ * opts.sourceOverride가 있으면 그 시트를 날짜와 무관하게 그대로 사용한다.
  */
-export async function computeActivationAudit(date: Date, cache: LedgerCache): Promise<ActivationAuditResult> {
+export async function computeActivationAudit(date: Date, cache: LedgerCache, opts?: ActivationAuditOptions): Promise<ActivationAuditResult> {
   const dateYmd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  const sourceSheet = isToday(date) ? AUDIT_SOURCE_SHEETS.today : AUDIT_SOURCE_SHEETS.historical;
+  const sourceSheet = resolveSourceSheet(date, opts?.sourceOverride);
 
   // [MCC_MEMI_REALTIME_DEVICE_RECONCILIATION_DEV_1] 매미 조회는 행마다가 아니라 이 요청당
   // 딱 1번만 수행한다(§12/§14 — 로그인/xlsDown 반복 방지, memi-client.ts 내부 cache 재사용).
   const [entry, memiSync] = await Promise.all([
-    fetchLedgerCached(date, cache, sourceSheet),
+    fetchLedgerCached(date, cache, sourceSheet, { forceRefresh: opts?.forceRefresh }),
     getMemiDailyReconciliation(dateYmd),
   ]);
   const cols = resolveColumns(entry.header);
@@ -333,6 +372,8 @@ export async function computeActivationAudit(date: Date, cache: LedgerCache): Pr
     rows.push({ ...fields, status, issues });
   }
 
+  const dataFreshness = await getSourceFreshness(date, sourceSheet);
+
   return {
     date: dateYmd,
     sourceSheet,
@@ -341,6 +382,7 @@ export async function computeActivationAudit(date: Date, cache: LedgerCache): Pr
     byCode,
     rows,
     memiSync: { status: memiSync.status, syncedAt: memiSync.syncedAt, rowCount: memiSync.rowCount, error: memiSync.error },
+    dataFreshness,
   };
 }
 
@@ -392,6 +434,9 @@ export interface ActivationAuditRangeResult {
   byCode: Partial<Record<AuditCode, number>>;
   rows: AuditedActivationRow[];
   memiSync: { status: "ok" | "unavailable"; syncedAt: string | null; rowCount: number; error?: string };
+  /** [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1] §4 —
+   * sourceSheets의 각 시트별 캐시 신선도. 기간 조회라 시트가 여러 개일 수 있어 맵으로 제공. */
+  sourceFreshness: Record<string, { stale: boolean; fetchedAt: string | null }>;
 }
 
 /**
@@ -405,6 +450,7 @@ export async function computeActivationAuditRange(
   startDate: Date,
   endDate: Date,
   cache: LedgerCache,
+  opts?: ActivationAuditOptions,
 ): Promise<ActivationAuditRangeResult> {
   if (startDate.getTime() > endDate.getTime()) {
     throw new Error("[ActivationAudit] 시작일이 종료일보다 늦습니다.");
@@ -426,13 +472,17 @@ export async function computeActivationAuditRange(
 
   for (const date of dates) {
     const dateYmd = ymd(date);
-    const sourceSheet = isToday(date) ? AUDIT_SOURCE_SHEETS.today : AUDIT_SOURCE_SHEETS.historical;
+    // [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1]
+    // sourceOverride가 있으면 기간 내 모든 날짜에 그 시트 하나만 적용한다(사용자가
+    // 상단에서 "개통처리부"를 명시적으로 선택했다면, 기간 안에 오늘이 섞여 있어도
+    // 날짜별 자동 선택으로 되돌리지 않는다 — §10/§11 요구사항).
+    const sourceSheet = resolveSourceSheet(date, opts?.sourceOverride);
     if (!sourceSheetsSeen.has(sourceSheet)) {
       sourceSheetsSeen.add(sourceSheet);
       sourceSheetsUsed.push(sourceSheet);
     }
 
-    const entry = await fetchLedgerCached(date, cache, sourceSheet);
+    const entry = await fetchLedgerCached(date, cache, sourceSheet, { forceRefresh: opts?.forceRefresh });
     const cols = resolveColumns(entry.header);
 
     for (const r of entry.rows) {
@@ -449,6 +499,13 @@ export async function computeActivationAuditRange(
     }
   }
 
+  // §4 — sourceSheets에 등장한 시트별로 신선도를 조회한다(endDate 기준 spreadsheet로
+  // 조회 — 기간이 월을 넘지 않는 일반적인 사용 범위에서는 전체 기간과 동일한 spreadsheet).
+  const sourceFreshness: Record<string, { stale: boolean; fetchedAt: string | null }> = {};
+  for (const sheet of sourceSheetsUsed) {
+    sourceFreshness[sheet] = await getSourceFreshness(endDate, sheet);
+  }
+
   return {
     startDate: startYmd,
     endDate: endYmd,
@@ -458,5 +515,6 @@ export async function computeActivationAuditRange(
     byCode,
     rows,
     memiSync: { status: memiSync.status, syncedAt: memiSync.syncedAt, rowCount: memiSync.rowCount, error: memiSync.error },
+    sourceFreshness,
   };
 }

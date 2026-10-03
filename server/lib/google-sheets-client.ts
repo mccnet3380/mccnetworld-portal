@@ -42,6 +42,64 @@ const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 
 let cachedClient: JWT | null = null;
 
+// ============================================================
+// [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1]
+// 공용 read 캐시 — Google Sheets API 429(RATE_LIMIT_EXCEEDED, Read requests per
+// minute per user) 구조적 문제 해결(PHASE 1). 모든 MCC 계정이 하나의 Service
+// Account를 공유하므로, 같은 (spreadsheetId, sheetName, range)를 짧은 시간에
+// 여러 번(여러 사용자/여러 화면) 읍어도 실제 Google 호출은 1번만 나가게 한다.
+//
+// 이 캐시는 fetchSheetValuesById()/fetchSheetValues() 내부에 있으므로, 이미
+// 존재하는 모든 호출부(performance-dataset.ts 체인, sheet-viewer.ts,
+// personal-performance.ts 등)가 코드 변경 없이 자동으로 혜택을 받는다.
+// personal-performance.ts는 이미 자체 60초 캐시(sharedLedgerCache)를 갖고
+// 있어 이 레이어와 중복되지만, 데이터 의미/회귀 위험 때문에 그 파일은
+// 건드리지 않는다(§1 지시 — 기존 기능 캐시를 무리하게 공용화하지 않음). 중복
+// 캐시는 결과를 바꾸지 않고 단지 한 번 더 확인하는 것뿐이라 안전하다.
+//
+// CACHE_KEY = spreadsheetId + "::" + sheetName + "::" + range — 다른 월/다른
+// 시트/다른 range가 섞이는 사고를 막기 위해 3개 값을 전부 키에 포함한다.
+// ============================================================
+const SHEET_CACHE_TTL_MS = 60_000;
+// stale fallback으로 재사용할 수 있는 최대 나이 — 이보다 오래된 캐시는 "쓸 수
+// 있는 최근 데이터"로 보지 않고 평소처럼 에러를 그대로 던진다(§4 — 캐시가
+// 전혀 없는 최초 요청에서 429가 나면 정상적으로 오류 처리한다는 원칙의 연장).
+const STALE_FALLBACK_MAX_AGE_MS = 10 * 60_000;
+
+interface SheetCacheEntry {
+  data: string[][];
+  fetchedAt: number;
+  expiresAt: number;
+}
+
+const sheetValuesCache = new Map<string, SheetCacheEntry>();
+const inFlightSheetRequests = new Map<string, Promise<string[][]>>();
+
+function sheetCacheKey(spreadsheetId: string, sheetName: string, range: string): string {
+  return `${spreadsheetId}::${sheetName}::${range}`;
+}
+
+/** 호출부가 "지금 보여주는 데이터가 최신인지 stale인지" 구분하고 싶을 때 쓰는 선택적 조회. */
+export interface SheetCacheStatus {
+  cached: boolean;
+  stale: boolean;
+  fetchedAt: number | null;
+  ageMs: number | null;
+}
+
+export function getSheetCacheStatus(spreadsheetId: string, sheetName: string, range = "A1:ZZ20000"): SheetCacheStatus {
+  const entry = sheetValuesCache.get(sheetCacheKey(spreadsheetId, sheetName, range));
+  if (!entry) return { cached: false, stale: false, fetchedAt: null, ageMs: null };
+  const ageMs = Date.now() - entry.fetchedAt;
+  return { cached: true, stale: Date.now() > entry.expiresAt, fetchedAt: entry.fetchedAt, ageMs };
+}
+
+export interface FetchSheetValuesOpts {
+  /** true면 TTL 캐시를 무시하고 강제로 Google을 다시 호출한다(§5 — 명시적 강제 새로고침용).
+   * in-flight dedup은 강제 새로고침에도 그대로 적용된다(동시에 여러 번 눌러도 Google 호출은 1번). */
+  forceRefresh?: boolean;
+}
+
 function normalizePrivateKey(raw: string): string {
   // Render/Replit Secrets에 줄바꿈이 \n 문자열로 저장되는 경우가 많아 자동 변환
   return raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
@@ -130,13 +188,26 @@ async function getSpreadsheetId(): Promise<string> {
 /**
  * 시트 이름으로 값을 읽는다. (읽기 전용)
  * 반환값: 2차원 배열, 첫 행이 헤더인지 여부는 호출부에서 판단.
+ * [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1]
+ * "오늘" 기준 활성 spreadsheetId를 resolve한 뒤 fetchSheetValuesById()(캐시+
+ * in-flight dedup 포함)에 그대로 위임한다 — 동작은 기존과 동일, 캐시만 추가.
  */
 export async function fetchSheetValues(
   sheetName: string,
   range = "A1:ZZ20000",
+  opts?: FetchSheetValuesOpts,
+): Promise<string[][]> {
+  const spreadsheetId = await getSpreadsheetId();
+  return fetchSheetValuesById(spreadsheetId, sheetName, range, opts);
+}
+
+/** 실제 Google Sheets API 호출(캐시/dedup 없는 원본) — 내부 전용. */
+async function fetchSheetValuesByIdRaw(
+  spreadsheetId: string,
+  sheetName: string,
+  range: string,
 ): Promise<string[][]> {
   const token = await getAccessToken();
-  const spreadsheetId = await getSpreadsheetId();
   const encodedRange = encodeURIComponent(`'${sheetName}'!${range}`);
   const url =
     `${SHEETS_API_BASE}/${spreadsheetId}/values/${encodedRange}` +
@@ -148,9 +219,11 @@ export async function fetchSheetValues(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(
+    const err: any = new Error(
       `[GoogleSheets] 시트 조회 실패 (status=${res.status}) sheet="${sheetName}": ${body.slice(0, 500)}`,
     );
+    err.status = res.status;
+    throw err;
   }
 
   const json = (await res.json()) as { values?: unknown[][] };
@@ -164,30 +237,65 @@ export async function fetchSheetValues(
  * LG 검수는 "검수 날짜"의 연/월로 resolve한 스프레드시트를 읽어야 하므로
  * resolveActiveSpreadsheet(auditDate)의 결과를 호출부에서 직접 넘겨 쓴다.
  */
+/**
+ * [MCC_GOOGLE_SHEETS_SHARED_CACHE_AND_POST_ACTIVATION_AUDIT_SOURCE_CONTROL_1]
+ * PHASE 1 핵심 함수 — 캐시(TTL 60초) + in-flight 중복요청 제거 + 429 stale
+ * fallback을 전부 여기서 처리한다. 호출 시그니처(인자 3개까지)는 기존과 동일해서
+ * 기존 모든 호출부(performance-dataset.ts 체인, sheet-viewer.ts 등)는 코드를
+ * 한 줄도 바꾸지 않고 캐시 혜택을 받는다. 4번째 opts는 이번에 추가된 선택 인자.
+ *
+ * 동작 순서:
+ * 1) forceRefresh가 아니고 캐시가 TTL 안이면 → 캐시 그대로 반환(Google 호출 0)
+ * 2) 이미 같은 key로 진행 중인 요청이 있으면 → 그 Promise를 공유(Google 호출 0,
+ *    TEST_C: 동시 10개 요청 → Google 실제 호출 1회)
+ * 3) 그 외에는 Google을 실제로 호출하고, 성공하면 캐시에 저장
+ * 4) Google 호출이 실패했는데(429든 다른 오류든) "쓸 수 있는" stale 캐시가
+ *    있으면(10분 이내) 그 값을 반환한다 — 화면 전체 ERROR 대신 최근 데이터로
+ *    대체(§4). 쓸 수 있는 캐시가 전혀 없으면 원래처럼 에러를 그대로 던진다.
+ */
 export async function fetchSheetValuesById(
   spreadsheetId: string,
   sheetName: string,
   range = "A1:ZZ20000",
+  opts?: FetchSheetValuesOpts,
 ): Promise<string[][]> {
-  const token = await getAccessToken();
-  const encodedRange = encodeURIComponent(`'${sheetName}'!${range}`);
-  const url =
-    `${SHEETS_API_BASE}/${spreadsheetId}/values/${encodedRange}` +
-    `?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
+  const key = sheetCacheKey(spreadsheetId, sheetName, range);
+  const now = Date.now();
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `[GoogleSheets] 시트 조회 실패 (status=${res.status}) sheet="${sheetName}": ${body.slice(0, 500)}`,
-    );
+  if (!opts?.forceRefresh) {
+    const cached = sheetValuesCache.get(key);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
   }
 
-  const json = (await res.json()) as { values?: unknown[][] };
-  return (json.values || []).map((row) => row.map((cell) => (cell == null ? "" : String(cell))));
+  const inFlight = inFlightSheetRequests.get(key);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const requestPromise = (async (): Promise<string[][]> => {
+    try {
+      const data = await fetchSheetValuesByIdRaw(spreadsheetId, sheetName, range);
+      sheetValuesCache.set(key, { data, fetchedAt: Date.now(), expiresAt: Date.now() + SHEET_CACHE_TTL_MS });
+      return data;
+    } catch (err: any) {
+      const stale = sheetValuesCache.get(key);
+      if (stale && Date.now() - stale.fetchedAt <= STALE_FALLBACK_MAX_AGE_MS) {
+        console.warn(
+          `[GoogleSheets] "${sheetName}" 조회 실패(${err?.status ?? "?"}) — ` +
+            `${Math.round((Date.now() - stale.fetchedAt) / 1000)}초 전 캐시로 대체 응답(stale fallback).`,
+        );
+        return stale.data;
+      }
+      throw err;
+    } finally {
+      inFlightSheetRequests.delete(key);
+    }
+  })();
+
+  inFlightSheetRequests.set(key, requestPromise);
+  return requestPromise;
 }
 
 /**
