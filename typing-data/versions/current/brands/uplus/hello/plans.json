@@ -203,6 +203,34 @@
       "extraDataGb": 0,
       "bundleAnyone": false
     },
+      "건강케어 유심 5GB": {
+      "baseFee": 41500,
+      "discountFee": 22200,
+      "totalFee": 19300,
+      "extraDataGb": 0,
+      "bundleAnyone": false
+    },
+      "건강케어 유심 7GB": {
+      "baseFee": 45100,
+      "discountFee": 24600,
+      "totalFee": 20500,
+      "extraDataGb": 0,
+      "bundleAnyone": false
+    },
+      "건강케어 유심 11GB": {
+      "baseFee": 49390,
+      "discountFee": 13790,
+      "totalFee": 35600,
+      "extraDataGb": 0,
+      "bundleAnyone": false
+    },
+      "건강케어 유심 15GB 100분": {
+      "baseFee": 45100,
+      "discountFee": 14280,
+      "totalFee": 30820,
+      "extraDataGb": 0,
+      "bundleAnyone": false
+    },                
       "5G유심 15GB 300분": {
       "baseFee": 55000,
       "discountFee": 33100,
