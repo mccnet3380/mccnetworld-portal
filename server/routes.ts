@@ -3504,6 +3504,32 @@ router.put('/api/admin/admins/:id', requireAdmin, requireDbHealthy, async (req, 
   }
 });
 
+// [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 기존에 존재하지 않았던 라우트(감사로 확인 —
+// AdminPanel.tsx의 updateUserMutation이 PUT /api/admin/users/:id를 호출하고 있었지만
+// 서버에 매칭되는 핸들러가 없어 사용자 정보 수정 자체가 항상 실패하고 있었다).
+router.put('/api/admin/users/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
+    }
+
+    const updated = await getStorage().updateUser(id, req.body);
+
+    if (!updated) {
+      return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+    }
+
+    res.json({ success: true, message: '사용자 정보가 업데이트되었습니다.', data: updated });
+  } catch (error: any) {
+    console.error('Failed to update user:', error);
+    if (error.code === '23505') {
+      return res.status(409).json({ error: '이미 사용 중인 아이디입니다.' });
+    }
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // User deletion (users 테이블 우선, admin은 fallback)
 router.delete('/api/admin/users/:id', requireAdmin, requireDbHealthy, async (req, res) => {
   try {

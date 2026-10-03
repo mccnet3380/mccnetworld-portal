@@ -175,6 +175,9 @@ type CreateWorkerForm = {
   username: string;
   password: string;
   name: string;
+  // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 'worker'는 UI sentinel(서버로는 전송 안 함,
+  // undefined로 정규화), 'middle_manager'만 실제로 서버에 전송된다.
+  role?: 'middle_manager' | 'worker';
 };
 
 // 통신사별 요금제 그룹화 함수
@@ -351,9 +354,13 @@ type EditUserForm = {
   username: string;
   password: string;
   name: string;
-  role: 'admin' | 'sales_manager' | 'worker';
+  // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 'worker'는 UI sentinel(서버로는 role=null로
+  // 정규화), 'middle_manager'만 실제 저장값. admin/sales_manager는 이 폼에서 더 이상
+  // 선택하지 않는다(§4 — 실제 로그인 계정을 만들지 않아 의미가 없었음).
+  role: 'worker' | 'middle_manager';
   userType?: 'admin' | 'sales_manager' | 'user';
   team?: string;
+  allowedCarriers?: string[];
 };
 
 type UpdateDocumentStatusForm = {
@@ -4274,6 +4281,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       username: '',
       password: '',
       name: '',
+      role: 'worker',
     },
   });
 
@@ -4334,7 +4342,10 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
         username: z.string().min(1, '아이디를 입력해주세요'),
         password: z.string().optional(),
         name: z.string().min(1, '이름을 입력해주세요'),
-        role: z.enum(['admin', 'sales_manager', 'worker']),
+        // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 이 zodResolver 스키마가 실제 런타임
+        // 검증을 담당한다(EditUserForm 타입만 바꾸는 것으로는 부족했다 — 브라우저 실측으로
+        // "Invalid enum value" 오류를 직접 확인하고 여기서 수정).
+        role: z.enum(['worker', 'middle_manager']),
         userType: z.enum(['admin', 'sales_manager', 'user']).optional(),
         team: z.string().optional(),
         allowedCarriers: z.array(z.string()).optional(),
@@ -4850,8 +4861,15 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     if (data.username !== editingUser.username) updateData.username = data.username;
     if (data.password && data.password.trim() !== '') updateData.password = data.password;
     if (data.name !== editingUser.name) updateData.name = data.name;
-    if (data.role !== editingUser.role && data.role !== editingUser.userType) updateData.role = data.role;
-    if (data.userType && data.userType !== editingUser.userType) updateData.userType = data.userType;
+    // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] role은 이제 'middle_manager' 또는
+    // null(=근무자) 둘 중 하나만 저장한다(기존 근무자 계정이 role=NULL이던 관례를 그대로
+    // 유지 — 'worker'라는 새 문자열 값을 만들지 않는다). userType은 이 폼에서 더 이상
+    // 편집하지 않는다(§4 — admin/sales_manager로 바꿔도 실제 로그인 계정이 생기지 않아
+    // 의미가 없었음, UI 자체를 제거했으므로 여기서도 보내지 않는다).
+    const currentRoleSentinel = editingUser.role === 'middle_manager' ? 'middle_manager' : 'worker';
+    if (data.role !== currentRoleSentinel) {
+      updateData.role = data.role === 'middle_manager' ? 'middle_manager' : null;
+    }
     if (data.team !== editingUser.team) updateData.team = data.team;
     
     // Compare allowedCarriers arrays (using cloned arrays to avoid mutation)
@@ -4890,7 +4908,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
       username: user.username || '',
       password: '',
       name: user.name || '',
-      role: user.role || user.userType || 'worker',
+      role: user.role === 'middle_manager' ? 'middle_manager' : 'worker',
       userType: user.userType || 'user',
       team: user.team || '',
       allowedCarriers: user.allowedCarriers || [],
@@ -5074,7 +5092,10 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   };
 
   const handleCreateWorker = (data: CreateWorkerForm) => {
-    createWorkerMutation.mutate(data);
+    // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] role='worker'(드롭다운 sentinel, 근무자
+    // 선택)는 서버 스키마가 받는 값이 아니라(z.enum(['middle_manager']).optional())
+    // undefined로 정규화한다 — Radix Select가 빈 문자열 value를 허용하지 않아 sentinel 사용.
+    createWorkerMutation.mutate({ ...data, role: data.role === 'middle_manager' ? 'middle_manager' : undefined });
   };
 
   const handleCreateSalesManager = (data: CreateSalesManagerForm) => {
@@ -7790,6 +7811,37 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                                   <FormControl>
                                     <Input type="password" placeholder="비밀번호를 입력하세요" {...field} />
                                   </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            {/* [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 계정 유형은 항상
+                                일반사용자(users.userType='user')로 고정 — 근무자/중간관리자는
+                                같은 계정 유형 안에서 role만 다르다(§3/§4). */}
+                            <FormItem>
+                              <FormLabel>계정 유형</FormLabel>
+                              <Input value="일반사용자" disabled />
+                            </FormItem>
+                            <FormField
+                              control={workerForm.control}
+                              name="role"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>역할</FormLabel>
+                                  <Select onValueChange={field.onChange} value={field.value || 'worker'}>
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="역할을 선택하세요" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="worker">근무자</SelectItem>
+                                      <SelectItem value="middle_manager">중간관리자</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <p className="text-xs text-muted-foreground">
+                                    중간관리자는 개통현황 조회에서 전체 작업자 검수가 가능합니다. 관리자 설정/정산 관리자 권한은 부여되지 않습니다.
+                                  </p>
                                   <FormMessage />
                                 </FormItem>
                               )}
@@ -11159,7 +11211,7 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                             <div className="flex gap-1 shrink-0">
                               <Button
                                 size="sm" variant="ghost" className="h-6 w-6 p-0"
-                                onClick={e => { e.stopPropagation(); setPvEditTarget(pv); setPvForm({ policyNo: pv.policyNo, policyName: pv.policyName, effectiveFrom: pv.effectiveFrom?.slice(0,16) ?? '', effectiveTo: pv.effectiveTo?.slice(0,16) ?? '', memo: pv.memo ?? '' }); setPvEditOpen(true); }}
+                                onClick={e => { e.stopPropagation(); setPvEditTarget(pv); const _ef = pv.effectiveFrom?.slice(0,10) ?? ''; let _et = ''; if (pv.effectiveTo) { const _d = new Date(pv.effectiveTo); _d.setUTCDate(_d.getUTCDate() - 1); _et = _d.toISOString().slice(0,10); } setPvForm({ policyNo: pv.policyNo, policyName: pv.policyName, effectiveFrom: _ef, effectiveTo: _et, memo: pv.memo ?? '' }); setPvEditOpen(true); }}
                               ><Edit className="h-3 w-3" /></Button>
                               <Button
                                 size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
@@ -12559,50 +12611,47 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={editUserForm.control}
-                  name="role"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>역할</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="역할을 선택하세요" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="admin">관리자</SelectItem>
-                          <SelectItem value="sales_manager">영업과장</SelectItem>
-                          <SelectItem value="worker">근무자</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editUserForm.control}
-                  name="userType"
-                  render={({ field }) => (
+                {/* [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 이 공유 다이얼로그는 accountType
+                    'admin' 또는 'user'(영업과장은 별도 다이얼로그, handleEditSalesManager)
+                    편집에 쓰인다. 기존 "역할"(admin/sales_manager/worker) · "계정 유형"
+                    (admin/sales_manager/user) 두 드롭다운은 감사 결과 'user' 계정에는
+                    사실상 근무자/중간관리자 구분 외 의미가 없었다(계정 유형을
+                    admin/sales_manager로 바꿔도 admins/salesManagers 테이블에 실제 계정이
+                    생기지 않아 로그인이 안 됨 — 실제로 동작하는 값이 아니었다) — admin 계정
+                    편집(updateAdminMutation, name/username/password만 반영)에서는 아예
+                    의미가 없어 완전히 숨긴다. 기존 admin/영업과장 계정 구조는 변경하지 않는다. */}
+                {editingUser?.accountType !== 'admin' && (
+                  <>
                     <FormItem>
                       <FormLabel>계정 유형</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="계정 유형을 선택하세요" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="admin">관리자</SelectItem>
-                          <SelectItem value="sales_manager">영업과장</SelectItem>
-                          <SelectItem value="user">일반사용자</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
+                      <Input value="일반사용자" disabled />
                     </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={editUserForm.control}
+                      name="role"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>역할</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value === 'middle_manager' ? 'middle_manager' : 'worker'}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="역할을 선택하세요" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="worker">근무자</SelectItem>
+                              <SelectItem value="middle_manager">중간관리자</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            중간관리자는 개통현황 조회에서 전체 작업자 검수가 가능합니다. 관리자 설정/정산 관리자 권한은 부여되지 않습니다.
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
                 <FormField
                   control={editUserForm.control}
                   name="team"

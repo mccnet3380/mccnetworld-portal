@@ -165,6 +165,10 @@ export interface IStorage {
   updateUserPassword(id: number, password: string): Promise<void>;
   getUserByUsername(username: string): Promise<any>;
   deleteUser(id: number): Promise<any>;
+  // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 기존에 없었던 일반 user 계정 수정 메서드.
+  // PUT /api/admin/users/:id가 호출할 대상 자체가 없어서(감사로 확인) 이 화면의 "수정"
+  // 기능이 원래도 동작하지 않았다 — 신규 컬럼/스키마 변경 없이 기존 users 테이블만 사용한다.
+  updateUser(id: number, data: any): Promise<any>;
 
   // MCC_PERSONAL_PERFORMANCE_DASHBOARD_IMPLEMENTATION_1: worker mapping/월별 목표
   updateUserPerformanceWorkerName(id: number, performanceWorkerName: string | null): Promise<any>;
@@ -710,6 +714,40 @@ export class PostgreSQLStorage implements IStorage {
         ...userData,
         password: hashedPassword
       }).returning();
+      return result[0];
+    });
+  }
+
+  // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] updateAdmin()과 동일한 패턴 — 필드
+  // whitelist만 반영한다. userType/team은 의도적으로 제외한다: userType을 이 경로로
+  // 'admin'/'sales_manager'로 바꿔도 admins/salesManagers 테이블에 실제 계정이 생기지
+  // 않아 로그인 자체가 안 되므로(기존 인증 구조상 완전히 별개 테이블) 오히려 혼란만
+  // 준다 — AUDIT 결과 기재. team은 users 테이블에 해당 컬럼 자체가 없다(감사로 확인,
+  // 신규 컬럼 추가 금지 원칙에 따라 추가하지 않음).
+  async updateUser(id: number, data: any): Promise<any> {
+    return this.withDatabase(async (db) => {
+      const existing = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      if (existing.length === 0) {
+        return null;
+      }
+
+      const updateData: any = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.username !== undefined) updateData.username = data.username;
+      if (data.password !== undefined && data.password !== '') {
+        updateData.password = await bcrypt.hash(data.password, 10);
+      }
+      if (data.role !== undefined) updateData.role = data.role;
+      if (data.allowedCarriers !== undefined) updateData.allowedCarriers = data.allowedCarriers;
+
+      if (Object.keys(updateData).length === 0) {
+        return existing[0];
+      }
+
+      const result = await db.update(users)
+        .set(updateData)
+        .where(eq(users.id, id))
+        .returning();
       return result[0];
     });
   }

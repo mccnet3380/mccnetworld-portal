@@ -914,6 +914,9 @@ export const createWorkerSchema = z.object({
   performanceWorkerName: z.string().trim().min(1).optional().nullable(),
   // [MCC_PERFORMANCE_WORKER_LIFECYCLE_AND_ROSTER_FIX_1] 선택 항목 — 비워두면 하한 없음(NULL)
   hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 형식이어야 합니다").optional().nullable(),
+  // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 비워두면(undefined/null) 일반 근무자,
+  // 'middle_manager'면 개통현황 조회 전체검수 권한(§6/§7/§8, 기존 확정 구조 그대로).
+  role: z.enum(["middle_manager"]).optional().nullable(),
 });
 
 export const createDocumentSchema = z.object({
