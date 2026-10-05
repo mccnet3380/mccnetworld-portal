@@ -1335,7 +1335,10 @@ router.post('/api/admin/create-sales-manager', requireAdmin, async (req, res) =>
 });
 
 // 영업과장 목록 조회 (관리자 패널용)
-router.get('/api/admin/sales-managers', requireAuth, async (req, res) => {
+// [MCC_DOCUMENT_OWNERSHIP_AND_SALES_MANAGER_CREDENTIAL_SECURITY_PATCH_1]
+// requireAuth(모든 로그인 계정 허용)에서 requireAdmin(관리자만 허용)으로 변경 —
+// 이 API는 /admin/ 하위 관리자 패널 전용 API이므로 기존에도 admin만 쓰도록 의도된 경로였음.
+router.get('/api/admin/sales-managers', requireAdmin, async (req, res) => {
   try {
     const managers = await getStorage().getSalesManagers();
     // 팀 정보를 포함한 영업과장 목록 반환
@@ -2501,6 +2504,84 @@ router.post('/api/admin/upload-document-template', requireAdmin, templateUpload.
   }
 });
 
+// ------------------------------------------------------------------
+// [MCC_DOCUMENT_OWNERSHIP_AND_SALES_MANAGER_CREDENTIAL_SECURITY_PATCH_1]
+// 판매점(dealer) 계정이 document ID를 직접 바꿔서 타 판매점 문서를 조회/수정하지 못하도록
+// 막기 위한 소유권 검증 헬퍼. admin/내부근무자/중간관리자는 기존 업무 범위를 그대로 유지하고,
+// dealer 계열 계정(userType='user' && dealerId 또는 dealerRegistrationId 보유)에만 적용한다.
+// ownership 판정 로직은 GET /api/documents 목록 조회(storage.ts getDocuments, 아래 참고)가
+// 이미 사용 중인 Path A(dealerRegistrationId)/Path B(contactCode→dealer_registration_id)/
+// 레거시 dealerId/userId fallback 조건을 그대로 재사용한다(새 판정 기준을 만들지 않음).
+// ------------------------------------------------------------------
+async function getDealerAccessContext(req: any): Promise<{
+  isDealer: boolean;
+  dealerId: number | null;
+  dealerRegistrationId: number | null;
+  userId: number | null;
+}> {
+  const sessionUserType = req.session?.userType;
+  const sessionUserId = req.session?.userId ?? null;
+  let dealerId: number | null = null;
+  let dealerRegistrationId: number | null = null;
+
+  if (sessionUserType === 'user' && sessionUserId) {
+    const user = await getStorage().getUserById(sessionUserId);
+    dealerId = user?.dealerId ?? null;
+    dealerRegistrationId = user?.dealerRegistrationId ?? null;
+  }
+
+  return {
+    isDealer: sessionUserType === 'user' && (dealerId != null || dealerRegistrationId != null),
+    dealerId,
+    dealerRegistrationId,
+    userId: sessionUserId,
+  };
+}
+
+async function documentBelongsToDealer(
+  document: any,
+  ctx: { dealerId: number | null; dealerRegistrationId: number | null; userId: number | null }
+): Promise<boolean> {
+  if (!document) return false;
+
+  if (ctx.dealerRegistrationId != null && document.dealerId === ctx.dealerRegistrationId) {
+    return true;
+  }
+
+  if (ctx.dealerId != null && document.dealerId === ctx.dealerId) {
+    return true;
+  }
+
+  if (ctx.dealerRegistrationId != null && document.contactCode) {
+    const contactCode = await getStorage().getContactCodeByCode(document.contactCode);
+    if (contactCode?.dealerRegistrationId === ctx.dealerRegistrationId) {
+      return true;
+    }
+  }
+
+  if (ctx.dealerId == null && ctx.dealerRegistrationId == null && ctx.userId != null) {
+    return document.userId === ctx.userId;
+  }
+
+  return false;
+}
+
+// document 단건 조회/수정 endpoint 공통 가드.
+// - dealer가 아닌 계정(admin/내부근무자/중간관리자): 항상 true (기존 권한 100% 유지)
+// - dealer 계열 계정: 소유자가 아니면 403을 직접 응답하고 false 반환 (호출부는 반드시 return)
+async function assertDocumentAccessForDealer(req: any, res: any, document: any): Promise<boolean> {
+  const ctx = await getDealerAccessContext(req);
+  if (!ctx.isDealer) {
+    return true;
+  }
+  const owns = await documentBelongsToDealer(document, ctx);
+  if (!owns) {
+    res.status(403).json({ error: '이 문서에 접근할 권한이 없습니다.' });
+    return false;
+  }
+  return true;
+}
+
 // Documents API with filters
 router.get('/api/documents', requireAuth, async (req: any, res) => {
   try {
@@ -2577,11 +2658,15 @@ router.get('/api/documents/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const document = await getStorage().getDocumentById(id);
-    
+
     if (!document) {
       return res.status(404).json({ error: '문서를 찾을 수 없습니다.' });
     }
-    
+
+    if (!(await assertDocumentAccessForDealer(req, res, document))) {
+      return;
+    }
+
     res.json(document);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -2592,7 +2677,22 @@ router.get('/api/documents/:id', requireAuth, async (req, res) => {
 router.get('/api/documents/export/excel', requireAuth, async (req: any, res) => {
   try {
     const { status, search, startDate, endDate, contactCode, carrier, activationStatus, allWorkers, includeActivatedBy } = req.query;
-    
+
+    // [MCC_SECURITY_PATCH_COMPLETION_AND_PRODUCTION_DEPLOYMENT_1]
+    // GET /api/documents 목록 조회와 동일한 방식으로 dealer 소유권 스코프를 유도한다.
+    // 기존에는 userType/dealerId/dealerRegistrationId를 filters에 전달하지 않아
+    // storage.ts getDocuments()의 dealer 범위 필터(1448-1468행)가 전혀 적용되지 않았음.
+    const sessionUserType = req.session?.userType;
+    const sessionUserId = req.session?.userId;
+    let dealerId = null;
+    let dealerRegistrationId = null;
+
+    if (sessionUserType === 'user' && sessionUserId) {
+      const user = await getStorage().getUserById(sessionUserId);
+      dealerId = user?.dealerId ?? null;
+      dealerRegistrationId = user?.dealerRegistrationId ?? null;
+    }
+
     const filters = {
       status,
       search,
@@ -2601,11 +2701,16 @@ router.get('/api/documents/export/excel', requireAuth, async (req: any, res) => 
       contactCode,
       carrier,
       activationStatus,
-      userId: allWorkers === 'true' ? null : req.session?.userId,
-      includeActivatedBy: true
+      userId: allWorkers === 'true' ? null : sessionUserId,
+      includeActivatedBy: true,
+      // Permission-based filtering (GET /api/documents와 동일)
+      userType: sessionUserType,
+      dealerId: dealerId,
+      dealerRegistrationId: dealerRegistrationId,
+      allWorkers: allWorkers === 'true'
     };
-    
-    const documents = await getStorage().getDocuments(filters, req.session?.userId, req.session?.userType);
+
+    const documents = await getStorage().getDocuments(filters, sessionUserId, sessionUserType);
     
     // Create workbook
     const wb = XLSX.utils.book_new();
@@ -2650,7 +2755,15 @@ router.patch('/api/documents/:id/status', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const data = updateDocumentStatusSchema.parse(req.body);
-    
+
+    const existingDocForAccessCheck = await getStorage().getDocumentById(id);
+    if (!existingDocForAccessCheck) {
+      return res.status(404).json({ error: '문서를 찾을 수 없습니다.' });
+    }
+    if (!(await assertDocumentAccessForDealer(req, res, existingDocForAccessCheck))) {
+      return;
+    }
+
     await getStorage().updateDocumentStatus(id, data.status, req.session?.userId);
     const document = await getStorage().getDocumentById(id);
     res.json(document);
@@ -2664,9 +2777,17 @@ router.patch('/api/documents/:id/activation', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const data = req.body;
-    
+
+    const docForAccessCheck = await getStorage().getDocumentById(id);
+    if (!docForAccessCheck) {
+      return res.status(404).json({ error: '문서를 찾을 수 없습니다.' });
+    }
+    if (!(await assertDocumentAccessForDealer(req, res, docForAccessCheck))) {
+      return;
+    }
+
     console.log(`Updating activation status for document ${id}:`, data);
-    
+
     // 개통/기타완료 상태로 변경 시 자동으로 activated_by/activated_at 설정
     if (data.activationStatus && ['개통', '개통완료', '기타완료'].includes(data.activationStatus)) {
       const sessionUserId = req.session?.userId;
@@ -2739,11 +2860,15 @@ router.get('/api/files/documents/:id', requireAuth, async (req: any, res) => {
   try {
     const documentId = parseInt(req.params.id);
     const document = await getStorage().getDocumentById(documentId);
-    
+
     if (!document || !document.filePath) {
       return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
     }
-    
+
+    if (!(await assertDocumentAccessForDealer(req, res, document))) {
+      return;
+    }
+
     const filePath = document.filePath as string;
     
     if (!fs.existsSync(filePath)) {
@@ -4322,7 +4447,15 @@ router.patch('/api/documents/:id/device-info', requireAuth, async (req, res) => 
   try {
     const id = parseInt(req.params.id);
     const deviceInfo = req.body;
-    
+
+    const docForAccessCheck = await getStorage().getDocumentById(id);
+    if (!docForAccessCheck) {
+      return res.status(404).json({ error: '문서를 찾을 수 없습니다.' });
+    }
+    if (!(await assertDocumentAccessForDealer(req, res, docForAccessCheck))) {
+      return;
+    }
+
     await getStorage().updateDocument(id, deviceInfo);
     
     res.json({ success: true, message: '기기 정보가 업데이트되었습니다.' });
@@ -4348,7 +4481,11 @@ router.put('/api/documents/:id', requireAuth, async (req, res) => {
     if (!existingDoc) {
       return res.status(404).json({ error: '문서를 찾을 수 없습니다.' });
     }
-    
+
+    if (!(await assertDocumentAccessForDealer(req, res, existingDoc))) {
+      return;
+    }
+
     // ✅ activatedBy 보존 로직: 기존 값이 있으면 유지
     if ((existingDoc as any).activatedBy) {
       data.activatedBy = (existingDoc as any).activatedBy;
@@ -4387,7 +4524,15 @@ router.patch('/api/documents/:id/activation-status', requireAuth, async (req, re
   try {
     const id = parseInt(req.params.id);
     const { activationStatus, activatedBy, activatedAt, ...otherData } = req.body;
-    
+
+    const docForAccessCheck = await getStorage().getDocumentById(id);
+    if (!docForAccessCheck) {
+      return res.status(404).json({ error: '문서를 찾을 수 없습니다.' });
+    }
+    if (!(await assertDocumentAccessForDealer(req, res, docForAccessCheck))) {
+      return;
+    }
+
     const updateData: any = {
       activationStatus,
       ...otherData

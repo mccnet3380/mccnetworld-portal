@@ -3012,7 +3012,10 @@ export class PostgreSQLStorage implements IStorage {
 
   async getSalesManagers(): Promise<any[]> {
     return this.withDatabase(async (db) => {
-      return await db.select().from(salesManagers).where(eq(salesManagers.isActive, true)).orderBy(desc(salesManagers.createdAt));
+      // [MCC_DOCUMENT_OWNERSHIP_AND_SALES_MANAGER_CREDENTIAL_SECURITY_PATCH_1]
+      // password(bcrypt hash)를 응답에 절대 포함하지 않도록 DB 조회 단계에서 컬럼 자체를 제외한다.
+      const { password, ...safeColumns } = getTableColumns(salesManagers);
+      return await db.select(safeColumns).from(salesManagers).where(eq(salesManagers.isActive, true)).orderBy(desc(salesManagers.createdAt));
     });
   }
 
@@ -3030,7 +3033,10 @@ export class PostgreSQLStorage implements IStorage {
         ...manager,
         password: hashedPassword
       }).returning();
-      return result[0];
+      // [MCC_SECURITY_PATCH_COMPLETION_AND_PRODUCTION_DEPLOYMENT_1]
+      // 생성 직후 응답에도 bcrypt 해시가 그대로 돌아가지 않도록 반환 직전 제거한다.
+      const { password, ...safeManager } = result[0];
+      return safeManager;
     });
   }
 
