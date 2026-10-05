@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { useAuth, useApiRequest } from '@/lib/auth';
+import { useAuth, useApiRequest, isDealerUser } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import {
   FileText,
@@ -194,7 +194,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const isAdmin = user?.userType === 'admin';
   const isSalesManager = user?.userType === 'sales_manager';
   const isWorker = user?.userType === 'user' && user?.userRole === 'dealer_worker';
-  const isDealer = user?.dealerId !== undefined && user?.dealerId !== null && !isWorker;
+  const isDealer = isDealerUser(user) && !isWorker;
   // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] '개통현황 조회'가 개통 후
   // 자동검수 센터로 확장되면서, 이 메뉴만 admin/내부 middle_manager 전용으로 좁혔다.
   const isMiddleManager = user?.userType === 'user' && user?.userRole === 'middle_manager';

@@ -172,6 +172,13 @@ export const useAuth = create<AuthState>()(
   )
 );
 
+// dealer 계정 판정: dealerId 또는 dealerRegistrationId 중 하나라도 있으면 동일한 DEALER principal로 취급한다.
+// 두 필드 자체를 합치거나 변환하지 않는다 - 각각 별도 데이터 키로 계속 사용된다. 이 함수는 오직
+// "이 로그인 사용자가 dealer 계정인가?"라는 identity 판단에만 사용하고, FK/ownership key 용도로는 쓰지 않는다.
+export function isDealerUser(user: AuthResponse['user'] | null | undefined): boolean {
+  return Boolean(user && (user.dealerId || user.dealerRegistrationId));
+}
+
 // Custom hook for API requests with authentication
 export const useApiRequest = () => {
   const sessionId = useAuth((state) => state.sessionId);

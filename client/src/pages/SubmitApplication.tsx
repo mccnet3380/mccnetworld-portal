@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { useAuth, useApiRequest } from '@/lib/auth';
+import { useAuth, useApiRequest, isDealerUser } from '@/lib/auth';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -894,7 +894,7 @@ export function SubmitApplication() {
                       setFormData(prev => ({ ...prev, carrier: option.name, contactCode: '', storeName: '' }));
                       
                       // 딜러 사용자인 경우 자동 매칭 시도
-                      if (user?.dealerId) {
+                      if (isDealerUser(user)) {
                         // 중복 호출 방지: 이미 처리 중이거나 같은 carrier라면 스킵
                         if (isMatchingRef.current || lastCarrierKeyRef.current === option.name) {
                           console.log(`[AutoMatch] Skipping duplicate call: ${option.name}`);
@@ -1658,7 +1658,7 @@ export function SubmitApplication() {
                 '접수 신청'
               )}
             </Button>
-            {!user?.dealerId && (
+            {!isDealerUser(user) && (
               <Button
                 type="button"
                 size="lg"

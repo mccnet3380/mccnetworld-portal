@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { useAuth, useApiRequest } from '@/lib/auth';
+import { useAuth, useApiRequest, isDealerUser } from '@/lib/auth';
 import { useLocation } from 'wouter';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -279,7 +279,7 @@ export function OtherApplication() {
       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
       queryClient.invalidateQueries({ queryKey: ['/api/dealer/applications'] });
       
-      if (user && 'dealerId' in user && user.dealerId) {
+      if (isDealerUser(user)) {
         setLocation('/dealer-dashboard');
       } else {
         setLocation('/documents');

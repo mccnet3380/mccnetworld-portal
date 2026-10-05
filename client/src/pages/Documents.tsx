@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AutocompleteInput } from '@/components/AutocompleteInput';
 import { Progress } from '@/components/ui/progress';
 
-import { useApiRequest, useAuth } from '@/lib/auth';
+import { useApiRequest, useAuth, isDealerUser } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import type { Document } from '../../../shared/schema';
 import { FileText, Upload, Search, Download, Calendar, Settings, Check, ChevronsUpDown, Calculator, MessageCircle, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -822,9 +822,9 @@ export function Documents() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
             <CardTitle className="text-2xl font-bold">접수 관리</CardTitle>
             <div className="flex space-x-2">
-              {(user?.userType === 'admin' || user?.userType === 'user') && !user?.dealerId && (
-                <Button 
-                  variant="default" 
+              {(user?.userType === 'admin' || user?.userType === 'user') && !isDealerUser(user) && (
+                <Button
+                  variant="default"
                   onClick={() => setLocation('/submit-application')}
                   data-testid="button-new-request"
                 >
@@ -832,7 +832,7 @@ export function Documents() {
                   신규 접수
                 </Button>
               )}
-              {(user?.userType === 'admin' || user?.userType === 'user') && !user?.dealerId && (
+              {(user?.userType === 'admin' || user?.userType === 'user') && !isDealerUser(user) && (
                 <Button 
                   variant="outline" 
                   onClick={() => setLocation('/other-application')}

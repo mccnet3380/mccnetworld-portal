@@ -3,7 +3,7 @@ import { Route, Switch, Redirect } from 'wouter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthGuard } from '@/components/AuthGuard';
-import { useAuth } from '@/lib/auth';
+import { useAuth, isDealerUser } from '@/lib/auth';
 
 // Pages
 import { Login } from '@/pages/Login';
@@ -109,8 +109,8 @@ function AppRoutes() {
     );
   }
 
-  // 판매점은 판매점 전용 대시보드로 리다이렉트 (dealerId가 있는 사용자)
-  if (user && 'dealerId' in user && user.dealerId) {
+  // 판매점은 판매점 전용 대시보드로 리다이렉트 (dealerId 또는 dealerRegistrationId가 있는 사용자)
+  if (isDealerUser(user)) {
     return (
       <Switch>
         <Route path="/" component={() => <Redirect to="/dealer-dashboard" />} />
