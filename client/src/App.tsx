@@ -126,15 +126,27 @@ function AppRoutes() {
   // [MCC_PERFORMANCE_CALCULATION_AND_WORKER_LIFECYCLE_FINAL_FIX_1] 기본 landing을
   // ADMIN은 /performance, 내부 WORKER는 /performance/me로 변경(요구사항). /performance/me
   // 라우트 조건(아래)과 동일한 기준(admin 또는 dealerId/dealerRegistrationId가 없는
-  // user)을 그대로 재사용해서, 이 조건에 해당하지 않는 예외적인 경우는 기존과 동일하게
-  // /dashboard로 보낸다(/dashboard 라우트 자체는 삭제하지 않았으므로 항상 안전한 폴백).
+  // user)을 그대로 재사용한다.
+  // [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 과거에는 이 조건에 해당하지
+  // 않는 예외 케이스를 /dashboard(레거시 Dashboard)로 보냈으나, 이번 작업에서 /dashboard를
+  // "렌더링"이 아니라 "리다이렉트"로 바꾸므로 그 폴백이 더 이상 /dashboard를 가리키면 안
+  // 된다(자기 자신으로 리다이렉트되어 무한루프가 날 수 있는 유일한 경로 — 예: dealerId 없이
+  // dealerRegistrationId만 있는 신규 판매점 계정처럼 위 두 분기 중 어느 것에도 안 걸리는
+  // 극히 드문 경우). 새 기준을 만들지 않고, 이미 모든 계정 유형에 안전하게 열려있는 기존
+  // 라우트 /documents로 폴백한다(접수관리 — admin/내부근무자/현재 이 분기에 도달하는 모든
+  // 계정이 실제로 접근 가능한 기존 페이지).
   const isInternalWorker = user?.userType === 'user' && !user?.dealerId && !user?.dealerRegistrationId;
-  const landingPath = user?.userType === 'admin' ? '/performance' : isInternalWorker ? '/performance/me' : '/dashboard';
+  const landingPath = user?.userType === 'admin' ? '/performance' : isInternalWorker ? '/performance/me' : '/documents';
 
   return (
     <Switch>
       <Route path="/" component={() => <Redirect to={landingPath} />} />
-      <Route path="/dashboard" component={Dashboard} />
+      {/* [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 레거시 Dashboard 직접
+          접근 차단 — 주소창에 /dashboard를 직접 입력해도 더 이상 구 Dashboard가 뜨지 않고
+          사용자 유형별 정상 진입 페이지로 리다이렉트한다("/" 라우트와 동일한 landingPath
+          재사용, 새 기준 생성 금지). Dashboard 컴포넌트/import·관련 API는 삭제하지 않았다
+          (복원이 필요하면 아래 Route를 component={Dashboard}로 되돌리기만 하면 됨). */}
+      <Route path="/dashboard" component={() => <Redirect to={landingPath} />} />
       <Route path="/submit-application" component={SubmitApplication} />
       <Route path="/submit" component={SubmitApplication} />
       <Route path="/other-application" component={OtherApplication} />
@@ -243,6 +255,18 @@ function AppRoutes() {
           <Route
             path="/admin/other-business-carriers"
             component={() => <AdminPanel defaultTab="other-business-carriers" />}
+          />
+          {/* [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 정산 결과/정산 정책 —
+              AdminPanel.tsx의 기존 TabsContent(value="settlement-results"/"policy-versions")를
+              그대로 재사용한다. 위 /admin/other-business-carriers와 동일한 패턴으로, 새
+              component/계산/API를 만들지 않고 진입 경로(route)만 추가했다. */}
+          <Route
+            path="/settlement/results"
+            component={() => <AdminPanel defaultTab="settlement-results" />}
+          />
+          <Route
+            path="/settlement/policies"
+            component={() => <AdminPanel defaultTab="policy-versions" />}
           />
 
           <Route path="/sales-team-management" component={SalesTeamManagement} />

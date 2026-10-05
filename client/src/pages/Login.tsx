@@ -47,13 +47,15 @@ export function Login() {
         // 기본 landing을 ADMIN은 /performance, 내부 WORKER는 /performance/me로 보낸다.
         // login()이 zustand store에 user를 이미 set()한 뒤 resolve되므로 getState()로
         // 즉시 최신 값을 읽을 수 있다(리렌더를 기다릴 필요 없음). dealer/영업과장 등
-        // 이 폼으로 로그인 성공하지 않는 역할(서버가 별도로 차단)은 /dashboard로 보내되,
-        // 그 경우에도 App.tsx의 역할별 라우팅이 실제 목적지를 다시 정리해준다.
+        // 이 폼으로 로그인 성공하지 않는 역할(서버가 별도로 차단)은 이 코드에 도달하지
+        // 않는다(success 자체가 false). [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1]
+        // 과거 폴백이었던 /dashboard는 이제 레거시 Dashboard로 이동하지 않으므로(리다이렉트로
+        // 변경됨), App.tsx의 landingPath와 동일한 기준으로 /documents를 폴백으로 쓴다.
         const loggedInUser = useAuth.getState().user as any;
         const isAdmin = loggedInUser?.userType === 'admin';
         const isInternalWorker =
           loggedInUser?.userType === 'user' && !loggedInUser?.dealerId && !loggedInUser?.dealerRegistrationId;
-        setLocation(isAdmin ? '/performance' : isInternalWorker ? '/performance/me' : '/dashboard');
+        setLocation(isAdmin ? '/performance' : isInternalWorker ? '/performance/me' : '/documents');
       } else {
         setError('아이디 또는 비밀번호가 올바르지 않습니다.');
       }

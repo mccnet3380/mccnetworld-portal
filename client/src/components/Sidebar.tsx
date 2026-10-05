@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth, useApiRequest } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -22,7 +23,8 @@ import {
   TrendingUp,
   GraduationCap,
   FileSpreadsheet,
-  LayoutTemplate
+  LayoutTemplate,
+  ChevronDown
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
@@ -93,12 +95,31 @@ const navigation = [
   { name: '개통현황 조회', href: '/sheet-viewer', icon: FileSpreadsheet },
 ];
 
+// [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 정산 결과/정산 정책 —
+// 기존 AdminPanel.tsx의 TabsContent(value="settlement-results"/"policy-versions")를
+// 그대로 재사용한다(새 component 생성 금지). App.tsx에서 이미 /admin/other-business-carriers가
+// 쓰는 것과 동일한 <AdminPanel defaultTab="..."/> 패턴으로 새 route를 추가했을 뿐,
+// 계산/API/AdminPanel 탭 자체는 전혀 건드리지 않았다. 관리자만 접근 가능(기존과 동일).
 const adminNavigation = [
+  { name: '정산 결과', href: '/settlement/results', icon: Calculator },
+  { name: '정산 정책', href: '/settlement/policies', icon: Settings },
   { name: '관리자', href: '/admin-panel', icon: Settings },
   // [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] 과거 정적
   // hidden:true 대신 "사이드바 메뉴 관리"(DB) 설정으로 표시 여부를 제어한다.
   // /sales-team-management 라우트/권한/컴포넌트는 그대로 유지.
   { name: '영업 조직', href: '/sales-team-management', icon: Users },
+];
+
+// [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 사이드바 1단계 그룹화.
+// 기존 role 기반 필터링(baseNavigation/currentNavigation)과 DB visibility 필터
+// (visibleNavigation)는 전혀 건드리지 않는다 — 이 그룹 정의는 "이미 최종 확정된
+// visibleNavigation 배열"을 렌더링 시점에 한 번 더 묶어서 보여주는 용도일 뿐이다.
+// 그 결과 "하위 메뉴 중 하나라도 visible이면 그룹도 visible"이 구조적으로 보장된다
+// (visibleNavigation에 남아있는 하위 항목이 있을 때만 그 그룹 노드가 생성되기 때문).
+const MENU_GROUPS: { groupName: string; icon: typeof Megaphone; childNames: string[] }[] = [
+  { groupName: '공지·보고', icon: Megaphone, childNames: ['전사 공지용 당일실적', '마감보고 · 공지텍스트'] },
+  { groupName: '검수', icon: FileSearch, childNames: ['LG 검수', 'KT 검수'] },
+  { groupName: '정산', icon: Calculator, childNames: ['정산 결과', '정산 정책'] },
 ];
 
 // MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1: 실적관리(전체 근무자 실적)는
@@ -146,6 +167,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const [location] = useLocation();
   const { user } = useAuth();
   const apiRequest = useApiRequest();
+  // [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 그룹(공지·보고/검수/정산)의
+  // 사용자가 직접 펼치거나 접은 상태. 사용자가 한 번도 건드리지 않은 그룹은 undefined로
+  // 남아있고, 그 경우 현재 페이지가 그 그룹의 하위 메뉴면 자동으로 펼쳐진다(아래 렌더링부 참고).
+  const [manualGroupOpenState, setManualGroupOpenState] = useState<Record<string, boolean>>({});
 
   // [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 관리자 패널에서 저장한 "사이드바 메뉴
   // 표시/숨김" 설정. 기존 권한(ROLE) 체크(아래 baseNavigation/currentNavigation)는 전혀
@@ -236,6 +261,33 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       })
     : currentNavigation; // FAIL-SAFE: 설정 로딩/실패 시 기존 동작 그대로
 
+  // [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] visibleNavigation(최종 확정된
+  // 권한+표시설정 반영 목록)을 순서대로 훑으면서 MENU_GROUPS에 속한 항목만 그룹 노드로
+  // 묶는다. 그룹에 속하지 않는 항목은 기존처럼 평평한 leaf 항목으로 그대로 둔다.
+  // 하위 항목이 하나도 visibleNavigation에 남아있지 않으면 그 그룹 노드 자체가 생성되지
+  // 않으므로 "하위 메뉴 중 하나라도 visible일 때만 상위 그룹도 visible"이 자동으로 성립한다.
+  type NavEntry = (typeof navigation)[number];
+  type RenderNode =
+    | { type: 'item'; item: NavEntry }
+    | { type: 'group'; groupName: string; icon: NavEntry['icon']; children: NavEntry[] };
+
+  const renderNodes: RenderNode[] = [];
+  const groupNodesByName = new Map<string, RenderNode & { type: 'group' }>();
+  for (const item of visibleNavigation) {
+    const group = MENU_GROUPS.find(g => g.childNames.includes(item.name));
+    if (!group) {
+      renderNodes.push({ type: 'item', item });
+      continue;
+    }
+    let groupNode = groupNodesByName.get(group.groupName);
+    if (!groupNode) {
+      groupNode = { type: 'group', groupName: group.groupName, icon: group.icon, children: [] };
+      groupNodesByName.set(group.groupName, groupNode);
+      renderNodes.push(groupNode);
+    }
+    groupNode.children.push(item);
+  }
+
   return (
     <>
       {/* Mobile overlay */}
@@ -252,18 +304,21 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         isOpen ? "translate-x-0 md:transform-none" : "-translate-x-full md:translate-x-0 md:transform-none"
       )}>
         <div className="flex flex-col h-full overflow-hidden">
-          {/* Logo */}
+          {/* Logo — [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 더 이상
+              /dashboard(레거시 Dashboard)로 이동하지 않는다. 디자인(이미지+텍스트
+              레이아웃)은 그대로 유지하고 Link/cursor-pointer/hover 효과만 제거해
+              클릭 동작이 없음을 시각적으로도 일치시켰다. */}
           <div className="flex flex-col items-center flex-shrink-0 px-4 py-6 border-b border-gray-700">
-            <Link href="/dashboard" className="flex flex-col items-center cursor-pointer hover:opacity-80 transition-opacity">
-              <img 
-                src={logoImage} 
-                alt="MCC네트월드 로고" 
+            <div className="flex flex-col items-center">
+              <img
+                src={logoImage}
+                alt="MCC네트월드 로고"
                 className="h-12 w-auto mb-3"
               />
               <div className="text-center">
                 <h1 className="text-lg font-semibold text-white leading-tight whitespace-nowrap">MCC네트월드</h1>
               </div>
-            </Link>
+            </div>
           </div>
           
           {/* Mobile close button */}
@@ -283,29 +338,86 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
           {/* Navigation */}
           <nav className="flex-1 px-3 pb-4 space-y-1 overflow-y-auto overflow-x-hidden sidebar-scroll">
-            {visibleNavigation.map((item) => {
-              const isActive = location === item.href;
-              
-              return (
-                <Link key={item.name} href={item.href}>
-                  <div
-                    className={cn(
-                      "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap relative",
-                      isActive
-                        ? "bg-accent text-white"
-                        : "text-gray-300 hover:bg-gray-700 hover:text-white"
-                    )}
-                    onClick={onClose}
-                  >
-                    <item.icon
+            {renderNodes.map((node) => {
+              if (node.type === 'item') {
+                const item = node.item;
+                const isActive = location === item.href;
+
+                return (
+                  <Link key={item.name} href={item.href}>
+                    <div
                       className={cn(
-                        "mr-3 flex-shrink-0 h-6 w-6",
-                        isActive ? "text-white" : "text-gray-400"
+                        "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap relative",
+                        isActive
+                          ? "bg-accent text-white"
+                          : "text-gray-300 hover:bg-gray-700 hover:text-white"
+                      )}
+                      onClick={onClose}
+                    >
+                      <item.icon
+                        className={cn(
+                          "mr-3 flex-shrink-0 h-6 w-6",
+                          isActive ? "text-white" : "text-gray-400"
+                        )}
+                      />
+                      <span className="flex-1">{item.name}</span>
+                    </div>
+                  </Link>
+                );
+              }
+
+              // 상위 그룹 — [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1]
+              // 클릭 시 펼침/접힘만 수행하고 페이지 이동은 없다. 사용자가 한 번도 토글하지
+              // 않았으면(undefined) 현재 위치가 그 그룹의 하위 메뉴일 때 자동으로 펼쳐진다.
+              const hasActiveChild = node.children.some(child => child.href === location);
+              const isOpen = manualGroupOpenState[node.groupName] ?? hasActiveChild;
+
+              return (
+                <div key={node.groupName}>
+                  <div
+                    className="group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap relative text-gray-300 hover:bg-gray-700 hover:text-white"
+                    onClick={() =>
+                      setManualGroupOpenState(prev => ({ ...prev, [node.groupName]: !isOpen }))
+                    }
+                  >
+                    <node.icon className="mr-3 flex-shrink-0 h-6 w-6 text-gray-400" />
+                    <span className="flex-1">{node.groupName}</span>
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-200",
+                        isOpen ? "rotate-180" : "rotate-0"
                       )}
                     />
-                    <span className="flex-1">{item.name}</span>
                   </div>
-                </Link>
+                  {isOpen && (
+                    <div className="ml-4 space-y-1 mt-1">
+                      {node.children.map((item) => {
+                        const isActive = location === item.href;
+                        return (
+                          <Link key={item.name} href={item.href}>
+                            <div
+                              className={cn(
+                                "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap relative",
+                                isActive
+                                  ? "bg-accent text-white"
+                                  : "text-gray-300 hover:bg-gray-700 hover:text-white"
+                              )}
+                              onClick={onClose}
+                            >
+                              <item.icon
+                                className={cn(
+                                  "mr-3 flex-shrink-0 h-6 w-6",
+                                  isActive ? "text-white" : "text-gray-400"
+                                )}
+                              />
+                              <span className="flex-1">{item.name}</span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>

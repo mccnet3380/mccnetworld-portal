@@ -2680,6 +2680,12 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
   const currentPath = window.location.pathname;
   const actualDefaultTab = currentPath === '/admin/other-business-carriers' ? 'other-business-carriers' : (defaultTab || 'contact-codes');
   const [activeTab, setActiveTab] = useState(actualDefaultTab);
+  // [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 정산 결과/정산 정책은 사이드바의
+  // "정산" 그룹(/settlement/results, /settlement/policies)으로 분리됐으므로, 일반 관리자
+  // 화면(/admin-panel 등)에서는 이 두 탭의 TabsTrigger(탭 선택 버튼)만 숨긴다. TabsContent/
+  // API/계산 로직/상태관리는 전혀 건드리지 않았고, 두 route로 직접 들어왔을 때는 그대로
+  // 보이게 해서 정산결과↔정산정책 전환이 가능하도록 유지한다.
+  const isSettlementDirectRoute = currentPath === '/settlement/results' || currentPath === '/settlement/policies';
 
   // Admin-only access check
   if (user?.userType !== 'admin') {
@@ -6247,69 +6253,82 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
               자동으로 커지게 한다(아래 TabsContent는 Tabs 루트의 space-y-6로 항상 적절한
               여백을 받으므로 추가 처리 불필요). 탭 목록/순서/동작은 전혀 바꾸지 않았다. */}
           <TabsList className="flex h-auto w-full flex-wrap items-center justify-start gap-1.5 rounded-md bg-muted p-1.5">
-            <TabsTrigger value="contact-codes" className="flex items-center space-x-2">
-              <Settings className="h-4 w-4" />
-              <span>접점코드</span>
-            </TabsTrigger>
-            <TabsTrigger value="other-business-carriers" className="flex items-center space-x-2">
-              <FileText className="h-4 w-4" />
-              <span>기타업무통신사</span>
-            </TabsTrigger>
-            <TabsTrigger value="carriers" className="flex items-center space-x-2">
-              <Building2 className="h-4 w-4" />
-              <span>통신사</span>
-            </TabsTrigger>
-            <TabsTrigger value="dealers" className="flex items-center space-x-2">
-              <Building2 className="h-4 w-4" />
-              <span>판매점 관리</span>
-            </TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center space-x-2">
-              <Users className="h-4 w-4" />
-              <span>사용자 관리</span>
-            </TabsTrigger>
-            <TabsTrigger value="documents" className="flex items-center space-x-2">
-              <FileText className="h-4 w-4" />
-              <span>서류 관리</span>
-            </TabsTrigger>
-            <TabsTrigger value="service-plans" className="flex items-center space-x-2">
-              <Settings className="h-4 w-4" />
-              <span>서비스 플랜</span>
-            </TabsTrigger>
-            <TabsTrigger value="workers" className="flex items-center space-x-2">
-              <TrendingUp className="h-4 w-4" />
-              <span>근무자 통계</span>
-            </TabsTrigger>
-            <TabsTrigger value="templates" className="flex items-center space-x-2">
-              <Upload className="h-4 w-4" />
-              <span>서식지 관리</span>
-            </TabsTrigger>
-            <TabsTrigger value="pricing" className="hidden">
-              <Calculator className="h-4 w-4" />
-              <span>정산단가</span>
-            </TabsTrigger>
-            <TabsTrigger value="hidden-pricing" className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4" />
-              <span>히든단가</span>
-            </TabsTrigger>
-            <TabsTrigger value="dealer-registrations" className="flex items-center space-x-2">
-              <Building2 className="h-4 w-4" />
-              <span>판매점 원장</span>
-            </TabsTrigger>
-            <TabsTrigger value="settlement-results" className="flex items-center space-x-2">
-              <Calculator className="h-4 w-4" />
-              <span>정산 결과</span>
-            </TabsTrigger>
-            <TabsTrigger value="policy-versions" className="flex items-center space-x-2">
-              <FileText className="h-4 w-4" />
-              <span>정산 정책</span>
-            </TabsTrigger>
-            {/* [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] owner 전용 — canManageSidebarMenus
-                가 false면 이 탭 자체가 존재하지 않는다(다른 관리자는 탭 흔적도 못 봄). */}
-            {canManageSidebarMenus && (
-              <TabsTrigger value="sidebar-menu-visibility" className="flex items-center space-x-2">
-                <Settings className="h-4 w-4" />
-                <span>사이드바 메뉴 관리</span>
-              </TabsTrigger>
+            {/* [MCC_SIDEBAR_HIERARCHY_AND_LEGACY_DASHBOARD_REMOVAL_1] 정산 전용 route
+                (/settlement/results, /settlement/policies)에서는 정산 결과/정산 정책
+                트리거만 보이고, 일반 관리자 트리거는 전혀 렌더링하지 않는다. 그 반대로
+                /admin-panel 등 일반 관리자 화면에서는 기존 관리자 트리거만 보이고 정산
+                트리거는 렌더링하지 않는다. TabsContent/쿼리/mutation/API는 아래에 그대로
+                있으며 이 분기는 TabsList(트리거 목록)에만 적용된다. */}
+            {isSettlementDirectRoute ? (
+              <>
+                <TabsTrigger value="settlement-results" className="flex items-center space-x-2">
+                  <Calculator className="h-4 w-4" />
+                  <span>정산 결과</span>
+                </TabsTrigger>
+                <TabsTrigger value="policy-versions" className="flex items-center space-x-2">
+                  <FileText className="h-4 w-4" />
+                  <span>정산 정책</span>
+                </TabsTrigger>
+              </>
+            ) : (
+              <>
+                <TabsTrigger value="contact-codes" className="flex items-center space-x-2">
+                  <Settings className="h-4 w-4" />
+                  <span>접점코드</span>
+                </TabsTrigger>
+                <TabsTrigger value="other-business-carriers" className="flex items-center space-x-2">
+                  <FileText className="h-4 w-4" />
+                  <span>기타업무통신사</span>
+                </TabsTrigger>
+                <TabsTrigger value="carriers" className="flex items-center space-x-2">
+                  <Building2 className="h-4 w-4" />
+                  <span>통신사</span>
+                </TabsTrigger>
+                <TabsTrigger value="dealers" className="flex items-center space-x-2">
+                  <Building2 className="h-4 w-4" />
+                  <span>판매점 관리</span>
+                </TabsTrigger>
+                <TabsTrigger value="users" className="flex items-center space-x-2">
+                  <Users className="h-4 w-4" />
+                  <span>사용자 관리</span>
+                </TabsTrigger>
+                <TabsTrigger value="documents" className="flex items-center space-x-2">
+                  <FileText className="h-4 w-4" />
+                  <span>서류 관리</span>
+                </TabsTrigger>
+                <TabsTrigger value="service-plans" className="flex items-center space-x-2">
+                  <Settings className="h-4 w-4" />
+                  <span>서비스 플랜</span>
+                </TabsTrigger>
+                <TabsTrigger value="workers" className="flex items-center space-x-2">
+                  <TrendingUp className="h-4 w-4" />
+                  <span>근무자 통계</span>
+                </TabsTrigger>
+                <TabsTrigger value="templates" className="flex items-center space-x-2">
+                  <Upload className="h-4 w-4" />
+                  <span>서식지 관리</span>
+                </TabsTrigger>
+                <TabsTrigger value="pricing" className="hidden">
+                  <Calculator className="h-4 w-4" />
+                  <span>정산단가</span>
+                </TabsTrigger>
+                <TabsTrigger value="hidden-pricing" className="flex items-center space-x-2">
+                  <DollarSign className="h-4 w-4" />
+                  <span>히든단가</span>
+                </TabsTrigger>
+                <TabsTrigger value="dealer-registrations" className="flex items-center space-x-2">
+                  <Building2 className="h-4 w-4" />
+                  <span>판매점 원장</span>
+                </TabsTrigger>
+                {/* [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] owner 전용 — canManageSidebarMenus
+                    가 false면 이 탭 자체가 존재하지 않는다(다른 관리자는 탭 흔적도 못 봄). */}
+                {canManageSidebarMenus && (
+                  <TabsTrigger value="sidebar-menu-visibility" className="flex items-center space-x-2">
+                    <Settings className="h-4 w-4" />
+                    <span>사이드바 메뉴 관리</span>
+                  </TabsTrigger>
+                )}
+              </>
             )}
           </TabsList>
 
