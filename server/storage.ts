@@ -911,6 +911,12 @@ export class PostgreSQLStorage implements IStorage {
         performanceWorkerName: users.performanceWorkerName,
         dealerId: users.dealerId,
         dealerRegistrationId: users.dealerRegistrationId,
+        // [MCC_ADMIN_USER_ROLE_EDIT_SYNC_FIX_1] role도 같은 이유로 빠져 있었다 —
+        // AdminPanel 사용자 수정 다이얼로그가 editingUser.role로 "근무자"/"중간관리자"
+        // 초기값을 결정하는데, 이 select에 role이 없어 항상 undefined(=항상 "근무자"로
+        // 표시)였다. password/password hash는 이 select에 전혀 포함되지 않으므로(의도적
+        // 유지) role 한 컬럼만 추가한다.
+        role: users.role,
       }).from(users);
 
       const adminUsers = await db.select({
@@ -935,6 +941,7 @@ export class PostgreSQLStorage implements IStorage {
           performanceWorkerName: user.performanceWorkerName,
           dealerId: user.dealerId,
           dealerRegistrationId: user.dealerRegistrationId,
+          role: user.role,
         }))
       ];
       
