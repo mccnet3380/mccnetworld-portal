@@ -655,6 +655,65 @@ export const workerPerformanceTargets = pgTable(
 );
 
 //===============================================
+// RBAC 기반 테이블 (MCC_RBAC_PHASE_2A_FOUNDATION_SCHEMA_AND_READONLY_RESOLVER_1)
+//===============================================
+// 이 4개 테이블은 아직 어디에도 enforcement되지 않는 "관찰 가능한 기반 데이터"일 뿐이다.
+// 기존 users.role(null/middle_manager/dealer_worker/dealer_store), sidebar_menu_visibility,
+// requireAdmin/requireWorker/requireDealerOrWorker 등 기존 권한 로직은 이 작업으로 대체되지 않고
+// 그대로 유지된다 — 실제 enforcement 전환은 별도 단계에서 진행한다.
+
+export const roles = pgTable("roles", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 50 }).notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  isSystem: boolean("is_system").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("roles_code_uidx").on(table.code),
+]);
+
+export const permissions = pgTable("permissions", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 100 }).notNull(),
+  name: varchar("name", { length: 150 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("permissions_code_uidx").on(table.code),
+]);
+
+// principalType: 'ADMIN' | 'USER' | 'SALES_MANAGER' | 'DEALER' (DB enum 강제 아님, varchar).
+// 계정이 admins/users/sales_managers/dealer_registrations 4개 테이블로 나뉘어 있어 공용
+// principals 테이블 없이 principalType + principalId 조합으로 참조한다. 'DEALER' 값은 스키마
+// 레벨에서 허용만 해두고, 이번 단계에서는 실제 dealer 계정 전부를 principalType='USER'로 다룬다
+// (근거: /api/auth/dealer-login도 세션을 users.id 기준으로만 생성하므로 — server/lib/rbac.ts 주석 참고).
+export const userRoles = pgTable("user_roles", {
+  id: serial("id").primaryKey(),
+  principalType: varchar("principal_type", { length: 20 }).notNull(),
+  principalId: integer("principal_id").notNull(),
+  roleId: integer("role_id").references(() => roles.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("user_roles_principal_role_uidx").on(table.principalType, table.principalId, table.roleId),
+  index("user_roles_principal_idx").on(table.principalType, table.principalId),
+  index("user_roles_role_id_idx").on(table.roleId),
+]);
+
+export const rolePermissions = pgTable("role_permissions", {
+  id: serial("id").primaryKey(),
+  roleId: integer("role_id").references(() => roles.id).notNull(),
+  permissionId: integer("permission_id").references(() => permissions.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("role_permissions_role_permission_uidx").on(table.roleId, table.permissionId),
+  index("role_permissions_role_id_idx").on(table.roleId),
+  index("role_permissions_permission_id_idx").on(table.permissionId),
+]);
+
+//===============================================
 // 타입 정의
 //===============================================
 
