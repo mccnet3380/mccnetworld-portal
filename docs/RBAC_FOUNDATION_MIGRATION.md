@@ -1,17 +1,38 @@
 # RBAC Foundation Migration
 
-작업명: MCC_RBAC_PHASE_2A_1_REPRODUCIBLE_MIGRATION_ARTIFACT_1
-(기반 작업: MCC_RBAC_PHASE_2A_FOUNDATION_SCHEMA_AND_READONLY_RESOLVER_1)
+작업명: MCC_RBAC_PHASE_2A_2_OWNER_ONLY_PERMISSION_POLICY_FIX_1
+(이전 작업: MCC_RBAC_PHASE_2A_1_REPRODUCIBLE_MIGRATION_ARTIFACT_1,
+MCC_RBAC_PHASE_2A_FOUNDATION_SCHEMA_AND_READONLY_RESOLVER_1)
+
+## 운영 정책 — RBAC/메뉴 권한 관리는 OWNER 전용
+
+아래 4개 permission은 **OWNER만** 가진다. 일반 ADMIN에는 부여하지 않는다 — ADMIN은
+다른 사용자의 역할/권한이나 메뉴 표시설정을 관리할 수 없어야 한다.
+
+- `ROLE_READ`
+- `ROLE_MANAGE`
+- `MENU_PERMISSION_READ`
+- `MENU_PERMISSION_MANAGE`
+
+(2A에서는 `ROLE_READ`/`ROLE_MANAGE`만 OWNER 전용으로 제외했고 `MENU_PERMISSION_*`는
+실수로 ADMIN에 포함되어 있었다 — 2A.2에서 교정함.)
+
+**OWNER 실제 계정 assignment는 이 migration에서 수행하지 않는다.** `admins.id=1`이나
+특정 username에 OWNER role을 자동으로 부여하는 로직은 어디에도 없다 — 테스트는 항상
+실제 계정과 무관한 throwaway `principal_id`로만 수행했다. 실제 OWNER 계정 확정/배정은
+관리자 RBAC 도입 단계에서 사용자 승인을 받아 별도로 진행한다.
 
 ## 무엇을 생성하는가
 
 `scripts/migrations/20261005_rbac_foundation.sql` 하나로 아래 4개 테이블 + FK + index +
-system seed를 처음부터 재현한다.
+system seed를 처음부터 재현하고, 위 OWNER 전용 정책도 함께 적용한다(기존 2A seed가 이미
+적용된 DB에서는 잘못 부여된 ADMIN→`MENU_PERMISSION_*` 링크를 정밀하게 제거해 교정한다).
 
 - `roles` (9 rows: OWNER, ADMIN, MIDDLE_MANAGER, ACTIVATION, AUDIT, SETTLEMENT, SALES,
   SALES_MANAGER, DEALER)
 - `permissions` (31 rows)
-- `role_permissions` (71 links)
+- `role_permissions` (69 links — OWNER 31 + ADMIN 27 + MIDDLE_MANAGER 3 + ACTIVATION 2 +
+  AUDIT 2 + SETTLEMENT 2 + DEALER 2, SALES/SALES_MANAGER는 의도적으로 0)
 - `user_roles` (0 rows — 실제 계정 배정은 이번 단계에서 하지 않음)
 
 컬럼/인덱스/FK는 `shared/schema.ts`의 `roles`/`permissions`/`userRoles`/`rolePermissions`
@@ -20,8 +41,11 @@ system seed를 처음부터 재현한다.
 
 ## 기존 데이터에 영향 없음
 
-이 migration은 **오직 CREATE TABLE / CREATE INDEX / ALTER TABLE ADD CONSTRAINT / INSERT**
-로만 구성되어 있다. 기존 테이블(`admins`, `users`, `sales_managers`,
+이 migration은 **CREATE TABLE / CREATE INDEX / ALTER TABLE ADD CONSTRAINT / INSERT**로
+구성되어 있고, `DELETE`는 딱 하나 있다 — `role_permissions`에서 `role=ADMIN AND
+permission IN (ROLE_READ, ROLE_MANAGE, MENU_PERMISSION_READ, MENU_PERMISSION_MANAGE)`인
+행만 정밀하게 제거하는 OWNER 전용 정책 교정용이다(2A.2). `roles`/`permissions` 자체나
+OWNER의 링크는 전혀 삭제하지 않는다. 기존 테이블(`admins`, `users`, `sales_managers`,
 `dealer_registrations`, `documents`, `settlement_*`, `sidebar_menu_visibility`,
 `training_*`, `contact_codes` 등 전체)에는 **DROP/ALTER/UPDATE/DELETE가 전혀 없다**.
 
@@ -78,7 +102,7 @@ SELECT
   (SELECT count(*) FROM user_roles) AS user_roles;
 ```
 
-예상 결과(신규 환경 기준): `roles=9, permissions=31, role_permissions=71, user_roles=0`.
+예상 결과(신규 환경 기준): `roles=9, permissions=31, role_permissions=69, user_roles=0`.
 이미 같은 seed가 존재하는 환경(DEV 등)에서 재실행해도 `ON CONFLICT DO NOTHING`으로 같은
 count가 그대로 유지된다(중복 생성 없음).
 

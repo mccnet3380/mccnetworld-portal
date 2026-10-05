@@ -5,16 +5,20 @@
 -- RBAC foundation 전용 additive migration (roles / permissions / user_roles / role_permissions).
 --
 -- 이 파일 하나만으로 "RBAC 4개 테이블이 전혀 없는 DB"에서 PHASE 2A와 완전히 동일한 상태
--- (테이블 4개 + FK + index + system seed: roles 9 / permissions 31 / role_permissions 71 /
+-- (테이블 4개 + FK + index + system seed: roles 9 / permissions 31 / role_permissions 69 /
 -- user_roles 0)를 재현할 수 있다.
 --
 -- 범위: 이 파일은 roles/permissions/user_roles/role_permissions 4개 테이블만 다룬다.
 -- admins/users/sales_managers/dealer_registrations/documents/settlement*/
 -- sidebar_menu_visibility/training*/contact_codes 등 기존 테이블은 전혀 건드리지 않는다
--- (DROP/ALTER/UPDATE/DELETE 없음, 전부 CREATE/INSERT뿐).
+-- (DROP/ALTER/UPDATE 없음, 전부 CREATE/INSERT이며 DELETE는 아래 §5에 딱 하나 있다 —
+-- role_permissions에서 r.code='ADMIN' AND p.code IN(OWNER 전용 4개)인 행만 정밀 제거하는
+-- 정책 교정용이다. roles/permissions 자체나 OWNER의 링크는 전혀 삭제하지 않는다
+-- — MCC_RBAC_PHASE_2A_2_OWNER_ONLY_PERMISSION_POLICY_FIX_1).
 --
 -- 멱등성: 전체를 몇 번 다시 실행해도 안전하다 — 테이블/index는 IF NOT EXISTS, FK는
--- pg_constraint 존재 여부를 확인하는 DO 블록, seed는 ON CONFLICT DO NOTHING.
+-- pg_constraint 존재 여부를 확인하는 DO 블록, seed는 ON CONFLICT DO NOTHING, 정책 교정
+-- DELETE는 이미 없으면 0 rows deleted로 끝난다(몇 번 실행해도 결과 동일).
 --
 -- 실행:
 --   psql "$DATABASE_URL" -f scripts/migrations/20261005_rbac_foundation.sql
@@ -172,7 +176,7 @@ INSERT INTO "permissions" ("code", "name", "description") VALUES
 ON CONFLICT ("code") DO NOTHING;
 
 -- =========================================================================
--- 6. System seed — role_permissions (71 links) — server/lib/rbac-seed.ts
+-- 6. System seed — role_permissions (69 links) — server/lib/rbac-seed.ts
 --    ROLE_PERMISSION_MAP과 반드시 동일해야 함. role_id/permission_id는 하드코딩하지 않고
 --    roles.code / permissions.code로 조회해서 넣는다.
 -- =========================================================================
@@ -183,10 +187,24 @@ SELECT r.id, p.id FROM "roles" r CROSS JOIN "permissions" p
 WHERE r.code = 'OWNER'
 ON CONFLICT ("role_id", "permission_id") DO NOTHING;
 
--- ADMIN: 전체 - ROLE_READ/ROLE_MANAGE (29개)
+-- [MCC_RBAC_PHASE_2A_2_OWNER_ONLY_PERMISSION_POLICY_FIX_1] 기존 2A seed가 이미 적용된
+-- DB에는 ADMIN→MENU_PERMISSION_READ/MENU_PERMISSION_MANAGE 링크가 이미 들어가 있을 수
+-- 있다(2A에서는 ROLE_READ/ROLE_MANAGE만 OWNER 전용으로 제외했었음). ON CONFLICT DO NOTHING
+-- 만으로는 이미 생성된 잘못된 링크가 제거되지 않으므로, ADMIN role + 이 4개 permission
+-- 조합만 정확히 지정해서 제거한다. OWNER 링크는 r.code='ADMIN' 조건 때문에 전혀 영향받지
+-- 않는다. 재실행해도 안전(이미 없으면 0 rows deleted).
+DELETE FROM "role_permissions" rp
+USING "roles" r, "permissions" p
+WHERE rp.role_id = r.id
+  AND rp.permission_id = p.id
+  AND r.code = 'ADMIN'
+  AND p.code IN ('ROLE_READ', 'ROLE_MANAGE', 'MENU_PERMISSION_READ', 'MENU_PERMISSION_MANAGE');
+
+-- ADMIN: 전체 - (ROLE_READ, ROLE_MANAGE, MENU_PERMISSION_READ, MENU_PERMISSION_MANAGE) = OWNER 전용 4개 제외 (27개)
 INSERT INTO "role_permissions" ("role_id", "permission_id")
 SELECT r.id, p.id FROM "roles" r CROSS JOIN "permissions" p
-WHERE r.code = 'ADMIN' AND p.code NOT IN ('ROLE_READ', 'ROLE_MANAGE')
+WHERE r.code = 'ADMIN'
+  AND p.code NOT IN ('ROLE_READ', 'ROLE_MANAGE', 'MENU_PERMISSION_READ', 'MENU_PERMISSION_MANAGE')
 ON CONFLICT ("role_id", "permission_id") DO NOTHING;
 
 -- MIDDLE_MANAGER: AUDIT_READ, AUDIT_PROCESS, TYPING_READ (3개)

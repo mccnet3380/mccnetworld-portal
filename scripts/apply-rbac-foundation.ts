@@ -88,7 +88,7 @@ async function main() {
     );
     console.log("=== 적용 후 row count ===");
     console.log(counts.rows[0]);
-    console.log("예상: roles=9, permissions=31, role_permissions=71 (user_roles는 실제 배정에 따라 달라질 수 있음 - 신규 환경이면 0)");
+    console.log("예상: roles=9, permissions=31, role_permissions=69 (user_roles는 실제 배정에 따라 달라질 수 있음 - 신규 환경이면 0)");
   } catch (err) {
     console.error("❌ migration 실행 실패:", err);
     process.exitCode = 1;

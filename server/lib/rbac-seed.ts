@@ -88,8 +88,19 @@ const SEED_PERMISSIONS: SeedPermission[] = [
 
 // role → permission code 매핑. 애매한 역할(SALES, SALES_MANAGER)은 의도적으로 빈 배열.
 const ALL_PERMISSION_CODES = SEED_PERMISSIONS.map((p) => p.code);
+
+// [MCC_RBAC_PHASE_2A_2_OWNER_ONLY_PERMISSION_POLICY_FIX_1] RBAC 역할/권한 설정 기능 자체와
+// 메뉴 표시설정 관리는 OWNER 전용이다 — 일반 ADMIN은 다른 사용자의 역할/권한이나 메뉴 권한을
+// 관리할 수 없어야 한다. (이전에는 ROLE_READ/ROLE_MANAGE만 제외했고 MENU_PERMISSION_*는
+// ADMIN에 포함되어 있었다 — 이번 작업에서 교정.)
+const OWNER_ONLY_PERMISSION_CODES = [
+  "ROLE_READ",
+  "ROLE_MANAGE",
+  "MENU_PERMISSION_READ",
+  "MENU_PERMISSION_MANAGE",
+];
 const ADMIN_PERMISSION_CODES = ALL_PERMISSION_CODES.filter(
-  (c) => c !== "ROLE_READ" && c !== "ROLE_MANAGE",
+  (c) => !OWNER_ONLY_PERMISSION_CODES.includes(c),
 );
 
 const ROLE_PERMISSION_MAP: Record<string, string[]> = {
