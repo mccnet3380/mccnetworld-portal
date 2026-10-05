@@ -16,6 +16,9 @@ import { splitPolicyExcelFromBuffer } from './lib/mcc-policy-split';
 import { exportPolicyUploadReadyFromSplit } from './lib/mcc-policy-export-ready';
 import { normalizeCustomerType, normalizePlanNameForMatching } from './lib/activation-normalize';
 import { resolvePolicyMatchForActivation, type ResolvedPolicyMatch } from './lib/settlement-policy-match';
+import { requirePermission } from './lib/rbac-guard';
+import { resolveSessionPrincipal } from './lib/session-rbac';
+import { hasPermission } from './lib/rbac';
 import { sql, eq, and, gte, lte, lt, inArray } from "drizzle-orm";
 
 // 중복 제출 방지를 위한 최근 제출 요청 추적
@@ -7051,24 +7054,38 @@ const SIDEBAR_MENU_KEYS = [
 ] as const;
 type SidebarMenuKey = typeof SIDEBAR_MENU_KEYS[number];
 
-// [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1] "사이드바 메뉴
-// 관리" 탭/변경 권한은 "관리자이면 누구나"가 아니라 특정 계정(owner) 전용이어야
-// 한다는 요구에 따라 추가. 실제 로그인 세션 로그(server-side, DEV)와 admins 테이블을
-// 직접 조회해 확인한 결과 — DEV DB에 admin 계정은 정확히 1개(id=1, username='Kksnan',
-// name='Super Admin')뿐이고, 실제 테스트 세션도 전부 user_id=1로 기록되어 있었다.
-// display name("Super Admin") 문자열이 아니라 admins.id(불변 PK, 우선순위 1)를
-// 기준으로 식별한다 — 계정명이 바뀌어도 이 값은 유지된다.
-const SIDEBAR_MENU_SETTINGS_OWNER_ADMIN_ID = 1;
-
-function isSidebarMenuSettingsOwner(req: any): boolean {
-  return req.session?.userType === 'admin' && req.session?.userId === SIDEBAR_MENU_SETTINGS_OWNER_ADMIN_ID;
+// [MCC_SIDEBAR_MENU_VISIBILITY_LIVE_APPLY_LAYOUT_OWNER_ONLY_FIX_1 →
+//  MCC_RBAC_PHASE_2C_1_OWNER_ADMIN_MANAGEMENT_API_ENFORCEMENT_1] "사이드바 메뉴 관리"
+// 탭/변경 권한은 "관리자이면 누구나"가 아니라 OWNER 전용이어야 한다는 요구에 따라
+// 추가됐다. 과거에는 admins.id===1 하드코딩으로 구현했으나, 이번 2C-1에서 실제 RBAC
+// permission(MENU_PERMISSION_MANAGE)로 교체한다 — user_roles/role_permissions에
+// 의해서만 결정되고, admins.id나 username 문자열에 의존하지 않는다(운영에서 admin
+// id=1의 username이 'Kksnan'으로, 과거 코드의 소문자 'kksnan' 하드코딩과 불일치했던
+// 문제도 이 교체로 자연히 해소된다 — MCC_RBAC_PHASE_2B_1에서 발견).
+//
+// 주의: 이 교체는 "이번 endpoint에서만" 적용한다. 다른 곳의 admins.id===1/username
+// 하드코딩(예: 비밀번호 변경 관련 routes.ts:1404,1440, storage.ts:669,684)은 이번
+// 단계에서 건드리지 않고 그대로 유지한다 — 점진 전환.
+async function canManageSidebarMenuSettings(req: any): Promise<boolean> {
+  const principal = resolveSessionPrincipal(req.session?.userType, req.session?.userId);
+  if (!principal) return false;
+  try {
+    return await hasPermission(principal.principalType, principal.principalId, 'MENU_PERMISSION_MANAGE');
+  } catch (error) {
+    // 이 값은 "관리 탭을 보여줄지"를 결정하는 조회용 플래그일 뿐이다 — RBAC 조회가
+    // 실패해도 Sidebar 렌더링 자체(이 라우트의 나머지 응답)는 절대 막지 않고, 관리
+    // 기능 노출만 안전하게 false로 처리한다(fail-closed: 조회 실패 시 권한 없음으로 취급).
+    console.error('RBAC_PERMISSION_CHECK_FAILED', { permissionCode: 'MENU_PERMISSION_MANAGE', error: error instanceof Error ? error.message : String(error) });
+    return false;
+  }
 }
 
 router.get('/api/sidebar-menu-settings', requireAuth, async (req: any, res) => {
   // Sidebar 렌더링용 조회는 로그인한 사용자 전원에게 필요하므로 requireAuth만 적용
-  // (관리 탭 접근 여부와는 별개). canManage만 owner 전용으로 계산해 함께 내려준다 —
-  // AdminPanel이 이 값으로 "사이드바 메뉴 관리" 탭 자체를 보여줄지 결정한다.
-  const canManage = isSidebarMenuSettingsOwner(req);
+  // (관리 탭 접근 여부와는 별개). canManage만 OWNER 전용(MENU_PERMISSION_MANAGE)으로
+  // 계산해 함께 내려준다 — AdminPanel이 이 값으로 "사이드바 메뉴 관리" 탭 자체를
+  // 보여줄지 결정한다.
+  const canManage = await canManageSidebarMenuSettings(req);
   try {
     const rows = await getStorage().getSidebarMenuVisibility();
     const byKey = new Map(rows.map(r => [r.menuKey, r]));
@@ -7091,13 +7108,11 @@ router.get('/api/sidebar-menu-settings', requireAuth, async (req: any, res) => {
   }
 });
 
-router.put('/api/admin/sidebar-menu-settings', requireAdmin, async (req: any, res) => {
-  // requireAdmin은 "관리자인지"만 확인한다 — 이 설정은 그보다 더 좁은 owner 전용
-  // 기능이므로 추가로 owner 여부를 검증한다. 다른 admin 계정이 직접 API를 호출해도
-  // 여기서 403으로 막힌다(관리자 권한 메시지와 구분되는 별도 메시지).
-  if (!isSidebarMenuSettingsOwner(req)) {
-    return res.status(403).json({ error: '이 설정을 변경할 권한이 없습니다.' });
-  }
+// requireAdmin은 "관리자인지"만 확인한다 — 이 설정은 그보다 더 좁은 OWNER 전용
+// 기능이므로 requirePermission('MENU_PERMISSION_MANAGE')로 추가 검증한다(fail-closed —
+// server/lib/rbac-guard.ts 참고). 다른 admin 계정이 직접 API를 호출해도 여기서
+// 403으로 막힌다. RBAC 조회 자체가 실패하면 503(권한 없음으로 오인되지 않도록 구분).
+router.put('/api/admin/sidebar-menu-settings', requireAdmin, requirePermission('MENU_PERMISSION_MANAGE'), async (req: any, res) => {
   try {
     const { settings } = req.body;
     if (!Array.isArray(settings)) {
