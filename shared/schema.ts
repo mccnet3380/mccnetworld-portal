@@ -1325,6 +1325,12 @@ export type AuthUser = {
   isHiddenPos?: boolean;
   managerId?: number;
   teamId?: number;
+  // [MCC_RBAC_PHASE_2B_SESSION_SHADOW_CONTEXT_1] SHADOW MODE 전용 필드 — 아직 어떤
+  // 접근 차단/허용 판정에도 쓰이지 않는다. server/lib/session-rbac.ts에서 채워진다.
+  rbacPrincipalType?: 'ADMIN' | 'USER' | 'SALES_MANAGER' | 'DEALER';
+  rbacPrincipalId?: number;
+  rbacRoles?: string[];
+  rbacPermissions?: string[];
 };
 
 // Login success response type

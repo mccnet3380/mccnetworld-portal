@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { getStorage } from "./storage";
 import { loginSchema, AuthResponse } from "../shared/schema";
+import { loadRbacShadowContext } from "./lib/session-rbac";
 
 const authRouter = Router();
 
@@ -40,14 +41,17 @@ authRouter.post('/login', async (req, res) => {
     if (admin) {
       const sessionId = await getStorage().createSession(admin.id, 'admin');
       console.log('Session created:', maskSessionToken(sessionId));
-      
+
+      const rbacShadow = await loadRbacShadowContext('admin', admin.id);
+
       const response: AuthResponse = {
         success: true,
         user: {
           id: admin.id,
           name: admin.name,
           username: admin.username,
-          userType: 'admin'
+          userType: 'admin',
+          ...(rbacShadow ?? {})
         },
         sessionId
       };
@@ -71,11 +75,13 @@ authRouter.post('/login', async (req, res) => {
       }
       
       const sessionId = await getStorage().createSession(
-        userResult.id, 
+        userResult.id,
         userResult.userType || 'user'
       );
       console.log('User session created:', sessionId, 'Type:', userResult.userType);
-      
+
+      const rbacShadow = await loadRbacShadowContext(userResult.userType || 'user', userResult.id);
+
       // [MCC_ACTIVATION_STATUS_POST_ACTIVATION_AUDIT_CENTER_1] userRole을 로그인 응답에도
       // 포함한다 — /api/auth/me(checkAuth)는 이미 userRole: user.role을 내려주고 있었는데
       // 이 /login 응답에는 빠져 있어서, 로그인 직후(새로고침 전) Sidebar/App.tsx의
@@ -92,7 +98,8 @@ authRouter.post('/login', async (req, res) => {
           userType: userResult.userType || 'user',
           dealerId: userResult.dealerId,
           dealerRegistrationId: userResult.dealerRegistrationId,
-          userRole: userResult.role
+          userRole: userResult.role,
+          ...(rbacShadow ?? {})
         },
         sessionId
       };
@@ -146,6 +153,11 @@ authRouter.post('/dealer-login', async (req, res) => {
       );
       console.log('Dealer session created:', maskSessionToken(sessionId), 'Type:', userResult.userType, 'DealerId:', userResult.dealerId, 'DealerRegistrationId:', userResult.dealerRegistrationId);
 
+      // [MCC_RBAC_PHASE_2B_SESSION_SHADOW_CONTEXT_1] dealer 계정도 결국 users row이므로
+      // principalType='USER', principalId=userResult.id로 조회한다 — dealerId나
+      // dealerRegistrationId를 principalId로 쓰지 않는다(PHASE 2A canonical 결정 유지).
+      const rbacShadow = await loadRbacShadowContext(userResult.userType || 'user', userResult.id);
+
       const response: AuthResponse = {
         success: true,
         user: {
@@ -157,7 +169,8 @@ authRouter.post('/dealer-login', async (req, res) => {
           dealerRegistrationId: userResult.dealerRegistrationId,
           dealerCode,
           isHiddenPos,
-          userRole: userResult.role
+          userRole: userResult.role,
+          ...(rbacShadow ?? {})
         },
         sessionId
       };
@@ -268,31 +281,36 @@ authRouter.get('/me', async (req, res) => {
     if (userType === 'admin') {
       const admin = await getStorage().getAdminById(userId);
       if (admin) {
+        const rbacShadow = await loadRbacShadowContext('admin', admin.id);
         return res.json({
           success: true,
           user: {
             id: admin.id,
             name: admin.name,
             username: admin.username,
-            userType: 'admin'
+            userType: 'admin',
+            ...(rbacShadow ?? {})
           }
         });
       }
     } else if (userType === 'sales_manager') {
       const manager = await getStorage().getSalesManagerById(userId);
       if (manager) {
+        const rbacShadow = await loadRbacShadowContext('sales_manager', manager.id);
         return res.json({
           success: true,
           user: {
             id: manager.id,
             name: manager.managerName,
-            userType: 'sales_manager'
+            userType: 'sales_manager',
+            ...(rbacShadow ?? {})
           }
         });
       }
     } else {
       const user = await getStorage().getUserById(userId);
       if (user) {
+        const rbacShadow = await loadRbacShadowContext(user.userType || 'user', user.id);
         return res.json({
           success: true,
           user: {
@@ -302,7 +320,8 @@ authRouter.get('/me', async (req, res) => {
             userType: user.userType || 'user',
             dealerId: user.dealerId,
             dealerRegistrationId: user.dealerRegistrationId,
-            userRole: user.role
+            userRole: user.role,
+            ...(rbacShadow ?? {})
           }
         });
       }
