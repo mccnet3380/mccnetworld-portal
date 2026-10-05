@@ -16,6 +16,7 @@ import lgAuditRoutes from "./routes/lg-audit";
 import ktAuditRoutes from "./routes/kt-audit";
 import personalPerformanceRoutes from "./routes/personal-performance";
 import performanceTargetsRoutes from "./routes/performance-targets";
+import workerPerformanceOverviewRoutes from "./routes/worker-performance-overview";
 import trainingRoutes from "./routes/training";
 import sheetViewerRoutes from "./routes/sheet-viewer";
 import activationAuditRoutes from "./routes/activation-audit";
@@ -250,6 +251,10 @@ app.use(personalPerformanceRoutes);
 
 // 개인 실적 관리자 화면(worker mapping/월별 목표) — admin 전용
 app.use(performanceTargetsRoutes);
+
+// 근무자 실적 요약(관리자 전용) — personal-performance.ts의 LOCK 계산 함수를 그대로
+// 재사용한 전체 근무자 집계. 새 계산/별도 통계 DB 없음.
+app.use(workerPerformanceOverviewRoutes);
 
 // 교육자료(사내 교육센터) — 열람: admin/sales_manager/내부 worker(dealer 제외), 관리: admin 전용
 app.use(trainingRoutes);

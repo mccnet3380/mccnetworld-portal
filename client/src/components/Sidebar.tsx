@@ -24,7 +24,8 @@ import {
   GraduationCap,
   FileSpreadsheet,
   LayoutTemplate,
-  ChevronDown
+  ChevronDown,
+  Users2
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import logoImage from '@assets/KakaoTalk_20250626_162541112-removebg-preview_1751604392501.png';
@@ -125,6 +126,11 @@ const MENU_GROUPS: { groupName: string; icon: typeof Megaphone; childNames: stri
 // MCC_PERSONAL_PERFORMANCE_ACCESS_AND_MAPPING_FIX_1: 실적관리(전체 근무자 실적)는
 // 관리자만 볼 수 있다 — 일반 navigation에는 넣지 않고 isAdmin일 때만 앞에 붙인다.
 const performanceManagementNavItem = { name: '실적관리', href: '/performance', icon: BarChart3 };
+
+// [MCC_ADMIN_WORKER_PERFORMANCE_OVERVIEW_1] 근무자 실적(전체 근무자 요약/비교)도 관리자만
+// 볼 수 있다 — performanceManagementNavItem과 동일한 이유로 일반 navigation에는 넣지 않고
+// isAdmin일 때만 "개인 실적" 바로 뒤에 삽입한다(아래 currentNavigation 참고).
+const workerPerformanceNavItem = { name: '근무자 실적', href: '/admin/worker-performance', icon: Users2 };
 
 // [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 메뉴 이름(화면 표시 문자열) → 안정적인
 // 내부 menuKey 매핑. menuKey는 server/routes.ts의 SIDEBAR_MENU_KEYS와 1:1 대응한다.
@@ -231,9 +237,24 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   }
 
   // 관리자만 관리자 패널 접근 가능. 실적관리(전체 근무자 실적)도 관리자만 — 맨 앞에 붙인다.
-  const currentNavigation = isAdmin
-    ? [performanceManagementNavItem, ...baseNavigation, ...adminNavigation]
-    : baseNavigation;
+  // [MCC_ADMIN_WORKER_PERFORMANCE_OVERVIEW_1] 근무자 실적도 관리자만 — "개인 실적" 바로
+  // 뒤에 삽입한다(이름으로 위치를 찾아서 삽입 — baseNavigation의 배열 순서가 바뀌어도
+  // 안전하게 "개인 실적" 다음 자리를 유지한다).
+  let currentNavigation: typeof navigation;
+  if (isAdmin) {
+    const personalPerfIdx = baseNavigation.findIndex(item => item.name === '개인 실적');
+    const baseWithWorkerPerf =
+      personalPerfIdx >= 0
+        ? [
+            ...baseNavigation.slice(0, personalPerfIdx + 1),
+            workerPerformanceNavItem,
+            ...baseNavigation.slice(personalPerfIdx + 1),
+          ]
+        : [workerPerformanceNavItem, ...baseNavigation];
+    currentNavigation = [performanceManagementNavItem, ...baseWithWorkerPerf, ...adminNavigation];
+  } else {
+    currentNavigation = baseNavigation;
+  }
 
   // [MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1] 위에서 계산된 기존 권한 기반
   // currentNavigation(canViewMenu에 해당) 위에 "표시 설정"을 AND 조건으로 추가한다.

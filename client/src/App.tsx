@@ -20,6 +20,7 @@ import { AdminPanel } from '@/pages/AdminPanel';
 import { Settlements } from '@/pages/Settlements';
 import { PerformanceManagement } from '@/pages/PerformanceManagement';
 import { PersonalPerformance } from '@/pages/PersonalPerformance';
+import { WorkerPerformanceOverview } from '@/pages/WorkerPerformanceOverview';
 import { DailyPerformanceBoard } from '@/pages/DailyPerformanceBoard';
 import { PerformanceClosing } from '@/pages/PerformanceClosing';
 import { LgActivationAudit } from '@/pages/LgActivationAudit';
@@ -268,6 +269,11 @@ function AppRoutes() {
             path="/settlement/policies"
             component={() => <AdminPanel defaultTab="policy-versions" />}
           />
+          {/* [MCC_ADMIN_WORKER_PERFORMANCE_OVERVIEW_1] 근무자 실적(관리자 전용) — 메뉴
+              숨김만으로 끝내지 않고, 이 Route 자체가 user?.userType === 'admin' 블록
+              안에만 등록되어 있어 admin이 아니면 이 경로는 존재하지 않는다(NotFound로
+              떨어짐). 서버도 별도로 requireAdminSession으로 admin만 허용(서버 §13). */}
+          <Route path="/admin/worker-performance" component={WorkerPerformanceOverview} />
 
           <Route path="/sales-team-management" component={SalesTeamManagement} />
           <Route path="/test" component={TestPage} />
