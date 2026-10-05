@@ -4281,8 +4281,25 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     },
   });
 
+  // [MCC_USER_ROLE_WORKER_CREATION_FIX_1] createWorkerSchema(shared/schema.ts)는 서버/DB
+  // 실제 enum 그대로라 role이 'middle_manager'만 허용한다(null/undefined=일반 근무자). 그런데
+  // 이 폼의 role 필드는 'worker'를 "UI sentinel"로 쓴다(위 CreateWorkerForm 타입 주석,
+  // handleCreateWorker가 이미 'middle_manager' 아니면 undefined로 정규화해서 보냄). 폼
+  // resolver에 createWorkerSchema를 그대로 쓰면 handleCreateWorker가 정규화하기도 전에
+  // raw 값 'worker'가 그 엄격한 enum(["middle_manager"])에 막혀 "Invalid enum value.
+  // Expected 'middle_manager', received 'worker'" 오류가 난다(실측 확인). DB enum에
+  // 'worker'를 추가하지 않고, editUserForm(위 4347행)이 이미 쓰고 있는 것과 동일한
+  // "로컬 UI 전용 스키마"로 클라이언트 검증만 분리한다 — 서버로 보내는 값/검증
+  // (createWorkerSchema, server 쪽)은 전혀 건드리지 않는다.
   const workerForm = useForm<CreateWorkerForm>({
-    resolver: zodResolver(createWorkerSchema),
+    resolver: zodResolver(
+      z.object({
+        username: z.string().min(3, '아이디는 최소 3자 이상이어야 합니다'),
+        password: z.string().min(6, '비밀번호는 최소 6자 이상이어야 합니다'),
+        name: z.string().min(1, '이름을 입력해주세요'),
+        role: z.enum(['worker', 'middle_manager']).optional(),
+      })
+    ),
     defaultValues: {
       username: '',
       password: '',
