@@ -1407,15 +1407,23 @@ router.get('/api/admin/admins', requireAdmin, async (req, res) => {
 });
 
 // 비밀번호 변경 API (관리자 패널용)
+// CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2C_OWNER_AND_SETTLEMENT_SENSITIVE_PERMISSION_CLEANUP_1):
+// 과거 username==='admin'||'kksnan' 하드코딩은 실제 운영 OWNER username('Kksnan', 대문자)과
+// 대소문자가 불일치해 사실상 누구도 통과하지 못하는 깨진 게이트였다. target이 admin 계정일
+// 때는 2C-2A에서 만든 checkOwnerTargetProtection()을 그대로 재사용한다 — target이 OWNER면
+// 요청자도 OWNER여야 하고, target이 일반 ADMIN이면 기존처럼(자기 자신이든 다른 ADMIN이든)
+// requireAdmin 통과만으로 허용한다. 새 permission을 추가하지 않는다 — 이건 "무슨 기능을
+// 할 수 있는가"가 아니라 "대상이 OWNER인가"의 문제라 2C-2A와 동일한 target-identity 모델이
+// 맞다.
 router.post('/api/admin/change-password', requireAdmin, async (req: any, res) => {
   try {
     const { userId, accountType, newPassword } = req.body;
     console.log('Password change request:', { userId, accountType, newPassword: '***' });
-    
+
     // userId가 없으면 세션에서 가져오기 (자신의 비밀번호 변경인 경우)
     const targetUserId = userId || req.session.userId;
     const targetAccountType = accountType || 'admin';
-    
+
     if (!targetUserId || !targetAccountType || !newPassword) {
       console.log('Missing required fields:', { userId: !!targetUserId, accountType: !!targetAccountType, newPassword: !!newPassword });
       return res.status(400).json({ error: '필수 정보가 누락되었습니다.' });
@@ -1425,17 +1433,13 @@ router.post('/api/admin/change-password', requireAdmin, async (req: any, res) =>
       return res.status(400).json({ error: '비밀번호는 최소 6자리 이상이어야 합니다.' });
     }
 
-    // 시스템 관리자 권한 확인 - admin, kksnan 계정 허용
-    const currentUser = await getStorage().getAdminById(req.session.userId);
-    console.log('Current user check:', { currentUserId: req.session.userId, username: currentUser?.username });
-    
-    if (!currentUser || (currentUser.username !== 'admin' && currentUser.username !== 'kksnan')) {
-      return res.status(403).json({ error: '비밀번호 변경은 시스템 관리자만 가능합니다.' });
-    }
-
     console.log('Processing password change for:', { userId: targetUserId, accountType: targetAccountType });
 
     if (targetAccountType === 'admin') {
+      const ownerProtection = await checkOwnerTargetProtection(req, targetUserId);
+      if (!ownerProtection.allowed) {
+        return res.status(ownerProtection.status).json(ownerProtection.body);
+      }
       await getStorage().updateAdminPassword(targetUserId, newPassword);
     } else if (targetAccountType === 'sales_manager') {
       // await getStorage().updateSalesManagerPassword(targetUserId, newPassword); // 스텁
@@ -1456,36 +1460,17 @@ router.post('/api/admin/change-password', requireAdmin, async (req: any, res) =>
   }
 });
 
-// 모든 사용자 비밀번호를 123456으로 초기화 (kksnan 제외, 관리자 전용)
-router.post('/api/admin/reset-all-passwords', requireAdmin, async (req: any, res) => {
-  try {
-    console.log('Password reset request from user:', req.session.userId);
-    
-    // 시스템 관리자 권한 확인 - kksnan 계정만 허용
-    const currentUser = await getStorage().getAdminById(req.session.userId);
-    console.log('Current user check:', { currentUserId: req.session.userId, username: currentUser?.username });
-    
-    if (!currentUser || currentUser.username !== 'kksnan') {
-      return res.status(403).json({ error: '모든 비밀번호 초기화는 최고 권한자(kksnan)만 가능합니다.' });
-    }
-
-    console.log('Processing password reset for all users except kksnan');
-    
-    // const result = await getStorage().resetAllPasswordsTo123456(); // 스텁
-    const result = { updated: 0, users: [] };
-    
-    console.log('Password reset completed:', result);
-    
-    res.json({ 
-      success: true, 
-      message: `총 ${result.updated}개 계정의 비밀번호가 123456으로 초기화되었습니다.`,
-      updated: result.updated,
-      users: result.users
-    });
-  } catch (error: any) {
-    console.error('Password reset error:', error);
-    res.status(500).json({ error: error.message || '비밀번호 초기화에 실패했습니다.' });
-  }
+// CRITICAL 보안/정리(MCC_RBAC_PHASE_2C_2C_OWNER_AND_SETTLEMENT_SENSITIVE_PERMISSION_CLEANUP_1):
+// 이 endpoint는 (1) frontend 어디에도 호출부가 없고(죽은 기능), (2) 실제 구현이 스텁(resetAllPasswordsTo123456()
+// 자체가 존재하지 않음, 항상 updated:0), (3) 가드가 username==='kksnan' 하드코딩이라 실제 운영 OWNER
+// username('Kksnan')과 불일치해 지금은 아무도 통과할 수 없었다. "아무것도 안 하면서 성공 메시지를
+// 돌려주는" 상태를 그대로 두는 대신, 명확히 410 Gone으로 비활성화한다 — 대량 비밀번호 초기화 기능을
+// 새로 구현하지 않는다(이번 작업 범위 밖).
+router.post('/api/admin/reset-all-passwords', requireAdmin, async (_req: any, res) => {
+  return res.status(410).json({
+    error: '이 기능은 더 이상 지원되지 않습니다.',
+    code: 'ENDPOINT_DISABLED',
+  });
 });
 
 // 영업과장 삭제 API (시스템 관리자 전용)
@@ -3520,7 +3505,7 @@ router.post('/api/admin/settlements/generate', requireAdmin, async (req, res) =>
 });
 
 // Settlement unit price API
-router.get('/api/admin/settlement-unit-prices', requireAdmin, async (req, res) => {
+router.get('/api/admin/settlement-unit-prices', requireAdmin, requirePermission('SETTLEMENT_PRICING_MANAGE'), async (req, res) => {
   try {
     const prices = await getStorage().getSettlementUnitPrices();
     res.json(prices);
@@ -3530,7 +3515,7 @@ router.get('/api/admin/settlement-unit-prices', requireAdmin, async (req, res) =
 });
 
 // Settlement pricing Excel upload (메모리 버퍼 사용)
-router.post('/api/admin/settlement-pricing/excel-upload', requireAdmin, requireDbHealthy, upload.single('file'), async (req, res) => {
+router.post('/api/admin/settlement-pricing/excel-upload', requireAdmin, requirePermission('SETTLEMENT_PRICING_MANAGE'), requireDbHealthy, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
@@ -5720,7 +5705,7 @@ router.delete('/api/admin/policies/:id/adjustment-rules/:ruleId', requireAdmin, 
 // ── hidden_policy_rows CRUD ──────────────────────────────────────────
 
 // HP-1. GET /api/admin/hidden-policy-rows
-router.get('/api/admin/hidden-policy-rows', requireAdmin, async (req, res) => {
+router.get('/api/admin/hidden-policy-rows', requireAdmin, requirePermission('HIDDEN_POLICY_MANAGE'), async (req, res) => {
   try {
     const { dealerRegistrationId, isActive } = req.query;
     const filters: any = {};
@@ -5734,7 +5719,7 @@ router.get('/api/admin/hidden-policy-rows', requireAdmin, async (req, res) => {
 });
 
 // HP-2. POST /api/admin/hidden-policy-rows
-router.post('/api/admin/hidden-policy-rows', requireAdmin, async (req, res) => {
+router.post('/api/admin/hidden-policy-rows', requireAdmin, requirePermission('HIDDEN_POLICY_MANAGE'), async (req, res) => {
   try {
     const adminId = req.session?.userId;
     const { dealerRegistrationId, contactCode, channel, planName, customerType, hiddenAmount, effectiveFrom, effectiveTo, isActive, memo } = req.body;
@@ -5760,7 +5745,7 @@ router.post('/api/admin/hidden-policy-rows', requireAdmin, async (req, res) => {
 });
 
 // HP-3. PATCH /api/admin/hidden-policy-rows/:id
-router.patch('/api/admin/hidden-policy-rows/:id', requireAdmin, async (req, res) => {
+router.patch('/api/admin/hidden-policy-rows/:id', requireAdmin, requirePermission('HIDDEN_POLICY_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
@@ -5782,7 +5767,7 @@ router.patch('/api/admin/hidden-policy-rows/:id', requireAdmin, async (req, res)
 });
 
 // HP-4. DELETE /api/admin/hidden-policy-rows/:id — 비활성 처리
-router.delete('/api/admin/hidden-policy-rows/:id', requireAdmin, async (req, res) => {
+router.delete('/api/admin/hidden-policy-rows/:id', requireAdmin, requirePermission('HIDDEN_POLICY_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: '유효하지 않은 ID입니다.' });
@@ -6966,7 +6951,7 @@ router.post('/api/admin/settlement/items/:id/lock', requireAdmin, async (req: an
 });
 
 // 3-b. POST /api/admin/settlement/recalculate-hidden-amounts — 히든금액 일괄 재계산
-router.post('/api/admin/settlement/recalculate-hidden-amounts', requireAdmin, async (req: any, res) => {
+router.post('/api/admin/settlement/recalculate-hidden-amounts', requireAdmin, requirePermission('HIDDEN_POLICY_MANAGE'), async (req: any, res) => {
   try {
     const { dateFrom, dateTo, onlyUnsettled = true, dryRun = false, debugContactCode } = req.body;
     const result = await getStorage().recalculateHiddenAmounts({ dateFrom, dateTo, onlyUnsettled, dryRun, debugContactCode });
@@ -6978,7 +6963,7 @@ router.post('/api/admin/settlement/recalculate-hidden-amounts', requireAdmin, as
 });
 
 // 3-c. POST /api/admin/hidden-amount/diagnose — 접점코드별 히든금액 계산 단계 진단
-router.post('/api/admin/hidden-amount/diagnose', requireAdmin, async (req: any, res) => {
+router.post('/api/admin/hidden-amount/diagnose', requireAdmin, requirePermission('HIDDEN_POLICY_MANAGE'), async (req: any, res) => {
   try {
     const { contactCode, dateFrom, dateTo } = req.body;
     if (!contactCode) return res.status(400).json({ error: 'contactCode 필수' });
