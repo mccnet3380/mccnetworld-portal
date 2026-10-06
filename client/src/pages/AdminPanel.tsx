@@ -26,6 +26,7 @@ import type { User, Document, ServicePlan, Carrier, AdditionalService, Settlemen
 import { apiRequest } from '@/lib/queryClient';
 import { McodeMasterUploadPanel } from '@/components/admin/mcode/McodeMasterUploadPanel';
 import { SidebarMenuVisibilityPanel } from '@/components/admin/sidebar/SidebarMenuVisibilityPanel';
+import { RbacPermissionManagement } from '@/components/admin/rbac/RbacPermissionManagement';
 import { GoogleSheetsImportModal } from '@/components/admin/settlement/GoogleSheetsImportModal';
 import { 
   Building2, 
@@ -2675,6 +2676,13 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
     queryFn: () => apiRequest('/api/sidebar-menu-settings'),
   });
   const canManageSidebarMenus = sidebarMenuSettingsData?.canManage === true;
+
+  // [MCC_RBAC_PHASE_2E_PERMISSION_MANAGEMENT_UI_1] "권한 관리" 탭은 OWNER 전용 — legacy
+  // userType==='admin'/'Super Admin' 표시와 절대 혼동하지 않는다. /api/auth/me가 이미
+  // 내려주는 rbacRoles(server/lib/session-rbac.ts, fresh query)로만 판정한다. 이 조건은
+  // UX 숨김일 뿐이고 실제 보안 source-of-truth는 server/routes/rbac-admin.ts의
+  // requirePermission('ROLE_READ'/'ROLE_MANAGE') + isOwnerPrincipal() 2중 게이트다.
+  const canManageRbac = user?.rbacRoles?.includes('OWNER') ?? false;
 
   // URL에서 탭 결정
   const currentPath = window.location.pathname;
@@ -6309,6 +6317,14 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
                   <Users className="h-4 w-4" />
                   <span>사용자 관리</span>
                 </TabsTrigger>
+                {/* [MCC_RBAC_PHASE_2E_PERMISSION_MANAGEMENT_UI_1] OWNER 전용 — canManageRbac가
+                    false면 다른 admin은 이 탭의 흔적조차 보지 못한다(사이드바 메뉴 관리와 동일 원칙). */}
+                {canManageRbac && (
+                  <TabsTrigger value="rbac-permissions" className="flex items-center space-x-2">
+                    <Users className="h-4 w-4" />
+                    <span>권한 관리</span>
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="documents" className="flex items-center space-x-2">
                   <FileText className="h-4 w-4" />
                   <span>서류 관리</span>
@@ -12397,6 +12413,15 @@ export function AdminPanel({ defaultTab }: { defaultTab?: string } = {}) {
           {canManageSidebarMenus && (
             <TabsContent value="sidebar-menu-visibility">
               <SidebarMenuVisibilityPanel />
+            </TabsContent>
+          )}
+
+          {/* [MCC_RBAC_PHASE_2E_PERMISSION_MANAGEMENT_UI_1] 트리거와 동일하게 OWNER 전용 —
+              다른 admin이 URL/탭 state 조작으로 value만 맞춰도 이 블록 자체가 렌더링되지
+              않는다(서버 PUT/GET도 별도로 401/403 처리하는 2중 방어, 섹션3). */}
+          {canManageRbac && (
+            <TabsContent value="rbac-permissions">
+              <RbacPermissionManagement />
             </TabsContent>
           )}
 
