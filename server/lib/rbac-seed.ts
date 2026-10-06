@@ -80,6 +80,11 @@ const SEED_PERMISSIONS: SeedPermission[] = [
   { code: "DEALER_MANAGE", name: "판매점 관리", description: "dealer_registrations 생성/수정/승인" },
   { code: "CONTACT_CODE_READ", name: "접점코드 조회", description: "contact_codes 조회" },
   { code: "CONTACT_CODE_EDIT", name: "접점코드 편집", description: "contact_codes 생성/수정" },
+  // [MCC_RBAC_PHASE_2C_2B_ADMIN_API_PERMISSION_ENFORCEMENT_1] carriers/other_business_carriers는
+  // 전부 관리자 UI 전용 CRUD라 조회/관리를 분리할 실사용 케이스가 없어 MANAGE 하나로 통합.
+  { code: "CARRIER_MANAGE", name: "통신사 관리", description: "carriers/other_business_carriers CRUD(관리자 UI 전용, 조회 포함)" },
+  // service_plans/additional_services도 동일 — 관리자 UI 전용 CRUD.
+  { code: "SERVICE_PLAN_MANAGE", name: "요금제/부가서비스 관리", description: "service_plans/additional_services CRUD(관리자 UI 전용, 조회 포함)" },
   { code: "ROLE_READ", name: "역할/권한 조회", description: "RBAC roles/permissions 조회(이 작업에서 생성한 resolver)" },
   { code: "ROLE_MANAGE", name: "역할/권한 관리", description: "RBAC role_permissions/user_roles 변경(OWNER 전용 거버넌스)" },
   { code: "MENU_PERMISSION_READ", name: "메뉴 표시설정 조회", description: "sidebar_menu_visibility 조회(getSidebarMenuVisibility)" },
