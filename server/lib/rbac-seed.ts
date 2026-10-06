@@ -72,6 +72,13 @@ const SEED_PERMISSIONS: SeedPermission[] = [
   { code: "SETTLEMENT_EDIT", name: "정산 결과 편집", description: "settlement_items 수정" },
   { code: "SETTLEMENT_POLICY_READ", name: "정산 정책 조회", description: "/settlement/policies" },
   { code: "SETTLEMENT_POLICY_EDIT", name: "정산 정책 편집", description: "policy_versions/policy_rows 수정" },
+  // [MCC_RBAC_PHASE_2C_2C_OWNER_AND_SETTLEMENT_SENSITIVE_PERMISSION_CLEANUP_1] settlement_unit_prices는
+  // policy_rows/settlement_items와 다른 별도 테이블(서비스플랜별 정산단가)이라 SETTLEMENT_POLICY_EDIT로
+  // 억지로 묶지 않고 분리한다. 관리자 UI 전용 CRUD라 조회/관리를 나눌 실사용 케이스가 없어 MANAGE 하나로 통합.
+  { code: "SETTLEMENT_PRICING_MANAGE", name: "정산 단가 관리", description: "settlement_unit_prices CRUD + 엑셀 업로드(관리자 UI 전용, 조회 포함)" },
+  // hidden_policy_rows는 "정책 행을 정산 계산에서 숨긴다"는 별도 민감 메커니즘(일반 정책 편집과
+  // 목적이 다름 — 예외처리/숨김 처리 전용)이라 SETTLEMENT_POLICY_EDIT와 분리. 재계산/진단도 같은 서브시스템.
+  { code: "HIDDEN_POLICY_MANAGE", name: "히든 정책/금액 관리", description: "hidden_policy_rows CRUD + 히든금액 재계산/진단(관리자 UI 전용, 조회 포함)" },
   { code: "USER_READ", name: "계정 조회", description: "AdminPanel 사용자 관리 탭 조회" },
   { code: "USER_MANAGE", name: "계정 관리", description: "AdminPanel 사용자 생성/수정" },
   { code: "TEAM_READ", name: "영업팀 조회", description: "SalesTeamManagement.tsx 조회" },
