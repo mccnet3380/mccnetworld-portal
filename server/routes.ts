@@ -18,6 +18,7 @@ import { normalizeCustomerType, normalizePlanNameForMatching } from './lib/activ
 import { resolvePolicyMatchForActivation, type ResolvedPolicyMatch } from './lib/settlement-policy-match';
 import { requirePermission, requireOwnerTargetProtection, checkOwnerTargetProtection } from './lib/rbac-guard';
 import { resolveSessionPrincipal } from './lib/session-rbac';
+import { resolveDataScope } from './lib/data-scope';
 import { hasPermission } from './lib/rbac';
 import { sql, eq, and, gte, lte, lt, inArray } from "drizzle-orm";
 
@@ -2632,6 +2633,35 @@ router.get('/api/documents', requireAuth, async (req: any, res) => {
       console.log('[ROUTE] User check - dealerId:', dealerId, 'dealerRegistrationId:', dealerRegistrationId, 'userType:', sessionUserType);
     }
 
+    // [MCC_RBAC_PHASE_2D_DATA_SCOPE_FOUNDATION_AND_SAFE_ENFORCEMENT_1] dealer 계정은
+    // dealerId/dealerRegistrationId 존재 여부로 구조적으로 OWN_DEALER 범위가 강제된다 —
+    // 클라이언트가 보내는 allWorkers=true로 이 범위를 벗어날 수 없다(과거에는 가능했다 —
+    // getDealerAccessContext()/assertDocumentAccessForDealer()는 단건 조회에만 적용되고
+    // 이 목록 조회는 allWorkers 쿼리 파라미터 하나로 dealer 필터 자체를 건너뛸 수 있었음).
+    // OWNER/ADMIN은 기존처럼 ALL(세션 userType이 'admin'이라 애초에 이 필터 대상이 아님).
+    // RBAC role이 없는 일반 worker는 LEGACY — 기존 allWorkers 토글 동작 그대로 유지.
+    const docScopePrincipal = resolveSessionPrincipal(sessionUserType, sessionUserId);
+    let effectiveAllWorkers = allWorkers === 'true';
+    if (docScopePrincipal) {
+      const scopeResult = await resolveDataScope({
+        principalType: docScopePrincipal.principalType,
+        principalId: docScopePrincipal.principalId,
+        permissionCode: 'DOCUMENT_READ',
+        resource: 'DOCUMENT',
+      });
+      if (scopeResult.mode === 'DENY') {
+        console.error('DATA_SCOPE_DENY', { resource: 'DOCUMENT', permissionCode: 'DOCUMENT_READ', principal: docScopePrincipal });
+        return res.status(403).json({ error: '데이터 범위 정책이 설정되지 않았습니다.' });
+      }
+      if (scopeResult.mode === 'RBAC' && scopeResult.scopes.includes('OWN_DEALER')) {
+        // dealer 구조적 scope — allWorkers 쿼리 파라미터를 무시하고 항상 본인 dealer로 고정.
+        effectiveAllWorkers = false;
+      }
+      // mode === 'LEGACY' 또는 scopes에 'ALL' 포함 시: 기존 effectiveAllWorkers(클라이언트
+      // 요청값) 그대로 — 레거시 worker 토글 동작, OWNER/ADMIN은 애초에 userType='admin'이라
+      // 영향 없음.
+    }
+
     const filters = {
       status,
       search,
@@ -2643,7 +2673,7 @@ router.get('/api/documents', requireAuth, async (req: any, res) => {
       activatedByType,
       page: page !== undefined ? Number(page) : undefined,
       limit: limit !== undefined ? Number(limit) : undefined,
-      userId: allWorkers === 'true' ? null : req.session?.userId,
+      userId: effectiveAllWorkers ? null : req.session?.userId,
       includeActivatedBy: includeActivatedBy === 'true',
       excludeWorkRequests: excludeWorkRequests === 'true',
       excludeDeleted: excludeDeleted === 'true',
@@ -2651,9 +2681,9 @@ router.get('/api/documents', requireAuth, async (req: any, res) => {
       userType: sessionUserType,
       dealerId: dealerId,
       dealerRegistrationId: dealerRegistrationId,
-      allWorkers: allWorkers === 'true'
+      allWorkers: effectiveAllWorkers
     };
-    
+
     console.log('[ROUTE] Calling getStorage().getDocuments() with filters:', filters);
     const documents = await getStorage().getDocuments(filters, sessionUserId, sessionUserType);
     const logCount = Array.isArray(documents) ? documents.length : documents.total;
@@ -2706,6 +2736,27 @@ router.get('/api/documents/export/excel', requireAuth, async (req: any, res) => 
       dealerRegistrationId = user?.dealerRegistrationId ?? null;
     }
 
+    // [MCC_RBAC_PHASE_2D_DATA_SCOPE_FOUNDATION_AND_SAFE_ENFORCEMENT_1] GET /api/documents와
+    // 동일한 이유로 동일하게 적용 — export도 allWorkers 쿼리 파라미터로 dealer 범위를
+    // 벗어날 수 있었던 동일한 구조였다.
+    const exportScopePrincipal = resolveSessionPrincipal(sessionUserType, sessionUserId);
+    let effectiveAllWorkers = allWorkers === 'true';
+    if (exportScopePrincipal) {
+      const scopeResult = await resolveDataScope({
+        principalType: exportScopePrincipal.principalType,
+        principalId: exportScopePrincipal.principalId,
+        permissionCode: 'DOCUMENT_READ',
+        resource: 'DOCUMENT',
+      });
+      if (scopeResult.mode === 'DENY') {
+        console.error('DATA_SCOPE_DENY', { resource: 'DOCUMENT', permissionCode: 'DOCUMENT_READ', principal: exportScopePrincipal });
+        return res.status(403).json({ error: '데이터 범위 정책이 설정되지 않았습니다.' });
+      }
+      if (scopeResult.mode === 'RBAC' && scopeResult.scopes.includes('OWN_DEALER')) {
+        effectiveAllWorkers = false;
+      }
+    }
+
     const filters = {
       status,
       search,
@@ -2714,13 +2765,13 @@ router.get('/api/documents/export/excel', requireAuth, async (req: any, res) => 
       contactCode,
       carrier,
       activationStatus,
-      userId: allWorkers === 'true' ? null : sessionUserId,
+      userId: effectiveAllWorkers ? null : sessionUserId,
       includeActivatedBy: true,
       // Permission-based filtering (GET /api/documents와 동일)
       userType: sessionUserType,
       dealerId: dealerId,
       dealerRegistrationId: dealerRegistrationId,
-      allWorkers: allWorkers === 'true'
+      allWorkers: effectiveAllWorkers
     };
 
     const documents = await getStorage().getDocuments(filters, sessionUserId, sessionUserType);
