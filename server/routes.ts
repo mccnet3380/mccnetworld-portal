@@ -1269,16 +1269,37 @@ router.post('/api/admin/create-admin', requireAdmin, async (req, res) => {
 });
 
 // Initial admin creation endpoint (temporary, no auth required)
+// CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2A_1_INIT_ADMIN_CRITICAL_LOCKDOWN_1): 이 endpoint는
+// 과거에 guard가 전혀 없었고 username 중복 여부만 확인했다 — 운영 중인 Production에서도
+// 비인증 상태로 새 ADMIN 계정을 생성할 수 있는 활성 P0였다. server/auth-routes.ts의
+// POST /api/auth/create-admin(미사용으로 방치된 참조 구현)이 이미 쓰고 있던 부트스트랩
+// 게이트 패턴을 그대로 재사용한다 — "admins가 1건이라도 있으면 항상 403".
+// 이중 방어: APP_ENV==='production'이면 admin 수와 무관하게 무조건 403(운영에서는
+// 이 endpoint 자체가 필요 없다 — 정상 관리자 생성은 POST /api/admin/create-admin 사용).
 router.post('/api/init-admin', async (req, res) => {
   try {
+    if (process.env.APP_ENV === 'production') {
+      return res.status(403).json({
+        error: 'Forbidden: initial admin bootstrap is disabled in production.',
+        code: 'BOOTSTRAP_DISABLED_IN_PRODUCTION',
+      });
+    }
+
+    const adminCount = await getStorage().getAdminCount();
+    if (adminCount > 0) {
+      return res.status(403).json({
+        error: '관리자가 이미 존재합니다. 초기 설정에서만 사용할 수 있습니다.',
+        code: 'BOOTSTRAP_GATE_BLOCKED',
+      });
+    }
+
     const { username, password, name } = req.body;
-    
-    // Check if admin already exists
+
     const existing = await getStorage().getAdminByUsername(username);
     if (existing) {
-      return res.status(400).json({ error: '관리자가 이미 존재합니다.' });
+      return res.status(409).json({ error: '관리자가 이미 존재합니다.' });
     }
-    
+
     const admin = await getStorage().createAdmin({ username, password, name });
     res.json({ success: true, message: '관리자가 생성되었습니다.', admin: { id: admin.id, username: admin.username, name: admin.name } });
   } catch (error: any) {
