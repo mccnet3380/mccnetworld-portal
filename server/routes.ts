@@ -16,7 +16,7 @@ import { splitPolicyExcelFromBuffer } from './lib/mcc-policy-split';
 import { exportPolicyUploadReadyFromSplit } from './lib/mcc-policy-export-ready';
 import { normalizeCustomerType, normalizePlanNameForMatching } from './lib/activation-normalize';
 import { resolvePolicyMatchForActivation, type ResolvedPolicyMatch } from './lib/settlement-policy-match';
-import { requirePermission } from './lib/rbac-guard';
+import { requirePermission, requireOwnerTargetProtection, checkOwnerTargetProtection } from './lib/rbac-guard';
 import { resolveSessionPrincipal } from './lib/session-rbac';
 import { hasPermission } from './lib/rbac';
 import { sql, eq, and, gte, lte, lt, inArray } from "drizzle-orm";
@@ -1370,7 +1370,10 @@ router.get('/api/admin/sales-teams', requireAuth, async (req, res) => {
 });
 
 // 관리자 목록 조회 (관리자 패널용)
-router.get('/api/admin/admins', requireAuth, async (req, res) => {
+// CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2A_CRITICAL_SECURITY_HARDENING_1): requireAuth(전체
+// 로그인 사용자 허용)였던 것을 requireAdmin으로 좁힌다 — getAdmins()가 더 이상 password를
+// 반환하지 않더라도, worker/dealer에게 관리자 계정 목록 자체를 노출할 이유가 없다.
+router.get('/api/admin/admins', requireAdmin, async (req, res) => {
   try {
     const adminsList = await getStorage().getAdmins();
     console.log('✅ Admins API - Returning', adminsList.length, 'admins:', adminsList.map((a: any) => `${a.username}(${a.name})`).join(', '));
@@ -3101,7 +3104,10 @@ router.delete('/api/admin/additional-services/:id', requireAdmin, async (req, re
 });
 
 // Carrier Service Policies APIs
-router.get('/api/carrier-service-policies', requireAuth, async (req, res) => {
+// CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2A_CRITICAL_SECURITY_HARDENING_1): requireAuth(전체
+// 로그인 사용자 허용)였던 것을 RBAC permission 기준으로 좁힌다 — Settlements.tsx(관리자 정산
+// 정책 화면)에서만 쓰이는데도 worker/dealer 세션으로 쓰기까지 가능했다.
+router.get('/api/carrier-service-policies', requireAdmin, requirePermission('SETTLEMENT_POLICY_READ'), async (req, res) => {
   try {
     const policies = await getStorage().getCarrierServicePolicies();
     res.json(policies);
@@ -3111,7 +3117,7 @@ router.get('/api/carrier-service-policies', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/api/carrier-service-policies', requireAuth, async (req, res) => {
+router.post('/api/carrier-service-policies', requireAdmin, requirePermission('SETTLEMENT_POLICY_EDIT'), async (req, res) => {
   try {
     const userId = req.session?.userId;
     if (!userId) {
@@ -3131,7 +3137,7 @@ router.post('/api/carrier-service-policies', requireAuth, async (req, res) => {
   }
 });
 
-router.put('/api/carrier-service-policies/:id', requireAuth, async (req, res) => {
+router.put('/api/carrier-service-policies/:id', requireAdmin, requirePermission('SETTLEMENT_POLICY_EDIT'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3145,7 +3151,7 @@ router.put('/api/carrier-service-policies/:id', requireAuth, async (req, res) =>
   }
 });
 
-router.delete('/api/carrier-service-policies/:id', requireAuth, async (req, res) => {
+router.delete('/api/carrier-service-policies/:id', requireAdmin, requirePermission('SETTLEMENT_POLICY_EDIT'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3585,7 +3591,9 @@ router.post('/api/admin/settlement-pricing/excel-upload', requireAdmin, requireD
 });
 
 // Admin deletion
-router.delete('/api/admin/admins/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+// CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2A_CRITICAL_SECURITY_HARDENING_1): target이 OWNER role을
+// 가진 계정이면 요청자도 OWNER가 아닌 한 403 — RBAC(user_roles/roles) 기준, username 하드코딩 아님.
+router.delete('/api/admin/admins/:id', requireAdmin, requireDbHealthy, requireOwnerTargetProtection((req) => parseInt(req.params.id, 10)), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) {
@@ -3608,7 +3616,9 @@ router.delete('/api/admin/admins/:id', requireAdmin, requireDbHealthy, async (re
 });
 
 // Admin update
-router.put('/api/admin/admins/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+// CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2A_CRITICAL_SECURITY_HARDENING_1): username 변경뿐 아니라
+// password 변경을 포함한 모든 필드 변경에 동일하게 적용 — target이 OWNER면 요청자도 OWNER여야 함.
+router.put('/api/admin/admins/:id', requireAdmin, requireDbHealthy, requireOwnerTargetProtection((req) => parseInt(req.params.id, 10)), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) {
@@ -3679,6 +3689,14 @@ router.delete('/api/admin/users/:id', requireAdmin, requireDbHealthy, async (req
     // users에 없으면 admin 테이블 확인 (Alias 지원)
     const admin = await getStorage().getAdminById(id);
     if (admin) {
+      // CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2A_CRITICAL_SECURITY_HARDENING_1): 이 alias도
+      // PUT/DELETE /api/admin/admins/:id와 동일하게 OWNER target 보호를 거쳐야 한다 — admin
+      // 삭제로 귀결되는 경로이기 때문이다.
+      const ownerProtection = await checkOwnerTargetProtection(req, id);
+      if (!ownerProtection.allowed) {
+        return res.status(ownerProtection.status).json(ownerProtection.body);
+      }
+
       console.log(`🔄 Alias: DELETE /api/admin/users/${id} → admin 테이블로 위임`);
       try {
         const deleted = await getStorage().deleteAdmin(id);

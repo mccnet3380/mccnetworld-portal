@@ -661,30 +661,30 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   async deleteAdmin(id: number): Promise<any> {
+    // OWNER 계정 보호는 username 하드코딩이 아니라 server/lib/rbac-guard.ts의
+    // checkOwnerTargetProtection()이 호출부(routes.ts)에서 RBAC(user_roles/roles) 기준으로
+    // 먼저 수행한다(MCC_RBAC_PHASE_2C_2A_CRITICAL_SECURITY_HARDENING_1). 여기서는 더 이상
+    // 계정을 보호하지 않는다 — 이 함수에 도달했다면 이미 허용된 요청이다.
     return this.withDatabase(async (db) => {
       const admin = await db.select().from(admins).where(eq(admins.id, id)).limit(1);
       if (admin.length === 0) {
         return null;
       }
-      if (admin[0].username === 'kksnan') {
-        throw new Error('SUPER ADMIN 계정은 삭제할 수 없습니다.');
-      }
-      
+
       const result = await db.delete(admins).where(eq(admins.id, id)).returning();
       return result[0];
     });
   }
 
   async updateAdmin(id: number, data: any): Promise<any> {
+    // OWNER 계정 보호는 routes.ts의 checkOwnerTargetProtection()이 먼저 수행한다 — 위 deleteAdmin()
+    // 설명 참고.
     return this.withDatabase(async (db) => {
       const admin = await db.select().from(admins).where(eq(admins.id, id)).limit(1);
       if (admin.length === 0) {
         return null;
       }
-      if (admin[0].username === 'kksnan' && data.username !== undefined && data.username !== 'kksnan') {
-        throw new Error('SUPER ADMIN의 아이디는 변경할 수 없습니다.');
-      }
-      
+
       const updateData: any = {};
       
       if (data.name !== undefined) updateData.name = data.name;
@@ -693,17 +693,24 @@ export class PostgreSQLStorage implements IStorage {
         updateData.password = await bcrypt.hash(data.password, 10);
       }
       
+      // QA 중 발견(MCC_RBAC_PHASE_2C_2A_CRITICAL_SECURITY_HARDENING_1): .returning()은 기본적으로
+      // 전체 컬럼을 반환하므로 password(bcrypt hash)가 PUT 응답(data 필드)에 그대로 노출되고
+      // 있었다. getAdmins()와 동일한 이유로 여기도 명시적으로 컬럼을 제한한다.
       const result = await db.update(admins)
         .set(updateData)
         .where(eq(admins.id, id))
-        .returning();
+        .returning({ id: admins.id, username: admins.username, name: admins.name, createdAt: admins.createdAt });
       return result[0];
     });
   }
 
   async getAdmins(): Promise<any[]> {
+    // CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2A_CRITICAL_SECURITY_HARDENING_1): password(bcrypt
+    // hash)는 절대 포함하지 않는다 — 과거 select() 전체 컬럼 반환이 하던 방식으로 되돌리지 말 것.
     return this.withDatabase(async (db) => {
-      return await db.select().from(admins);
+      return await db
+        .select({ id: admins.id, username: admins.username, name: admins.name, createdAt: admins.createdAt })
+        .from(admins);
     });
   }
 
