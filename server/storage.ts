@@ -621,13 +621,16 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   async createAdmin(adminData: any) {
+    // CRITICAL 보안 수정(MCC_RBAC_PHASE_2C_2A_2_CREATE_ADMIN_RESPONSE_SANITIZATION_1):
+    // .returning()의 기본 전체 컬럼 반환은 password(bcrypt hash)를 포함한다 — getAdmins()/
+    // updateAdmin()과 동일한 이유로 여기도 명시적으로 컬럼을 제한한다.
     return this.withDatabase(async (db) => {
       const hashedPassword = await bcrypt.hash(adminData.password, 10);
       const result = await db.insert(admins).values({
         username: adminData.username,
         password: hashedPassword,
         name: adminData.name
-      }).returning();
+      }).returning({ id: admins.id, username: admins.username, name: admins.name, createdAt: admins.createdAt });
       return result[0];
     });
   }
