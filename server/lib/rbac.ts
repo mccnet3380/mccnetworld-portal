@@ -36,9 +36,12 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import { getDatabase } from "../db";
-import { userRoles, roles, rolePermissions, permissions } from "../../shared/schema";
+import { userRoles, roles, rolePermissions, permissions, userPermissionOverrides } from "../../shared/schema";
+import { OWNER_ONLY_PERMISSION_CODES } from "./rbac-seed";
 
 export type PrincipalType = "ADMIN" | "USER" | "SALES_MANAGER" | "DEALER";
+
+export type PermissionOverrideEffect = "ALLOW" | "DENY";
 
 export async function getPrincipalRoles(
   principalType: PrincipalType,
@@ -55,6 +58,33 @@ export async function getPrincipalRoles(
   return Array.from(new Set(rows.map((r) => r.code)));
 }
 
+// principal에게 직접 배정된 permission override(ALLOW/DENY)를 조회만 한다. role과
+// 완전히 분리된 테이블이라 이 함수는 getPrincipalRoles()의 결과에 전혀 영향을 주지
+// 않는다 — override만 있는 principal은 여전히 roleCodes=[]인 LEGACY principal이다.
+export async function getPrincipalPermissionOverrides(
+  principalType: PrincipalType,
+  principalId: number,
+): Promise<{ code: string; effect: PermissionOverrideEffect }[]> {
+  if (!principalId) return [];
+  const db = await getDatabase();
+  const rows = await db
+    .select({ code: permissions.code, effect: userPermissionOverrides.effect })
+    .from(userPermissionOverrides)
+    .innerJoin(permissions, eq(permissions.id, userPermissionOverrides.permissionId))
+    .where(and(eq(userPermissionOverrides.principalType, principalType), eq(userPermissionOverrides.principalId, principalId)));
+
+  return rows.map((r) => ({ code: r.code, effect: r.effect as PermissionOverrideEffect }));
+}
+
+// effective permissions = (role permissions ∪ ALLOW overrides) − DENY overrides.
+//
+// OWNER_ONLY_PERMISSION_CODES(ROLE_READ/ROLE_MANAGE/MENU_PERMISSION_READ/MANAGE)에 대한
+// defense-in-depth: 이 단계에는 override를 쓰는 관리 API가 아직 없어 DB에 직접 잘못된
+// 행이 들어갈 가능성까지 고려한다.
+// - OWNER role이 없는 principal의 ALLOW override에서는 OWNER_ONLY 코드를 무시한다
+//   (일반 ADMIN/WORKER가 override로 OWNER 전용 권한을 얻을 수 없음).
+// - OWNER role이 있는 principal의 DENY override에서는 OWNER_ONLY 코드를 무시한다
+//   (잘못된 DENY 행 하나로 마지막 OWNER가 자기 거버넌스 권한을 잃는 lockout 방지).
 export async function getPrincipalPermissions(
   principalType: PrincipalType,
   principalId: number,
@@ -69,7 +99,30 @@ export async function getPrincipalPermissions(
     .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
     .where(and(eq(userRoles.principalType, principalType), eq(userRoles.principalId, principalId)));
 
-  return Array.from(new Set(rows.map((r) => r.code)));
+  const effective = new Set<string>(rows.map((r) => r.code));
+
+  const overrides = await getPrincipalPermissionOverrides(principalType, principalId);
+  if (overrides.length === 0) {
+    return Array.from(effective);
+  }
+
+  const roleCodes = await getPrincipalRoles(principalType, principalId);
+  const isOwner = roleCodes.includes("OWNER");
+
+  for (const { code, effect } of overrides) {
+    if (effect === "ALLOW") {
+      if (!isOwner && OWNER_ONLY_PERMISSION_CODES.includes(code)) continue;
+      effective.add(code);
+    }
+  }
+  for (const { code, effect } of overrides) {
+    if (effect === "DENY") {
+      if (isOwner && OWNER_ONLY_PERMISSION_CODES.includes(code)) continue;
+      effective.delete(code);
+    }
+  }
+
+  return Array.from(effective);
 }
 
 export async function hasPermission(

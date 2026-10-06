@@ -105,7 +105,10 @@ const ALL_PERMISSION_CODES = SEED_PERMISSIONS.map((p) => p.code);
 // 메뉴 표시설정 관리는 OWNER 전용이다 — 일반 ADMIN은 다른 사용자의 역할/권한이나 메뉴 권한을
 // 관리할 수 없어야 한다. (이전에는 ROLE_READ/ROLE_MANAGE만 제외했고 MENU_PERMISSION_*는
 // ADMIN에 포함되어 있었다 — 이번 작업에서 교정.)
-const OWNER_ONLY_PERMISSION_CODES = [
+// [MCC_RBAC_PHASE_2E_2_USER_PERMISSION_OVERRIDE_FOUNDATION_1] export 추가 — server/lib/rbac.ts의
+// getPrincipalPermissions()가 override read-time defense-in-depth 필터링에 재사용한다(2개의
+// "정답"이 따로 생기지 않도록 이 배열 하나만 두 곳에서 import해서 쓴다).
+export const OWNER_ONLY_PERMISSION_CODES = [
   "ROLE_READ",
   "ROLE_MANAGE",
   "MENU_PERMISSION_READ",

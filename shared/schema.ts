@@ -713,6 +713,40 @@ export const rolePermissions = pgTable("role_permissions", {
   index("role_permissions_permission_id_idx").on(table.permissionId),
 ]);
 
+// [MCC_RBAC_PHASE_2E_2_USER_PERMISSION_OVERRIDE_FOUNDATION_1] "이 role이 주는 permission"과
+// "이 사람 개인에게 예외로 준/뺏은 permission"을 분리한다. user_roles와 동일한 polymorphic
+// principal 구조(principalType+principalId, DB FK 없음 — admins/users/sales_managers 중
+// 하나를 가리킴)를 그대로 재사용한다. effect는 기존 테이블들처럼 pg native enum을 쓰지 않고
+// varchar + CHECK 제약으로 표현한다(migration 파일 참고) — 이 repo의 RBAC 테이블 전부가 이
+// 방식이라 convention을 맞춘다.
+//
+// 중요: 이 테이블의 존재 여부는 getPrincipalRoles()의 결과에 절대 영향을 주지 않는다 — role
+// 배정과 permission override는 완전히 별개이며, override만 있는 principal은 여전히
+// "role이 없는 LEGACY principal"이다(server/lib/data-scope.ts의 NO_ROLE→LEGACY 분기가 깨지지
+// 않도록 하는 핵심 불변조건). server/lib/rbac.ts의 getPrincipalPermissions()에서만 참조한다.
+export const userPermissionOverrides = pgTable("user_permission_overrides", {
+  id: serial("id").primaryKey(),
+  principalType: varchar("principal_type", { length: 20 }).notNull(),
+  principalId: integer("principal_id").notNull(),
+  permissionId: integer("permission_id").references(() => permissions.id).notNull(),
+  // 'ALLOW' | 'DENY' — migration에서 CHECK 제약으로 강제.
+  effect: varchar("effect", { length: 10 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  // 관리 API가 아직 없어(2E-3 대상) 현재는 어떤 쓰기 경로도 없다 — nullable로 두고, 실제
+  // 쓰기 API가 생기는 시점에 거기서 필수값으로 요구한다(DB 레벨 NOT NULL로 지금 막아두면
+  // self-test fixture 작성이 불필요하게 불편해짐).
+  createdByAdminId: integer("created_by_admin_id").references(() => admins.id),
+}, (table) => [
+  uniqueIndex("user_permission_overrides_principal_permission_uidx").on(
+    table.principalType,
+    table.principalId,
+    table.permissionId,
+  ),
+  index("user_permission_overrides_principal_idx").on(table.principalType, table.principalId),
+  index("user_permission_overrides_permission_id_idx").on(table.permissionId),
+]);
+
 //===============================================
 // 타입 정의
 //===============================================
