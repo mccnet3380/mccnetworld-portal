@@ -96,7 +96,7 @@ export function renderTrainingContentToHtml(content: string): string {
     .join("\n");
 }
 
-export const TRAINING_CATEGORIES = ["ALL", "SK", "KT", "LG", "OTHER"] as const;
+export const TRAINING_CATEGORIES = ["ALL", "SK", "KT", "LG", "WIRED", "OTHER"] as const;
 export type TrainingCategory = (typeof TRAINING_CATEGORIES)[number];
 
 export const TRAINING_CATEGORY_LABEL: Record<TrainingCategory, string> = {
@@ -104,5 +104,6 @@ export const TRAINING_CATEGORY_LABEL: Record<TrainingCategory, string> = {
   SK: "SK 교육",
   KT: "KT 교육",
   LG: "LG 교육",
+  WIRED: "유선 교육",
   OTHER: "기타업무",
 };

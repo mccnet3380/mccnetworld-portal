@@ -25,6 +25,7 @@ const CATEGORY_COLOR: Record<TrainingCategory, string> = {
   SK: "#ef7f47",
   KT: "#2c74e8",
   LG: "#7e5bef",
+  WIRED: "#0d9488",
   OTHER: "#22b57d",
 };
 
