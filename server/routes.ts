@@ -371,7 +371,7 @@ router.post('/api/dealers', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/api/admin/dealers', requireAdmin, async (req, res) => {
+router.post('/api/admin/dealers', requireAdmin, requirePermission('DEALER_MANAGE'), async (req, res) => {
   try {
     const data = createDealerSchema.parse(req.body);
     const dealer = await getStorage().createDealer(data);
@@ -381,7 +381,7 @@ router.post('/api/admin/dealers', requireAdmin, async (req, res) => {
   }
 });
 
-router.get('/api/admin/dealers', requireAdmin, async (req, res) => {
+router.get('/api/admin/dealers', requireAdmin, requirePermission('DEALER_READ'), async (req, res) => {
   try {
     // dealerId가 있는 사용자들을 판매점으로 조회
     const dealers = await getStorage().getDealers();
@@ -394,7 +394,7 @@ router.get('/api/admin/dealers', requireAdmin, async (req, res) => {
 });
 
 // 판매점 엑셀 양식 다운로드
-router.get('/api/admin/dealers/template/download', requireAdmin, async (req, res) => {
+router.get('/api/admin/dealers/template/download', requireAdmin, requirePermission('DEALER_READ'), async (req, res) => {
   try {
     const XLSX = await import('xlsx');
     
@@ -444,7 +444,7 @@ router.get('/api/admin/dealers/template/download', requireAdmin, async (req, res
 });
 
 // 판매점 엑셀 일괄 업로드
-router.post('/api/admin/dealers/upload', requireAdmin, async (req, res) => {
+router.post('/api/admin/dealers/upload', requireAdmin, requirePermission('DEALER_MANAGE'), async (req, res) => {
   try {
     const multer = await import('multer');
     const XLSX = await import('xlsx');
@@ -557,7 +557,7 @@ router.post('/api/admin/dealers/upload', requireAdmin, async (req, res) => {
 });
 
 // PATCH_START: 오류 수정 - 누락된 메서드들을 스텁으로 처리
-router.delete('/api/admin/dealers/:id', requireAdmin, async (req, res) => {
+router.delete('/api/admin/dealers/:id', requireAdmin, requirePermission('DEALER_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -573,7 +573,7 @@ router.delete('/api/admin/dealers/:id', requireAdmin, async (req, res) => {
 });
 
 // 판매점 수정 (관리자 전용)
-router.put('/api/admin/dealers/:id', requireAdmin, async (req, res) => {
+router.put('/api/admin/dealers/:id', requireAdmin, requirePermission('DEALER_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -618,7 +618,7 @@ router.put('/api/admin/dealers/:id', requireAdmin, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 목록 조회 (JSON)
-router.get('/api/admin/dealer-registrations', requireAdmin, async (req, res) => {
+router.get('/api/admin/dealer-registrations', requireAdmin, requirePermission('DEALER_READ'), async (req, res) => {
   try {
     const { search, isHiddenPos, isContactPolicyPos, includeInactive, isActive } = req.query;
     const options: any = {};
@@ -639,7 +639,7 @@ router.get('/api/admin/dealer-registrations', requireAdmin, async (req, res) => 
 
 // 현재 원장 전체 엑셀 다운로드
 // IMPORTANT: 반드시 /:id 라우트보다 먼저 선언해야 함 (Express 라우트 순서 규칙)
-router.get('/api/admin/dealer-registrations/export', requireAdmin, async (req, res) => {
+router.get('/api/admin/dealer-registrations/export', requireAdmin, requirePermission('DEALER_READ'), async (req, res) => {
   console.log('[dealer export] HIT', req.method, req.originalUrl, req.path, req.params, req.query);
   try {
     const dealers = await getStorage().getDealerRegistrations({ includeInactive: true });
@@ -690,7 +690,7 @@ router.get('/api/admin/dealer-registrations/export', requireAdmin, async (req, r
 });
 
 // 단건 조회 — IMPORTANT: /export 선언 이후에 위치해야 함
-router.get('/api/admin/dealer-registrations/:id', requireAdmin, async (req, res) => {
+router.get('/api/admin/dealer-registrations/:id', requireAdmin, requirePermission('DEALER_READ'), async (req, res) => {
   console.log('[dealer detail] HIT', req.method, req.originalUrl, req.params);
   try {
     const id = parseInt(req.params.id);
@@ -704,7 +704,7 @@ router.get('/api/admin/dealer-registrations/:id', requireAdmin, async (req, res)
 });
 
 // 등록
-router.post('/api/admin/dealer-registrations', requireAdmin, async (req, res) => {
+router.post('/api/admin/dealer-registrations', requireAdmin, requirePermission('DEALER_MANAGE'), async (req, res) => {
   try {
     const {
       businessName, representativeName, businessNumber,
@@ -737,7 +737,7 @@ router.post('/api/admin/dealer-registrations', requireAdmin, async (req, res) =>
 });
 
 // 수정
-router.put('/api/admin/dealer-registrations/:id', requireAdmin, async (req, res) => {
+router.put('/api/admin/dealer-registrations/:id', requireAdmin, requirePermission('DEALER_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: '잘못된 ID입니다.' });
@@ -751,7 +751,7 @@ router.put('/api/admin/dealer-registrations/:id', requireAdmin, async (req, res)
 });
 
 // 비활성화 (소프트 삭제)
-router.delete('/api/admin/dealer-registrations/:id', requireAdmin, async (req, res) => {
+router.delete('/api/admin/dealer-registrations/:id', requireAdmin, requirePermission('DEALER_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: '잘못된 ID입니다.' });
@@ -764,7 +764,7 @@ router.delete('/api/admin/dealer-registrations/:id', requireAdmin, async (req, r
 });
 
 // 엑셀 대량 업로드
-router.post('/api/admin/dealer-registrations/upload-excel', requireAdmin, upload.single('file'), async (req, res) => {
+router.post('/api/admin/dealer-registrations/upload-excel', requireAdmin, requirePermission('DEALER_MANAGE'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '파일이 없습니다.' });
@@ -854,7 +854,7 @@ router.post('/api/admin/dealer-registrations/upload-excel', requireAdmin, upload
 });
 
 // Backfill: 기존 dealer_registrations와 users를 username으로 매칭해 dealer_registration_id 채우기
-router.post('/api/admin/dealer-registrations/backfill-users', requireAdmin, async (req, res) => {
+router.post('/api/admin/dealer-registrations/backfill-users', requireAdmin, requirePermission('DEALER_MANAGE'), async (req, res) => {
   try {
     const result = await getStorage().backfillDealerRegistrationIds();
     res.json({ success: true, ...result });
@@ -867,6 +867,7 @@ router.post('/api/admin/dealer-registrations/backfill-users', requireAdmin, asyn
 // IMPORTANT: /:id 라우트보다 먼저 선언해야 함 (Express 라우팅 순서)
 router.post('/api/admin/dealer-registrations/mcode-master-upload',
   requireAdmin,
+  requirePermission('DEALER_MANAGE'),
   (req, res, next) => {
     console.log(`[mcode-master-upload] ▶ request arrived — limit param: ${req.query.limit ?? 'all'}`);
     next();
@@ -1242,7 +1243,7 @@ router.post('/api/admin/dealer-registrations/mcode-master-upload',
   }
 });
 
-router.post('/api/admin/users', requireAdmin, async (req, res) => {
+router.post('/api/admin/users', requireAdmin, requirePermission('USER_MANAGE'), async (req, res) => {
   try {
     const data = createUserSchema.parse(req.body);
     const user = await getStorage().createUser(data);
@@ -1311,7 +1312,7 @@ router.post('/api/init-admin', async (req, res) => {
 
 
 // 영업과장 계정 생성 (관리자 패널용)
-router.post('/api/admin/create-sales-manager', requireAdmin, async (req, res) => {
+router.post('/api/admin/create-sales-manager', requireAdmin, requirePermission('USER_MANAGE'), async (req, res) => {
   try {
     const { username, password, name, team } = req.body;
     
@@ -1362,7 +1363,7 @@ router.post('/api/admin/create-sales-manager', requireAdmin, async (req, res) =>
 // [MCC_DOCUMENT_OWNERSHIP_AND_SALES_MANAGER_CREDENTIAL_SECURITY_PATCH_1]
 // requireAuth(모든 로그인 계정 허용)에서 requireAdmin(관리자만 허용)으로 변경 —
 // 이 API는 /admin/ 하위 관리자 패널 전용 API이므로 기존에도 admin만 쓰도록 의도된 경로였음.
-router.get('/api/admin/sales-managers', requireAdmin, async (req, res) => {
+router.get('/api/admin/sales-managers', requireAdmin, requirePermission('USER_READ'), async (req, res) => {
   try {
     const managers = await getStorage().getSalesManagers();
     // 팀 정보를 포함한 영업과장 목록 반환
@@ -1381,7 +1382,7 @@ router.get('/api/admin/sales-managers', requireAdmin, async (req, res) => {
   }
 });
 
-router.get('/api/admin/sales-teams', requireAuth, async (req, res) => {
+router.get('/api/admin/sales-teams', requireAdmin, requirePermission('TEAM_READ'), async (req, res) => {
   try {
     const teams = await getStorage().getSalesTeams();
     res.json(teams);
@@ -1488,7 +1489,7 @@ router.post('/api/admin/reset-all-passwords', requireAdmin, async (req: any, res
 });
 
 // 영업과장 삭제 API (시스템 관리자 전용)
-router.delete('/api/admin/sales-managers/:id', requireAdmin, async (req, res) => {
+router.delete('/api/admin/sales-managers/:id', requireAdmin, requirePermission('USER_MANAGE'), async (req, res) => {
   try {
     const managerId = parseInt(req.params.id);
     
@@ -1515,7 +1516,7 @@ router.post('/api/auth/register/dealer', async (req, res) => {
 });
 
 // Worker details API
-router.get('/api/admin/worker-details/:workerId', requireAdmin, async (req, res) => {
+router.get('/api/admin/worker-details/:workerId', requireAdmin, requirePermission('USER_READ'), async (req, res) => {
   try {
     const workerId = parseInt(req.params.workerId);
     // const details = await getStorage().getWorkerCarrierDetails(workerId); // 스텁
@@ -1540,7 +1541,7 @@ router.get('/api/admin/carrier-details/:carrier', requireAdmin, async (req, res)
 
 // REMOVED: 중복된 관리자 생성 엔드포인트 제거 - auth-routes.ts에서 처리
 
-router.post('/api/admin/create-worker', requireAdmin, async (req, res) => {
+router.post('/api/admin/create-worker', requireAdmin, requirePermission('USER_MANAGE'), async (req, res) => {
   try {
     const data = createWorkerSchema.parse(req.body);
     const worker = await getStorage().createUser(data);
@@ -1569,7 +1570,7 @@ router.post('/api/kp-numbers/validate', requireAuth, async (req, res) => {
 });
 
 // 사용자 목록 조회 (관리자 전용) - admins와 users 모두 반환
-router.get('/api/admin/users', requireAdmin, async (req, res) => {
+router.get('/api/admin/users', requireAdmin, requirePermission('USER_READ'), async (req, res) => {
   try {
     const users = await getStorage().getUsers();
     const admins = await getStorage().getAdmins();
@@ -1587,7 +1588,7 @@ router.get('/api/admin/users', requireAdmin, async (req, res) => {
 });
 
 // 사용자 아이디 중복 확인 (관리자 전용)
-router.get('/api/admin/users/check-username/:username', requireAdmin, async (req, res) => {
+router.get('/api/admin/users/check-username/:username', requireAdmin, requirePermission('USER_READ'), async (req, res) => {
   try {
     const { username } = req.params;
     const users = await getStorage().getUsers();
@@ -1608,7 +1609,7 @@ router.get('/api/carriers', async (req, res) => {
   }
 });
 
-router.post('/api/carriers', requireAdmin, async (req, res) => {
+router.post('/api/carriers', requireAdmin, requirePermission('CARRIER_MANAGE'), async (req, res) => {
   try {
     const data = createCarrierSchema.parse(req.body);
     const carrier = await getStorage().createCarrier(data);
@@ -1618,7 +1619,7 @@ router.post('/api/carriers', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/api/admin/carriers', requireAdmin, async (req, res) => {
+router.post('/api/admin/carriers', requireAdmin, requirePermission('CARRIER_MANAGE'), async (req, res) => {
   try {
     const data = createCarrierSchema.parse(req.body);
     const carrier = await getStorage().createCarrier(data);
@@ -1628,7 +1629,7 @@ router.post('/api/admin/carriers', requireAdmin, async (req, res) => {
   }
 });
 
-router.put('/api/admin/carriers/:id', requireAdmin, async (req, res) => {
+router.put('/api/admin/carriers/:id', requireAdmin, requirePermission('CARRIER_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const data = updateCarrierSchema.partial().parse(req.body);
@@ -1640,7 +1641,7 @@ router.put('/api/admin/carriers/:id', requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/api/carriers/:id', requireAdmin, async (req, res) => {
+router.delete('/api/carriers/:id', requireAdmin, requirePermission('CARRIER_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await getStorage().deleteCarrier(id);
@@ -1713,7 +1714,7 @@ router.get('/api/carriers/excel-template', requireAuth, async (req, res) => {
 });
 
 // Carrier Excel upload (메모리 버퍼 사용)
-router.post('/api/carriers/upload-excel', requireAdmin, upload.single('file'), async (req, res) => {
+router.post('/api/carriers/upload-excel', requireAdmin, requirePermission('CARRIER_MANAGE'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
@@ -1991,7 +1992,7 @@ router.get('/api/contact-codes', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/api/admin/contact-codes', requireAdmin, async (req, res) => {
+router.post('/api/admin/contact-codes', requireAdmin, requirePermission('CONTACT_CODE_EDIT'), async (req, res) => {
   try {
     const { code, dealerName, carrier, realSalesPOS, realSalesPosCode, salesManagerId, salesManagerName, dealerRegistrationId, memo } = req.body;
 
@@ -2972,7 +2973,7 @@ router.get('/api/files/documents/:id', requireAuth, async (req: any, res) => {
 });
 
 // Service plans API
-router.get('/api/admin/service-plans', requireAdmin, async (req, res) => {
+router.get('/api/admin/service-plans', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), async (req, res) => {
   try {
     const servicePlans = await getStorage().getServicePlans();
     res.json(servicePlans);
@@ -2981,7 +2982,7 @@ router.get('/api/admin/service-plans', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/api/admin/service-plans', requireAdmin, requireDbHealthy, async (req, res) => {
+router.post('/api/admin/service-plans', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), requireDbHealthy, async (req, res) => {
   try {
     const validated = createServicePlanSchema.parse(req.body);
     
@@ -3005,7 +3006,7 @@ router.post('/api/admin/service-plans', requireAdmin, requireDbHealthy, async (r
   }
 });
 
-router.put('/api/admin/service-plans/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+router.put('/api/admin/service-plans/:id', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), requireDbHealthy, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3038,7 +3039,7 @@ router.put('/api/admin/service-plans/:id', requireAdmin, requireDbHealthy, async
   }
 });
 
-router.delete('/api/admin/service-plans/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+router.delete('/api/admin/service-plans/:id', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), requireDbHealthy, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3074,7 +3075,7 @@ router.get('/api/additional-services', requireAuth, async (req: any, res) => {
 });
 
 // AdminPanel용 부가서비스 관리 API
-router.get('/api/admin/additional-services', requireAdmin, async (req: any, res) => {
+router.get('/api/admin/additional-services', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), async (req: any, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     const carrier = req.query.carrier as string | undefined;
@@ -3086,7 +3087,7 @@ router.get('/api/admin/additional-services', requireAdmin, async (req: any, res)
   }
 });
 
-router.post('/api/admin/additional-services', requireAdmin, async (req, res) => {
+router.post('/api/admin/additional-services', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), async (req, res) => {
   try {
     const service = await getStorage().createAdditionalService(req.body);
     res.json(service);
@@ -3096,7 +3097,7 @@ router.post('/api/admin/additional-services', requireAdmin, async (req, res) => 
   }
 });
 
-router.put('/api/admin/additional-services/:id', requireAdmin, async (req, res) => {
+router.put('/api/admin/additional-services/:id', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3110,7 +3111,7 @@ router.put('/api/admin/additional-services/:id', requireAdmin, async (req, res) 
   }
 });
 
-router.delete('/api/admin/additional-services/:id', requireAdmin, async (req, res) => {
+router.delete('/api/admin/additional-services/:id', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3187,7 +3188,7 @@ router.delete('/api/carrier-service-policies/:id', requireAdmin, requirePermissi
 });
 
 // Service plan Excel/CSV upload (메모리 버퍼 사용)
-router.post('/api/admin/service-plans/upload-excel', requireAdmin, requireDbHealthy, upload.single('file'), async (req, res) => {
+router.post('/api/admin/service-plans/upload-excel', requireAdmin, requirePermission('SERVICE_PLAN_MANAGE'), requireDbHealthy, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
@@ -3306,7 +3307,7 @@ router.get('/api/other-business-carriers', requireAuth, async (req, res) => {
 });
 
 // Other Business Carriers API (Admin)
-router.get('/api/admin/other-business-carriers', requireAdmin, async (req, res) => {
+router.get('/api/admin/other-business-carriers', requireAdmin, requirePermission('CARRIER_MANAGE'), async (req, res) => {
   try {
     const carriers = await getStorage().getOtherBusinessCarriers();
     res.json(carriers);
@@ -3316,7 +3317,7 @@ router.get('/api/admin/other-business-carriers', requireAdmin, async (req, res) 
   }
 });
 
-router.post('/api/admin/other-business-carriers', requireAdmin, requireDbHealthy, async (req, res) => {
+router.post('/api/admin/other-business-carriers', requireAdmin, requirePermission('CARRIER_MANAGE'), requireDbHealthy, async (req, res) => {
   try {
     const validatedData = insertOtherBusinessCarrierSchema.omit({ id: true, createdAt: true, updatedAt: true }).parse(req.body);
     
@@ -3335,7 +3336,7 @@ router.post('/api/admin/other-business-carriers', requireAdmin, requireDbHealthy
   }
 });
 
-router.put('/api/admin/other-business-carriers/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+router.put('/api/admin/other-business-carriers/:id', requireAdmin, requirePermission('CARRIER_MANAGE'), requireDbHealthy, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3366,7 +3367,7 @@ router.put('/api/admin/other-business-carriers/:id', requireAdmin, requireDbHeal
   }
 });
 
-router.delete('/api/admin/other-business-carriers/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+router.delete('/api/admin/other-business-carriers/:id', requireAdmin, requirePermission('CARRIER_MANAGE'), requireDbHealthy, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3387,7 +3388,7 @@ router.delete('/api/admin/other-business-carriers/:id', requireAdmin, requireDbH
   }
 });
 
-router.post('/api/admin/other-business-carriers/excel/upload', requireAdmin, requireDbHealthy, upload.single('file'), async (req, res) => {
+router.post('/api/admin/other-business-carriers/excel/upload', requireAdmin, requirePermission('CARRIER_MANAGE'), requireDbHealthy, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
@@ -3432,7 +3433,7 @@ router.post('/api/admin/other-business-carriers/excel/upload', requireAdmin, req
   }
 });
 
-router.get('/api/admin/other-business-carriers/excel/download', requireAdmin, async (req, res) => {
+router.get('/api/admin/other-business-carriers/excel/download', requireAdmin, requirePermission('CARRIER_MANAGE'), async (req, res) => {
   try {
     const carriers = await getStorage().getOtherBusinessCarriers();
     
@@ -3666,7 +3667,7 @@ router.put('/api/admin/admins/:id', requireAdmin, requireDbHealthy, requireOwner
 // [MCC_MIDDLE_MANAGER_ADMIN_ROLE_UI_FIX_1] 기존에 존재하지 않았던 라우트(감사로 확인 —
 // AdminPanel.tsx의 updateUserMutation이 PUT /api/admin/users/:id를 호출하고 있었지만
 // 서버에 매칭되는 핸들러가 없어 사용자 정보 수정 자체가 항상 실패하고 있었다).
-router.put('/api/admin/users/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+router.put('/api/admin/users/:id', requireAdmin, requirePermission('USER_MANAGE'), requireDbHealthy, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) {
@@ -3690,7 +3691,7 @@ router.put('/api/admin/users/:id', requireAdmin, requireDbHealthy, async (req, r
 });
 
 // User deletion (users 테이블 우선, admin은 fallback)
-router.delete('/api/admin/users/:id', requireAdmin, requireDbHealthy, async (req, res) => {
+router.delete('/api/admin/users/:id', requireAdmin, requirePermission('USER_MANAGE'), requireDbHealthy, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -3750,7 +3751,7 @@ router.delete('/api/admin/users/:id', requireAdmin, requireDbHealthy, async (req
 });
 
 // Users by type
-router.get('/api/admin/users/by-type/:type', requireAdmin, async (req, res) => {
+router.get('/api/admin/users/by-type/:type', requireAdmin, requirePermission('USER_READ'), async (req, res) => {
   try {
     const type = req.params.type;
     const users = await getStorage().getUsersByType(type);
@@ -3992,7 +3993,7 @@ router.get('/api/document-templates', requireAdmin, async (req, res) => {
 });
 
 // 접점코드 엑셀 양식 다운로드 (시트3장: 입력 + 판매점원장참조 + 작성가이드)
-router.get('/api/admin/contact-codes/template', requireAdmin, async (req, res) => {
+router.get('/api/admin/contact-codes/template', requireAdmin, requirePermission('CONTACT_CODE_READ'), async (req, res) => {
   try {
     const dealers = await getStorage().getDealerRegistrations({ includeInactive: true });
     const wb = XLSX.utils.book_new();
@@ -4062,7 +4063,7 @@ router.get('/api/admin/contact-codes/template', requireAdmin, async (req, res) =
 });
 
 // Contact code bulk upload (메모리 버퍼 사용)
-router.post('/api/admin/contact-codes/bulk-upload', requireAdmin, contactCodeUpload.single('file'), async (req: any, res) => {
+router.post('/api/admin/contact-codes/bulk-upload', requireAdmin, requirePermission('CONTACT_CODE_EDIT'), contactCodeUpload.single('file'), async (req: any, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '파일을 선택해주세요.' });
@@ -4349,7 +4350,7 @@ router.post('/api/admin/contact-codes/bulk-upload', requireAdmin, contactCodeUpl
 });
 
 // 접점코드 수정
-router.put('/api/admin/contact-codes/:id', requireAdmin, async (req, res) => {
+router.put('/api/admin/contact-codes/:id', requireAdmin, requirePermission('CONTACT_CODE_EDIT'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { code, dealerName, carrier, salesManagerId, salesManagerName, realSalesPOS, realSalesPosCode, isActive, dealerRegistrationId, memo } = req.body;
@@ -4374,7 +4375,7 @@ router.put('/api/admin/contact-codes/:id', requireAdmin, async (req, res) => {
 });
 
 // 접점코드 삭제
-router.delete('/api/admin/contact-codes/:id', requireAdmin, async (req, res) => {
+router.delete('/api/admin/contact-codes/:id', requireAdmin, requirePermission('CONTACT_CODE_EDIT'), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await getStorage().deleteContactCode(id);
