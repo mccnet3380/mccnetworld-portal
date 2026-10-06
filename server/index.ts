@@ -22,6 +22,7 @@ import sheetViewerRoutes from "./routes/sheet-viewer";
 import activationAuditRoutes from "./routes/activation-audit";
 import settlementSheetsImportRoutes from "./routes/settlement-sheets-import";
 import typingVersionsRoutes from "./routes/typing-versions";
+import rbacAdminRoutes from "./routes/rbac-admin";
 import authRouter from "./auth-routes";
 import { ChatWebSocketServer } from "./websocket";
 import { initializeDatabase, checkPostgreSQLHealth } from "./db";
@@ -277,6 +278,10 @@ app.use(settlementSheetsImportRoutes);
 // MCCNETWORLD/public 프로젝트) CURRENT/PREVIOUS/DRAFT 버전관리 + 정적 서빙(/typing-static/*).
 // 열람: admin/sales_manager/내부 user(dealer 제외). 쓰기(버전 생성/저장/운영적용): admin 전용.
 app.use(typingVersionsRoutes);
+
+// MCC_RBAC_PHASE_2E_3_OWNER_PERMISSION_MANAGEMENT_API_1: OWNER 전용 RBAC 사용자별 권한
+// 관리 API(principal/role/permission 조회 + role/override 저장). Admin UI는 다음 단계.
+app.use(rbacAdminRoutes);
 
 app.use(router);
 
