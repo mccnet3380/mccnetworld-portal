@@ -109,8 +109,13 @@ export function WorkerPerformanceOverview() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">근무자별 실적 ({rangeLabel})</CardTitle>
+                {/* [MCC_WORKER_PERFORMANCE_CONTRIBUTION_UI_CLARIFICATION_1] "기여도"라는 이전 라벨이
+                    "팀 점유율"(합산 시 100%)로 오해되기 쉬웠다. 계산식(분자=소속망 자기 처리+타망
+                    지원, 분모=소속망 공식 총수량)은 변경하지 않았고, 라벨/설명문만 바꿔서 타망
+                    지원 포함·100% 초과 가능·동료 합산이 100%가 아님을 명시한다. */}
                 <CardDescription>
-                  개통 처리가 많은 순으로 정렬됩니다. 개통·변경 기여도는 개인 실적 화면과 동일한 기준(인정 처리량 ÷ 소속망 공식 총수량 × 100)입니다.
+                  개통 처리가 많은 순으로 정렬됩니다. 개통·변경 실적률은 개인 실적 화면과 동일한 기준(본인 소속망 처리 + 타망 지원 처리 ÷ 소속망 공식 총수량 × 100)입니다.
+                  타망 지원 실적이 포함되므로 100%를 초과할 수 있으며, 같은 소속망 직원들의 실적률을 합산해도 100%가 되지는 않습니다.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -118,7 +123,7 @@ export function WorkerPerformanceOverview() {
                   <table className="w-full text-sm min-w-[640px]">
                     <thead className="bg-muted">
                       <tr>
-                        {["근무자", "소속망", "개통 처리", "변경 처리", "지원 처리", "개통 기여도", "변경 기여도"].map((h) => (
+                        {["근무자", "소속망", "개통 처리", "변경 처리", "지원 처리", "개통 실적률", "변경 실적률"].map((h) => (
                           <th key={h} className="p-2 text-left font-medium whitespace-nowrap">
                             {h}
                           </th>
