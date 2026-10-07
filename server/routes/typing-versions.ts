@@ -15,16 +15,17 @@
 // …\업무\MCCNETWORLD\public)와 일치하지만, 운영 배포 시에는 반드시 환경변수로
 // 재지정해야 한다(README/보고서 참고).
 //
-// 권한: server/routes/training.ts의 requireTrainingViewer/Admin과 동일한 판정 방식을
-// 그대로 재사용한다(세션의 userType만으로는 내부 워커/딜러를 구분할 수 없으므로
-// user인 경우 getUserById로 dealerId/dealerRegistrationId 재조회).
+// 권한: TRAINING_READ/MANAGE와 완전히 동일한 구조(server/routes/training.ts)를 그대로
+// 재사용한다 — TYPING_READ/TYPING_MANAGE effective RBAC permission(role 또는 explicit
+// override)만 본다. MCC_RBAC_PHASE_2F_TYPING_TRAINING_LEGACY_REMOVAL_1에서 legacy
+// fallback(admin/sales_manager/내부worker 자동 허용, dealer 차단) 제거.
 
 import express, { Router } from "express";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
 import { getStorage } from "../storage";
-import { getPrincipalPermissions, getPrincipalPermissionOverrides } from "../lib/rbac";
+import { getPrincipalPermissions } from "../lib/rbac";
 import { resolveSessionPrincipal } from "../lib/session-rbac";
 
 const router = Router();
@@ -72,46 +73,36 @@ function findChannel(carrier: string, brand: string) {
 }
 
 // ─────────────────────────────
-// 권한 미들웨어 — MCC_RBAC_TYPING_PERMISSION_ENFORCEMENT_TRANSITION_1
+// 권한 미들웨어 — MCC_RBAC_PHASE_2F_TYPING_TRAINING_LEGACY_REMOVAL_1
 //
-// Legacy-compatible RBAC enforcement: 기존 legacy 판정(admin/sales_manager/
-// non-dealer user 허용, dealer 차단)을 "끊지 않으면서" TYPING_READ/TYPING_MANAGE를
-// 실제로 의미 있는 permission으로 연결한다. 우선순위(섹션11/12):
+// Legacy fallback removed after explicit permission coverage rollout
+// (MCC_RBAC_PHASE_2F_TYPING_TRAINING_EXPLICIT_COVERAGE_1 — 운영의 모든 non-dealer
+// internal USER/ADMIN이 TYPING_READ/TYPING_MANAGE를 role 또는 explicit override로
+// 이미 보유). 우선순위:
 //   1. 해당 permission에 대한 explicit DENY override가 있으면 → DENY
-//      (legacy가 허용해도 explicit DENY가 항상 이긴다 — 그렇지 않으면 override
-//      시스템 자체가 non-dealer worker에게는 무의미해진다)
-//   2. effective permission(role 합집합 ∪ ALLOW override, getPrincipalPermissions()가
-//      이미 DENY를 반영한 값)에 포함되면 → ALLOW
-//   3. (1)도 (2)도 해당 없음 + 기존 legacy 조건 충족 → ALLOW (transition 호환)
-//   4. 그 외 → DENY
-// RBAC 조회 자체가 실패하면(DB 에러) "조회 실패 = legacy 허용"으로 풀어주지 않고
-// 503으로 fail-closed 처리한다(server/lib/rbac-guard.ts의 requirePermission()과
-// 동일한 정책 — 두 번째 "정답"을 만들지 않기 위해 getPrincipalPermissions()/
-// getPrincipalPermissionOverrides()를 그대로 재사용, SQL 중복 구현 없음).
+//      (getPrincipalPermissions()가 role 합집합 ∪ ALLOW override에서 DENY를 이미
+//      제외하고 반환하므로, 여기서 DENY를 다시 확인할 필요가 없다 — 포함 안 되면 DENY)
+//   2. effective permission(role 합집합 ∪ ALLOW override)에 포함되면 → ALLOW
+//   3. 그 외 → DENY (예전의 "legacy 조건 충족 → ALLOW" 3단계는 더 이상 없음)
+// RBAC 조회 자체가 실패하면(DB 에러) 여전히 503으로 fail-closed 처리한다(server/lib/
+// rbac-guard.ts의 requirePermission()과 동일한 정책 — legacy 제거와 무관하게 유지).
 // ─────────────────────────────
 
 // export: scripts/typing-permission-selftest.ts가 동일한 판정 로직을 직접 호출해
-// self-test한다(두 번째 "정답"을 만들지 않기 위해 테스트가 이 함수들을 그대로 재사용).
+// self-test한다(두 번째 "정답"을 만들지 않기 위해 테스트가 이 함수를 그대로 재사용).
 export type TypingPermissionCode = "TYPING_READ" | "TYPING_MANAGE";
 export type TypingPermissionResult = "ALLOW" | "DENY" | "FAIL_CLOSED";
 
 export async function resolveTypingPermission(
   session: any,
   permissionCode: TypingPermissionCode,
-  legacyAllowed: boolean,
 ): Promise<TypingPermissionResult> {
   const principal = resolveSessionPrincipal(session.userType, session.userId);
-  if (!principal) return legacyAllowed ? "ALLOW" : "DENY";
+  if (!principal) return "DENY";
 
   try {
-    const [permissions, overrides] = await Promise.all([
-      getPrincipalPermissions(principal.principalType, principal.principalId),
-      getPrincipalPermissionOverrides(principal.principalType, principal.principalId),
-    ]);
-    if (permissions.includes(permissionCode)) return "ALLOW";
-    const hasExplicitDeny = overrides.some((o) => o.code === permissionCode && o.effect === "DENY");
-    if (hasExplicitDeny) return "DENY";
-    return legacyAllowed ? "ALLOW" : "DENY";
+    const permissions = await getPrincipalPermissions(principal.principalType, principal.principalId);
+    return permissions.includes(permissionCode) ? "ALLOW" : "DENY";
   } catch (error) {
     console.error("TYPING_RBAC_PERMISSION_CHECK_FAILED", {
       permissionCode,
@@ -121,21 +112,6 @@ export async function resolveTypingPermission(
     });
     return "FAIL_CLOSED";
   }
-}
-
-// 기존 requireTypingViewer의 legacy 판정 그대로(dealer 차단 포함) — 변경 없음.
-export async function legacyTypingViewerAllowed(session: any): Promise<boolean> {
-  if (session.userType === "admin" || session.userType === "sales_manager") return true;
-  if (session.userType === "user") {
-    const user = await getStorage().getUserById(session.userId);
-    return !!(user && !user.dealerId && !user.dealerRegistrationId);
-  }
-  return false;
-}
-
-// 기존 requireTypingAdmin의 legacy 판정 그대로(admin만) — 변경 없음.
-export function legacyTypingAdminAllowed(session: any): boolean {
-  return session.userType === "admin";
 }
 
 async function requireTypingViewer(req: any, res: any, next: any) {
@@ -149,8 +125,7 @@ async function requireTypingViewer(req: any, res: any, next: any) {
     return res.status(401).json({ error: "유효하지 않은 세션입니다." });
   }
 
-  const legacyAllowed = await legacyTypingViewerAllowed(session);
-  const result = await resolveTypingPermission(session, "TYPING_READ", legacyAllowed);
+  const result = await resolveTypingPermission(session, "TYPING_READ");
   if (result === "FAIL_CLOSED") {
     return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
   }
@@ -160,7 +135,11 @@ async function requireTypingViewer(req: any, res: any, next: any) {
 
   req.session = session;
   req.sessionToken = sessionId;
-  req.isTypingAdmin = legacyTypingAdminAllowed(session);
+  // isTypingAdmin: GET 응답의 isAdmin 힌트용(§ 결과표시). legacy 제거 이후 "admin이면
+  // true"가 아니라 실제 TYPING_MANAGE effective permission을 그대로 재사용한다 — 두 번째
+  // "정답"을 만들지 않는다. 조회 실패 시에도 fail-closed(false)로 떨어진다.
+  const manageCheck = await resolveTypingPermission(session, "TYPING_MANAGE");
+  req.isTypingAdmin = manageCheck === "ALLOW";
   next();
 }
 
@@ -177,8 +156,7 @@ async function requireTypingAdmin(req: any, res: any, next: any) {
     return res.status(403).json({ error: "관리자 권한이 필요합니다." });
   }
 
-  const legacyAllowed = legacyTypingAdminAllowed(session);
-  const result = await resolveTypingPermission(session, "TYPING_MANAGE", legacyAllowed);
+  const result = await resolveTypingPermission(session, "TYPING_MANAGE");
   if (result === "FAIL_CLOSED") {
     return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
   }
@@ -698,10 +676,9 @@ router.use(
     if (!session) return res.status(401).json({ error: "유효하지 않은 세션입니다." });
 
     // 기존 isInternal/isAdmin 중복 계산 대신 requireTypingViewer/requireTypingAdmin과
-    // 동일한 공유 로직(resolveTypingPermission/legacyTypingViewerAllowed/
-    // legacyTypingAdminAllowed)을 그대로 재사용한다 — 세 번째 "정답"을 만들지 않는다.
-    const legacyViewerAllowed = await legacyTypingViewerAllowed(session);
-    const readResult = await resolveTypingPermission(session, "TYPING_READ", legacyViewerAllowed);
+    // 동일한 공유 로직(resolveTypingPermission)을 그대로 재사용한다 — 세 번째 "정답"을
+    // 만들지 않는다.
+    const readResult = await resolveTypingPermission(session, "TYPING_READ");
     if (readResult === "FAIL_CLOSED") {
       return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
     }
@@ -712,8 +689,7 @@ router.use(
       if (version === "current") {
         return res.status(403).json({ error: "현재 운영 버전은 개발도구로 열 수 없습니다." });
       }
-      const legacyAdminAllowed = legacyTypingAdminAllowed(session);
-      const manageResult = await resolveTypingPermission(session, "TYPING_MANAGE", legacyAdminAllowed);
+      const manageResult = await resolveTypingPermission(session, "TYPING_MANAGE");
       if (manageResult === "FAIL_CLOSED") {
         return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
       }
