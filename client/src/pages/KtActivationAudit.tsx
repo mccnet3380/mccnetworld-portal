@@ -153,11 +153,16 @@ function normalize(v: unknown, key: string): string {
     // '신규개통'만 추가(사용자 승인 — docs/MCC_DEVELOPMENT_LOG.md PROJECT: ACTIVATION_AUDIT
     // 참고). 번호이동측 실제 값(번호이동개통/번이 등)은 이번 조사에서 확인되지 않아 추가하지
     // 않음(추측 금지).
-    if (['1', '10', '010', '신규', '신규개통'].includes(t)) return 'NEW';
+    // MCC_KT_REINSPECTION_ACTIVATION_TYPE_NORMALIZATION_FIX_1: 9월 재검수에서 스프레드시트="신규"
+    // ↔ KT파일="신규가입"이 같은 의미인데도 "값 불일치"로 오탐됨(사용자 확인). '신규가입'만
+    // 기존 신규 그룹에 추가(기존 1/10/010/신규/신규개통 그대로 유지).
+    if (['1', '10', '010', '신규', '신규개통', '신규가입'].includes(t)) return 'NEW';
     // MCC_ACTIVATION_AUDIT_TYPE_3_MNP_NORMALIZATION_1: '3'은 신규 가입유형이 아니라
     // 기존 2/번호이동과 완전히 동일한 번호이동 그룹이다(사용자 승인 — docs/MCC_DEVELOPMENT_LOG.md
     // PROJECT: ACTIVATION_AUDIT 참고). 기존 '2'/'MNP'/'번호이동' 매칭 조건에 '3'만 추가.
-    if (['2', '3', 'MNP', '번호이동'].includes(t)) return 'MNP';
+    // MCC_KT_REINSPECTION_ACTIVATION_TYPE_NORMALIZATION_FIX_1: 같은 이유로 스프레드시트="번호이동"
+    // ↔ KT파일="번호이동가입" 오탐을 없애기 위해 '번호이동가입'만 번호이동 그룹에 추가.
+    if (['2', '3', 'MNP', '번호이동', '번호이동가입'].includes(t)) return 'MNP';
     return t;
   }
   if (key === 'openPlan' || key === 'currentPlan') {
