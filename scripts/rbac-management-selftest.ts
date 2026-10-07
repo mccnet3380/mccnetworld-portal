@@ -89,8 +89,13 @@ async function main() {
     assertEqual("CASE_5: listPermissions returns 35 permissions", permsList.length, 35);
     const typingRead = permsList.find((p) => p.code === "TYPING_READ");
     assertEqual("enforcement registry: TYPING_READ=ENFORCED", typingRead?.enforcementStatus, "ENFORCED");
+    // MCC_TRAINING_PERMISSION_ENFORCEMENT_1에서 server/routes/training.ts에 실제로
+    // 연결되어 ENFORCED로 올라갔다(scripts/training-permission-selftest.ts가 그 enforcement
+    // 자체를 별도로 검증 — 여기서는 레지스트리 상태만 회귀 확인).
     const trainingRead = permsList.find((p) => p.code === "TRAINING_READ");
-    assertEqual("enforcement registry: TRAINING_READ=NOT_ENFORCED", trainingRead?.enforcementStatus, "NOT_ENFORCED");
+    assertEqual("enforcement registry: TRAINING_READ=ENFORCED", trainingRead?.enforcementStatus, "ENFORCED");
+    const trainingManage = permsList.find((p) => p.code === "TRAINING_MANAGE");
+    assertEqual("enforcement registry: TRAINING_MANAGE=ENFORCED", trainingManage?.enforcementStatus, "ENFORCED");
 
     // ── CASE_6: roleCodes=[] 저장 성공 ──────────────────────────────────
     const c6 = await saveRoleAssignment("USER", noRoleWorkerId, []);

@@ -33,7 +33,12 @@ export function TrainingCenter() {
   const apiRequest = useApiRequest();
   const { user } = useAuth();
   const { toast } = useToast();
-  const isAdmin = user?.userType === "admin";
+  // [MCC_TRAINING_PERMISSION_ENFORCEMENT_1] legacy admin은 그대로 유지 + /api/auth/me가
+  // 이미 내려주는 fresh effective permission(server/lib/session-rbac.ts)에 TRAINING_MANAGE
+  // ALLOW가 있으면 비-admin에게도 관리 버튼을 보여준다. 실제 보안 source-of-truth는 여전히
+  // server/routes/training.ts의 requireTrainingAdmin(resolveTrainingPermission)이고, 이 조건은
+  // UX 노출일 뿐이다.
+  const isAdmin = user?.userType === "admin" || !!user?.rbacPermissions?.includes("TRAINING_MANAGE");
 
   const [category, setCategory] = useState<TrainingCategory | "">("");
   const [q, setQ] = useState("");

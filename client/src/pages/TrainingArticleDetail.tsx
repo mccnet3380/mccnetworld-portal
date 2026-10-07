@@ -40,7 +40,9 @@ export function TrainingArticleDetail() {
   const apiRequest = useApiRequest();
   const { user } = useAuth();
   const { toast } = useToast();
-  const isAdmin = user?.userType === "admin";
+  // [MCC_TRAINING_PERMISSION_ENFORCEMENT_1] TrainingCenter.tsx와 동일한 조건 — legacy admin
+  // fallback + effective TRAINING_MANAGE ALLOW. 실제 게이트는 requireTrainingAdmin.
+  const isAdmin = user?.userType === "admin" || !!user?.rbacPermissions?.includes("TRAINING_MANAGE");
 
   const [article, setArticle] = useState<TrainingArticleData | null>(null);
   const [attachments, setAttachments] = useState<AttachmentData[]>([]);

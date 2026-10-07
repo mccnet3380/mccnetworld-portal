@@ -9,8 +9,11 @@
 // 이 파일이 하지 않는 것(명시적으로 범위 밖):
 // - permission CRUD(생성/수정/삭제) — permission registry는 rbac-seed.ts/migration으로만 관리.
 // - role CRUD(생성/수정/삭제) — roles는 조회만. 이미 존재하는 role을 principal에 배정/해제만 한다.
-// - TRAINING_READ/MANAGE, TYPING_READ/MANAGE enforcement 변경 — 이 파일은 기존 enforcement
-//   상태를 "읍어서 보여주기만" 한다(ENFORCEMENT_REGISTRY), 새로 연결하지 않는다.
+// - TYPING_READ/MANAGE enforcement 변경 — 이 파일은 기존 enforcement 상태를 "읍어서
+//   보여주기만" 한다(ENFORCEMENT_REGISTRY), 새로 연결하지 않는다.
+//   (TRAINING_READ/MANAGE는 MCC_TRAINING_PERMISSION_ENFORCEMENT_1에서 server/routes/
+//   training.ts에 실제로 연결되었으므로 ENFORCED로 갱신 — 이 파일 자체가 그 변경은
+//   아니고, 실제 enforcement 변경을 뒤따라 레지스트리만 맞춘 것이다.)
 
 import { and, count, eq, getTableColumns, inArray } from "drizzle-orm";
 import { getDatabase } from "../db";
@@ -57,8 +60,11 @@ export class RbacManagementError extends Error {
 // GET /api/documents 및 export/excel에서 resolveDataScope()로 enforcement) +
 // TYPING_READ/TYPING_MANAGE(server/routes/typing-versions.ts의 legacy-transition
 // 커스텀 가드 — MCC_RBAC_TYPING_PERMISSION_ENFORCEMENT_PRODUCTION_DEPLOYMENT_1로
-// 운영 반영 완료) = 17개 ENFORCED. 나머지는 전부 NOT_ENFORCED(seed만 존재, 어떤
-// 코드 경로도 아직 확인하지 않음 — TRAINING_READ/MANAGE 포함).
+// 운영 반영 완료) = 17개 ENFORCED. TRAINING_READ/TRAINING_MANAGE는
+// MCC_TRAINING_PERMISSION_ENFORCEMENT_1에서 server/routes/training.ts에 동일한
+// legacy-transition 커스텀 가드(resolveTrainingPermission)로 연결 완료 — 19개
+// ENFORCED. 나머지는 전부 NOT_ENFORCED(seed만 존재, 어떤 코드 경로도 아직 확인하지
+// 않음).
 //
 // ROLE_READ/ROLE_MANAGE: 바로 이 파일이 추가하는 OWNER 관리 API 자신이 최초의
 // 실제 enforcement 지점이다(server/routes/rbac-admin.ts가 requirePermission()으로
@@ -87,6 +93,9 @@ const ENFORCEMENT_REGISTRY: Record<string, EnforcementStatus> = {
   // Legacy-transition 커스텀 가드, 운영 반영 완료 (server/routes/typing-versions.ts)
   TYPING_READ: "ENFORCED",
   TYPING_MANAGE: "ENFORCED",
+  // Legacy-transition 커스텀 가드 (server/routes/training.ts, MCC_TRAINING_PERMISSION_ENFORCEMENT_1)
+  TRAINING_READ: "ENFORCED",
+  TRAINING_MANAGE: "ENFORCED",
   // 이 관리 API 자신이 최초 enforcement 지점 (server/routes/rbac-admin.ts)
   ROLE_READ: "ENFORCED",
   ROLE_MANAGE: "ENFORCED",

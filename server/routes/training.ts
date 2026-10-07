@@ -27,10 +27,74 @@ import { getStorage } from "../storage";
 import { getDatabase } from "../db";
 import { trainingArticles, trainingAttachments } from "../../shared/schema";
 import { TRAINING_CATEGORIES, type TrainingCategory } from "../../shared/training-markdown";
+import { getPrincipalPermissions, getPrincipalPermissionOverrides } from "../lib/rbac";
+import { resolveSessionPrincipal } from "../lib/session-rbac";
 
 const router = Router();
 
 const UPLOAD_ROOT = path.join(process.cwd(), "uploads", "training");
+
+// ─────────────────────────────
+// 권한 — MCC_TRAINING_PERMISSION_ENFORCEMENT_1
+//
+// server/routes/typing-versions.ts의 resolveTypingPermission/legacyTypingViewerAllowed/
+// legacyTypingAdminAllowed와 완전히 동일한 legacy-transition 구조를 그대로 재사용한다
+// (두 번째 "정답"을 만들지 않기 위함). 우선순위:
+//   1. 해당 permission에 대한 explicit DENY override가 있으면 → DENY(legacy가 허용해도 우선)
+//   2. effective permission(role 합집합 ∪ ALLOW override, getPrincipalPermissions()가 이미
+//      DENY를 반영한 값)에 포함되면 → ALLOW
+//   3. (1)도 (2)도 해당 없음 + 기존 legacy 조건 충족 → ALLOW (transition 호환)
+//   4. 그 외 → DENY
+// RBAC 조회 자체가 실패하면 503으로 fail-closed 처리한다(typing과 동일 정책).
+//
+// scripts/training-permission-selftest.ts가 이 함수들을 그대로 호출해 self-test한다.
+// ─────────────────────────────
+export type TrainingPermissionCode = "TRAINING_READ" | "TRAINING_MANAGE";
+export type TrainingPermissionResult = "ALLOW" | "DENY" | "FAIL_CLOSED";
+
+export async function resolveTrainingPermission(
+  session: any,
+  permissionCode: TrainingPermissionCode,
+  legacyAllowed: boolean,
+): Promise<TrainingPermissionResult> {
+  const principal = resolveSessionPrincipal(session.userType, session.userId);
+  if (!principal) return legacyAllowed ? "ALLOW" : "DENY";
+
+  try {
+    const [permissions, overrides] = await Promise.all([
+      getPrincipalPermissions(principal.principalType, principal.principalId),
+      getPrincipalPermissionOverrides(principal.principalType, principal.principalId),
+    ]);
+    if (permissions.includes(permissionCode)) return "ALLOW";
+    const hasExplicitDeny = overrides.some((o) => o.code === permissionCode && o.effect === "DENY");
+    if (hasExplicitDeny) return "DENY";
+    return legacyAllowed ? "ALLOW" : "DENY";
+  } catch (error) {
+    console.error("TRAINING_RBAC_PERMISSION_CHECK_FAILED", {
+      permissionCode,
+      principalType: principal.principalType,
+      principalId: principal.principalId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "FAIL_CLOSED";
+  }
+}
+
+// 기존 requireTrainingViewer의 legacy 판정 그대로(admin/sales_manager/내부 WORKER 허용,
+// dealer 차단) — 변경 없음.
+export async function legacyTrainingViewerAllowed(session: any): Promise<boolean> {
+  if (session.userType === "admin" || session.userType === "sales_manager") return true;
+  if (session.userType === "user") {
+    const user = await getStorage().getUserById(session.userId);
+    return !!(user && !user.dealerId && !user.dealerRegistrationId);
+  }
+  return false;
+}
+
+// 기존 requireTrainingAdmin의 legacy 판정 그대로(admin만) — 변경 없음.
+export function legacyTrainingAdminAllowed(session: any): boolean {
+  return session.userType === "admin";
+}
 
 async function requireTrainingViewer(req: any, res: any, next: any) {
   const authHeader = req.headers.authorization;
@@ -43,23 +107,20 @@ async function requireTrainingViewer(req: any, res: any, next: any) {
     return res.status(401).json({ error: "유효하지 않은 세션입니다." });
   }
 
-  if (session.userType === "admin" || session.userType === "sales_manager") {
-    req.session = session;
-    req.isTrainingAdmin = session.userType === "admin";
-    return next();
+  const legacyAllowed = await legacyTrainingViewerAllowed(session);
+  const result = await resolveTrainingPermission(session, "TRAINING_READ", legacyAllowed);
+  if (result === "FAIL_CLOSED") {
+    return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
   }
-
-  if (session.userType === "user") {
-    const user = await getStorage().getUserById(session.userId);
-    if (user && !user.dealerId && !user.dealerRegistrationId) {
-      req.session = session;
-      req.isTrainingAdmin = false;
-      return next();
-    }
+  if (result === "DENY") {
     return res.status(403).json({ error: "접근 권한이 없습니다." });
   }
 
-  return res.status(403).json({ error: "접근 권한이 없습니다." });
+  req.session = session;
+  // isTrainingAdmin은 "초안도 볼 수 있는가"를 가르는 기존 legacy 플래그다(typing의
+  // req.isTypingAdmin과 동일 원칙 — TRAINING_MANAGE enforcement와 별개로 유지, 변경 없음).
+  req.isTrainingAdmin = legacyTrainingAdminAllowed(session);
+  next();
 }
 
 async function requireTrainingAdmin(req: any, res: any, next: any) {
@@ -69,10 +130,23 @@ async function requireTrainingAdmin(req: any, res: any, next: any) {
   }
   const sessionId = authHeader.replace("Bearer ", "");
   const session = await getStorage().getSession(sessionId);
-  if (!session || session.userType !== "admin") {
+  if (!session) {
+    // 기존 requireTrainingAdmin과 동일하게 session-invalid도 403으로 유지한다(회귀 방지 —
+    // requireTrainingViewer는 원래부터 이 경우 401이었으므로 그대로 둔다).
     return res.status(403).json({ error: "관리자 권한이 필요합니다." });
   }
+
+  const legacyAllowed = legacyTrainingAdminAllowed(session);
+  const result = await resolveTrainingPermission(session, "TRAINING_MANAGE", legacyAllowed);
+  if (result === "FAIL_CLOSED") {
+    return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+  }
+  if (result === "DENY") {
+    return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+  }
+
   req.session = session;
+  req.isTrainingAdmin = true;
   next();
 }
 
