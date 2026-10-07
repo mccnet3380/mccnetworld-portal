@@ -45,10 +45,24 @@ function cleanHeader(v: unknown): string {
     .trim();
 }
 
+// MCC_LG_REINSPECTION_PLAN_ALIAS_NORMALIZATION_FIX_1: 우리 스프레드시트와 본사 검수 CSV가
+// 완전히 다른 명명 체계를 쓰는 같은 요금제 쌍을 1:1로 등록한다("L프선)선불데이터10.3G/2" ↔
+// "[SN2]선불정액383(10.3GB+3Mbps)_인스코비", 사용자가 실제 동일 요금제로 확인/승인). 아래
+// 일반 정규화 파이프라인(접두어/접미어 제거)으로는 두 문자열이 전혀 다른 명명 규칙이라
+// 수렴되지 않으므로, 정확히 등록된 원문 문자열만 같은 canonical로 매핑한다 — 부분문자열
+// 포함(.includes)이나 숫자/키워드 추출 기반 fuzzy 매칭이 아니다. 등록되지 않은 유사
+// 요금제(.../1, .../3, 다른 SN코드 등)는 이 맵에 없으므로 기존처럼 서로 다르게 정규화된다.
+const PLAN_ALIASES: Record<string, string> = {
+  'L프선)선불데이터10.3G/2': 'LG_PREPAID_DATA_10_3G_2',
+  '[SN2]선불정액383(10.3GB+3Mbps)_인스코비': 'LG_PREPAID_DATA_10_3G_2',
+};
+
 /** 요금제명 정규화 — 시스템 접두어/채널 접두어/충전개월 표기 제거 후 비교(원본 표시값은 별도 보존) */
 function normalizePlan(v: unknown): string {
-  const s = text(v)
-    .normalize('NFKC')
+  const raw = text(v).normalize('NFKC');
+  const aliased = PLAN_ALIASES[raw];
+  if (aliased) return aliased;
+  const s = raw
     .replace(/^\[[^\]]+\]\s*/, '')
     .replace(/^[^(）)]{1,20}\)\s*/, '')
     .replace(/\/\s*\d+(?:\s*\/\s*\d+)*\s*\/?\s*$/, '');
