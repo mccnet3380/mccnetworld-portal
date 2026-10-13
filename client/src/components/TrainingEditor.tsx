@@ -6,7 +6,7 @@
 // 경량 서브셋 textarea + 실시간 미리보기를 사용한다. TrainingCenter(신규 작성)와
 // TrainingArticleDetail(수정) 양쪽에서 재사용한다.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,10 +15,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useApiRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { renderTrainingContentToHtml, TRAINING_CATEGORIES, TRAINING_CATEGORY_LABEL, type TrainingCategory } from "@shared/training-markdown";
-import { Loader2, Image as ImageIcon, Trash2 } from "lucide-react";
+import { TrainingFormatToolbar } from "@/components/TrainingFormatToolbar";
+import { Loader2, Image as ImageIcon, Trash2, ChevronDown } from "lucide-react";
 
 export interface TrainingArticleData {
   id: number;
@@ -60,6 +62,8 @@ export function TrainingEditor({ open, onClose, article, onSaved }: Props) {
   const [attachments, setAttachments] = useState<AttachmentData[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showSyntaxHelp, setShowSyntaxHelp] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -197,10 +201,27 @@ export function TrainingEditor({ open, onClose, article, onSaved }: Props) {
               <TabsTrigger value="preview">미리보기</TabsTrigger>
             </TabsList>
             <TabsContent value="write" className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                문법: <code># 제목</code> <code>## 소제목</code> <code>**굵게**</code> <code>[!주의] 문구</code> <code>[!경고] 문구</code> <code>[!팁] 문구</code>
-              </p>
-              <Textarea rows={14} value={content} onChange={(e) => setContent(e.target.value)} placeholder="본문을 입력하세요." />
+              <TrainingFormatToolbar textareaRef={textareaRef} content={content} setContent={setContent} />
+              <Textarea
+                ref={textareaRef}
+                rows={14}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="본문을 입력하세요. 위 버튼을 눌러 서식을 적용할 수 있습니다."
+              />
+              <Collapsible open={showSyntaxHelp} onOpenChange={setShowSyntaxHelp}>
+                <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-gray-700">
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showSyntaxHelp ? "rotate-180" : ""}`} />
+                  직접 입력도 가능합니다
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    문법: <code># 제목</code> <code>## 제목</code> <code>### 소제목</code> <code>**굵게**</code> <code>==강조==</code>{" "}
+                    <code>- 목록</code> <code>1. 번호목록</code> <code>&gt; 인용</code> <code>---</code> <code>[텍스트](url)</code>{" "}
+                    <code>[!주의] 문구</code> <code>[!경고] 문구</code> <code>[!팁] 문구</code>
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
               <div className="flex items-center gap-2">
                 <label className="inline-flex items-center gap-1 text-sm px-3 py-1.5 border rounded-md cursor-pointer hover:bg-muted">
                   {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}

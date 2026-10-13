@@ -136,7 +136,7 @@ export function TrainingArticleDetail() {
                   )}
                 </div>
 
-                <div className="mt-4 tc-content" dangerouslySetInnerHTML={{ __html: renderTrainingContentToHtml(article.content) }} />
+                <div className="mt-4 tc-content prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderTrainingContentToHtml(article.content) }} />
               </CardContent>
             </Card>
 

@@ -1,17 +1,21 @@
 // shared/training-markdown.ts
 //
 // 작업명: MCC_TRAINING_CENTER_CHANNEL_SEPARATION_AND_ADMIN_EDITOR_1
+// 작업명: MCC_TRAINING_EDITOR_FORMAT_TOOLBAR_MARKDOWN_RENDER_FIX_1
 //
 // 교육자료 본문 전용 경량 마크다운 서브셋. 리치에디터/마크다운 라이브러리를 새로
-// 추가하지 않기 위해 필요한 문법만 직접 파싱한다(#, ##, **굵게**, 줄바꿈,
-// ![](url) 이미지, [!주의]/[!경고]/[!팁] 한 줄 admonition). 저장값 자체가 항상
+// 추가하지 않기 위해 필요한 문법만 직접 파싱한다(#/##/###, **굵게**, ==강조==,
+// 줄바꿈, ![](url) 이미지, [!주의]/[!경고]/[!팁] 한 줄 admonition, -/* 글머리
+// 목록, 1. 번호 목록, > 인용, --- 구분선, [text](url) 링크). 저장값 자체가 항상
 // 이 서브셋뿐이라 임의 HTML이 DB에 들어갈 수 없다 — 별도 sanitize 없이도 XSS 표면이
-// 구조적으로 없다(렌더러가 이스케이프 후 자신이 아는 태그만 삽입).
+// 구조적으로 없다(렌더러가 이스케이프 후 자신이 아는 태그만 삽입, 링크 href는
+// http(s)/mailto/상대경로 스킴만 허용).
 
 export interface TrainingBlock {
-  type: "h1" | "h2" | "p" | "image" | "note" | "warning" | "tip";
+  type: "h1" | "h2" | "h3" | "p" | "image" | "note" | "warning" | "tip" | "ul" | "ol" | "quote" | "hr";
   text?: string;
   src?: string;
+  items?: string[];
 }
 
 function escapeHtml(s: string): string {
@@ -22,22 +26,40 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** **굵게**만 지원하는 인라인 변환(이스케이프 이후 적용). */
+/** 링크 href로 허용할 스킴만 통과시킨다(javascript: 등 차단). */
+function isSafeUrl(url: string): boolean {
+  return /^(https?:\/\/|mailto:|\/|#)/i.test(url.trim());
+}
+
+/** **굵게** / ==강조== / [텍스트](url)를 지원하는 인라인 변환(이스케이프 이후 적용). */
 function inlineToHtml(escaped: string): string {
-  return escaped.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  let out = escaped.replace(/\[([^[\]]+)\]\(([^()\s]+)\)/g, (whole, text, url) => {
+    if (!isSafeUrl(url)) return whole;
+    return `<a class="tc-link" href="${url}" target="_blank" rel="noreferrer noopener">${text}</a>`;
+  });
+  out = out.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  out = out.replace(/==(.+?)==/g, '<mark class="tc-mark">$1</mark>');
+  return out;
 }
 
 /** 본문 텍스트를 줄 단위 블록으로 분해한다(저장/검색/렌더링 공용). */
 export function parseTrainingContent(content: string): TrainingBlock[] {
   const lines = (content || "").split(/\r?\n/);
   const blocks: TrainingBlock[] = [];
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (line.trim() === "") continue;
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trimEnd();
+
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
 
     const img = line.match(/^!\[\]\(([^)]+)\)$/);
     if (img) {
       blocks.push({ type: "image", src: img[1] });
+      i++;
       continue;
     }
 
@@ -45,19 +67,64 @@ export function parseTrainingContent(content: string): TrainingBlock[] {
     if (note) {
       const kind = note[1] === "경고" ? "warning" : note[1] === "팁" ? "tip" : "note";
       blocks.push({ type: kind as "note" | "warning" | "tip", text: note[2] });
+      i++;
       continue;
     }
 
+    if (/^-{3,}$/.test(line.trim())) {
+      blocks.push({ type: "hr" });
+      i++;
+      continue;
+    }
+
+    if (line.startsWith("### ")) {
+      blocks.push({ type: "h3", text: line.slice(4) });
+      i++;
+      continue;
+    }
     if (line.startsWith("## ")) {
       blocks.push({ type: "h2", text: line.slice(3) });
+      i++;
       continue;
     }
     if (line.startsWith("# ")) {
       blocks.push({ type: "h1", text: line.slice(2) });
+      i++;
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^[-*]\s+/.test(lines[i].trimEnd())) {
+        items.push(lines[i].trimEnd().replace(/^[-*]\s+/, ""));
+        i++;
+      }
+      blocks.push({ type: "ul", items });
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i].trimEnd())) {
+        items.push(lines[i].trimEnd().replace(/^\d+\.\s+/, ""));
+        i++;
+      }
+      blocks.push({ type: "ol", items });
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && /^>\s?/.test(lines[i].trimEnd())) {
+        quoteLines.push(lines[i].trimEnd().replace(/^>\s?/, ""));
+        i++;
+      }
+      blocks.push({ type: "quote", text: quoteLines.join("\n") });
       continue;
     }
 
     blocks.push({ type: "p", text: line });
+    i++;
   }
   return blocks;
 }
@@ -65,9 +132,10 @@ export function parseTrainingContent(content: string): TrainingBlock[] {
 /** 검색용 순수 텍스트만 뽑는다(이미지/문법 기호 제외). */
 export function trainingContentToPlainText(content: string): string {
   return parseTrainingContent(content)
-    .map((b) => b.text || "")
+    .map((b) => (b.items && b.items.length ? b.items.join(" ") : b.text || ""))
     .join(" ")
     .replace(/\*\*/g, "")
+    .replace(/==/g, "")
     .trim();
 }
 
@@ -80,6 +148,8 @@ export function renderTrainingContentToHtml(content: string): string {
           return `<h3 class="tc-h1">${inlineToHtml(escapeHtml(b.text || ""))}</h3>`;
         case "h2":
           return `<h4 class="tc-h2">${inlineToHtml(escapeHtml(b.text || ""))}</h4>`;
+        case "h3":
+          return `<h5 class="tc-h3">${inlineToHtml(escapeHtml(b.text || ""))}</h5>`;
         case "image":
           return `<img class="tc-img" src="${escapeHtml(b.src || "")}" loading="lazy" />`;
         case "note":
@@ -88,9 +158,29 @@ export function renderTrainingContentToHtml(content: string): string {
           return `<div class="tc-warning">${inlineToHtml(escapeHtml(b.text || ""))}</div>`;
         case "tip":
           return `<div class="tc-tip">${inlineToHtml(escapeHtml(b.text || ""))}</div>`;
+        case "hr":
+          return `<hr class="tc-hr" />`;
+        case "quote": {
+          const html = (b.text || "")
+            .split("\n")
+            .map((l) => inlineToHtml(escapeHtml(l)))
+            .join("<br/>");
+          return `<blockquote class="tc-quote">${html}</blockquote>`;
+        }
+        case "ul": {
+          const items = (b.items || []).map((it) => `<li>${inlineToHtml(escapeHtml(it))}</li>`).join("");
+          return `<ul class="tc-ul">${items}</ul>`;
+        }
+        case "ol": {
+          const items = (b.items || []).map((it) => `<li>${inlineToHtml(escapeHtml(it))}</li>`).join("");
+          return `<ol class="tc-ol">${items}</ol>`;
+        }
         case "p":
-        default:
-          return `<p class="tc-p">${inlineToHtml(escapeHtml(b.text || ""))}</p>`;
+        default: {
+          const text = b.text || "";
+          const cls = text.startsWith("✓ ") ? "tc-p tc-check" : "tc-p";
+          return `<p class="${cls}">${inlineToHtml(escapeHtml(text))}</p>`;
+        }
       }
     })
     .join("\n");
