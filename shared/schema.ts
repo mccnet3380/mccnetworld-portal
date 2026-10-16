@@ -1440,6 +1440,31 @@ export type InsertTrainingArticle = typeof trainingArticles.$inferInsert;
 export type TrainingAttachment = typeof trainingAttachments.$inferSelect;
 export type InsertTrainingAttachment = typeof trainingAttachments.$inferInsert;
 
+// [MCC_TRAINING_PERSONAL_ORDER_AND_ATTACHMENT_UPLOAD_FIX_1] 로그인 principal별 교육자료
+// 목록 개인 순서. userRoles/userPermissionOverrides와 동일한 polymorphic principal 구조
+// (principalType + principalId, DB FK 없음)를 그대로 재사용한다 — 두 번째 "정답"을 만들지
+// 않기 위함. 전역 training_articles.sort_order(관리자 노출순서)는 그대로 GLOBAL DEFAULT로
+// 유지되고, 이 테이블에 row가 있는 principal에게만 그 순서를 우선 적용한다.
+export const trainingArticleUserOrders = pgTable("training_article_user_orders", {
+  id: serial("id").primaryKey(),
+  principalType: varchar("principal_type", { length: 20 }).notNull(),
+  principalId: integer("principal_id").notNull(),
+  articleId: integer("article_id").notNull().references(() => trainingArticles.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("training_article_user_orders_principal_article_uidx").on(
+    table.principalType,
+    table.principalId,
+    table.articleId,
+  ),
+  index("training_article_user_orders_principal_idx").on(table.principalType, table.principalId),
+]);
+
+export type TrainingArticleUserOrder = typeof trainingArticleUserOrders.$inferSelect;
+export type InsertTrainingArticleUserOrder = typeof trainingArticleUserOrders.$inferInsert;
+
 //===============================================
 // MCC_SIDEBAR_MENU_VISIBILITY_ADMIN_CONTROL_1
 // 사이드바 메뉴 "표시/숨김" 설정만 저장한다 — 기존 권한(ROLE) 체크와는 별개이며,

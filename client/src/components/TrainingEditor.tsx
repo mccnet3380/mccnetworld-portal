@@ -20,6 +20,7 @@ import { useApiRequest } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { renderTrainingContentToHtml, TRAINING_CATEGORIES, TRAINING_CATEGORY_LABEL, type TrainingCategory } from "@shared/training-markdown";
 import { TrainingFormatToolbar } from "@/components/TrainingFormatToolbar";
+import { TrainingContentView } from "@/components/TrainingContentView";
 import { Loader2, Image as ImageIcon, Trash2, ChevronDown } from "lucide-react";
 
 export interface TrainingArticleData {
@@ -246,7 +247,7 @@ export function TrainingEditor({ open, onClose, article, onSaved }: Props) {
               )}
             </TabsContent>
             <TabsContent value="preview">
-              <div className="border rounded-md p-4 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderTrainingContentToHtml(content) }} />
+              <TrainingContentView className="border rounded-md p-4 prose prose-sm max-w-none" html={renderTrainingContentToHtml(content)} />
             </TabsContent>
           </Tabs>
         </div>

@@ -21,10 +21,10 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { getStorage } from "../storage";
 import { getDatabase } from "../db";
-import { trainingArticles, trainingAttachments } from "../../shared/schema";
+import { trainingArticles, trainingAttachments, trainingArticleUserOrders } from "../../shared/schema";
 import { TRAINING_CATEGORIES, type TrainingCategory } from "../../shared/training-markdown";
 import { getPrincipalPermissions } from "../lib/rbac";
 import { resolveSessionPrincipal } from "../lib/session-rbac";
@@ -98,6 +98,10 @@ async function requireTrainingViewer(req: any, res: any, next: any) {
   // fail-closed(false)로 떨어진다.
   const manageCheck = await resolveTrainingPermission(session, "TRAINING_MANAGE");
   req.isTrainingAdmin = manageCheck === "ALLOW";
+  // [MCC_TRAINING_PERSONAL_ORDER_AND_ATTACHMENT_UPLOAD_FIX_1] 개인 순서 API는 body가 아니라
+  // 항상 이 session principal만 신뢰한다 — resolveTrainingPermission 안에서 이미 계산한
+  // 값과 동일한 resolver를 재사용(두 번째 "정답"을 만들지 않는다).
+  req.trainingPrincipal = resolveSessionPrincipal(session.userType, session.userId);
   next();
 }
 
@@ -189,6 +193,26 @@ const upload = multer({
 
 // ── Read (viewer) ────────────────────────────────────────────────────
 
+// [MCC_TRAINING_PERSONAL_ORDER_AND_ATTACHMENT_UPLOAD_FIX_1] 전역 노출순서(pinned/sortOrder/
+// updatedAt)는 그대로 GLOBAL DEFAULT로 유지하면서, 그 "안에서"만 개인 순서를 우선 적용한다.
+// pinned 그룹을 항상 최상위로 보존(§ 계획 4 — 기존 고정 기능의 의미 보존)하고, 각 그룹
+// 내부에서 "개인 순서가 있는 article 먼저(그 순서대로) + 개인 순서가 없는 article은 기존
+// 전역 순서 그대로 뒤에 붙인다"(§ 계획 9/10 — 신규 article을 숨기지 않는다).
+function applyPersonalOrder<T extends { id: number; isPinned: boolean }>(
+  rows: T[],
+  personalOrderMap: Map<number, number>,
+): T[] {
+  function reorderGroup(group: T[]): T[] {
+    const withPersonal = group.filter((r) => personalOrderMap.has(r.id));
+    const withoutPersonal = group.filter((r) => !personalOrderMap.has(r.id));
+    withPersonal.sort((a, b) => (personalOrderMap.get(a.id)! - personalOrderMap.get(b.id)!));
+    return [...withPersonal, ...withoutPersonal];
+  }
+  const pinned = rows.filter((r) => r.isPinned);
+  const unpinned = rows.filter((r) => !r.isPinned);
+  return [...reorderGroup(pinned), ...reorderGroup(unpinned)];
+}
+
 router.get("/api/training/articles", requireTrainingViewer, async (req: any, res) => {
   try {
     const db = await getDatabase();
@@ -213,15 +237,34 @@ router.get("/api/training/articles", requireTrainingViewer, async (req: any, res
       .where(and(...conditions))
       .orderBy(desc(trainingArticles.isPinned), trainingArticles.sortOrder, desc(trainingArticles.updatedAt));
 
+    let hasPersonalOrder = false;
+    let ordered = rows;
+    if (req.trainingPrincipal) {
+      const personalRows = await db
+        .select()
+        .from(trainingArticleUserOrders)
+        .where(
+          and(
+            eq(trainingArticleUserOrders.principalType, req.trainingPrincipal.principalType),
+            eq(trainingArticleUserOrders.principalId, req.trainingPrincipal.principalId),
+          ),
+        );
+      if (personalRows.length > 0) {
+        hasPersonalOrder = true;
+        const personalOrderMap = new Map(personalRows.map((p) => [p.articleId, p.sortOrder]));
+        ordered = applyPersonalOrder(rows, personalOrderMap);
+      }
+    }
+
     const filtered = q
-      ? rows.filter((r) => {
+      ? ordered.filter((r) => {
           const hay = `${r.title} ${r.summary ?? ""} ${r.content}`.toLowerCase();
           return hay.includes(q.toLowerCase());
         })
-      : rows;
+      : ordered;
 
     res.set("Cache-Control", "no-store");
-    res.json({ articles: filtered });
+    res.json({ articles: filtered, hasPersonalOrder });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -287,6 +330,119 @@ router.get("/api/training/attachments/:id/file", requireTrainingViewer, async (r
     res.setHeader("Content-Type", attachment.mimeType);
     res.setHeader("Content-Disposition", `${disposition}; filename="${encodeURIComponent(attachment.originalName)}"`);
     fs.createReadStream(absPath).pipe(res);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── 개인 순서(self-only) ─────────────────────────────────────────────
+// [MCC_TRAINING_PERSONAL_ORDER_AND_ATTACHMENT_UPLOAD_FIX_1]
+// TRAINING_MANAGE 권한과 무관하게, TRAINING_READ로 교육자료를 볼 수 있는 principal이면
+// 누구나(ADMIN/USER/SALES_MANAGER 전부) 자기 자신의 개인 순서만 설정할 수 있다.
+// principalType/principalId는 절대 request body에서 받지 않는다 — 항상 requireTrainingViewer가
+// session에서 계산해 둔 req.trainingPrincipal만 사용한다(다른 사람 순서를 바꿀 방법이 구조적으로
+// 없다).
+
+const MAX_USER_ORDER_IDS = 2000;
+
+router.get("/api/training/user-order", requireTrainingViewer, async (req: any, res) => {
+  try {
+    const db = await getDatabase();
+    const rows = await db
+      .select()
+      .from(trainingArticleUserOrders)
+      .where(
+        and(
+          eq(trainingArticleUserOrders.principalType, req.trainingPrincipal.principalType),
+          eq(trainingArticleUserOrders.principalId, req.trainingPrincipal.principalId),
+        ),
+      )
+      .orderBy(trainingArticleUserOrders.sortOrder);
+
+    res.set("Cache-Control", "no-store");
+    res.json({ articleIds: rows.map((r) => r.articleId) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/api/training/user-order", requireTrainingViewer, async (req: any, res) => {
+  const { articleIds } = req.body || {};
+  if (!Array.isArray(articleIds)) {
+    return res.status(400).json({ error: "articleIds는 배열이어야 합니다." });
+  }
+  if (articleIds.length > MAX_USER_ORDER_IDS) {
+    return res.status(400).json({ error: "articleIds가 너무 많습니다." });
+  }
+  if (!articleIds.every((v) => Number.isInteger(v))) {
+    return res.status(400).json({ error: "articleIds는 정수만 포함해야 합니다." });
+  }
+  if (new Set(articleIds).size !== articleIds.length) {
+    return res.status(400).json({ error: "articleIds에 중복된 값이 있습니다." });
+  }
+
+  try {
+    const db = await getDatabase();
+
+    if (articleIds.length > 0) {
+      // 현재 principal이 실제로 볼 수 없는(삭제됨/비공개 초안) article이 섞여 들어오는 것을
+      // 막는다 — req.isTrainingAdmin이 아니면 PUBLISHED만 허용.
+      const visibleConditions = [isNull(trainingArticles.deletedAt), inArray(trainingArticles.id, articleIds)];
+      if (!req.isTrainingAdmin) visibleConditions.push(eq(trainingArticles.status, "PUBLISHED"));
+
+      const visibleRows = await db
+        .select({ id: trainingArticles.id })
+        .from(trainingArticles)
+        .where(and(...visibleConditions));
+      const visibleIds = new Set(visibleRows.map((r) => r.id));
+
+      if (visibleIds.size !== articleIds.length) {
+        return res.status(400).json({ error: "존재하지 않거나 접근할 수 없는 교육자료가 포함되어 있습니다." });
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(trainingArticleUserOrders)
+        .where(
+          and(
+            eq(trainingArticleUserOrders.principalType, req.trainingPrincipal.principalType),
+            eq(trainingArticleUserOrders.principalId, req.trainingPrincipal.principalId),
+          ),
+        );
+
+      if (articleIds.length > 0) {
+        await tx.insert(trainingArticleUserOrders).values(
+          articleIds.map((articleId: number, index: number) => ({
+            principalType: req.trainingPrincipal.principalType,
+            principalId: req.trainingPrincipal.principalId,
+            articleId,
+            sortOrder: index,
+          })),
+        );
+      }
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 기본 순서로 초기화 — 해당 principal의 개인 순서 row를 전부 삭제한다. 다른 사람에게는
+// 영향 없음(principal 기준 delete).
+router.delete("/api/training/user-order", requireTrainingViewer, async (req: any, res) => {
+  try {
+    const db = await getDatabase();
+    await db
+      .delete(trainingArticleUserOrders)
+      .where(
+        and(
+          eq(trainingArticleUserOrders.principalType, req.trainingPrincipal.principalType),
+          eq(trainingArticleUserOrders.principalId, req.trainingPrincipal.principalId),
+        ),
+      );
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

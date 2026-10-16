@@ -14,8 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { useApiRequest, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { TrainingEditor, type TrainingArticleData } from "@/components/TrainingEditor";
+import { TrainingContentView } from "@/components/TrainingContentView";
 import { renderTrainingContentToHtml, TRAINING_CATEGORY_LABEL, type TrainingCategory } from "@shared/training-markdown";
-import { ArrowLeft, Edit, Trash2, Pin, FileText, Download, Video, File as FileIcon } from "lucide-react";
+import { fetchTrainingAttachmentBlobUrl, triggerBlobDownload } from "@/lib/trainingAttachmentBlob";
+import { ArrowLeft, Edit, Trash2, Pin, FileText, Download, Video, File as FileIcon, Loader2 } from "lucide-react";
 
 interface AttachmentData {
   id: number;
@@ -49,6 +51,10 @@ export function TrainingArticleDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
+  // [MCC_TRAINING_PERSONAL_ORDER_AND_ATTACHMENT_UPLOAD_FIX_1] VIDEO/PDF도 IMAGE와 동일하게
+  // requireTrainingViewer(Authorization 헤더)로 보호되어 있어 <video src>/<iframe src>에
+  // 바로 넣으면 깨진다 — 인증된 fetch로 blob을 받아 둔 뒤 그 blob URL만 넣는다.
+  const [blobUrls, setBlobUrls] = useState<Record<number, string>>({});
 
   async function load() {
     setLoading(true);
@@ -68,6 +74,40 @@ export function TrainingArticleDetail() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const createdUrls: string[] = [];
+    const previewable = attachments.filter((a) => a.attachmentType === "VIDEO" || a.attachmentType === "PDF");
+
+    previewable.forEach((a) => {
+      fetchTrainingAttachmentBlobUrl(a.id)
+        .then((url) => {
+          if (cancelled) {
+            URL.revokeObjectURL(url);
+            return;
+          }
+          createdUrls.push(url);
+          setBlobUrls((prev) => ({ ...prev, [a.id]: url }));
+        })
+        .catch(() => {});
+    });
+
+    return () => {
+      cancelled = true;
+      createdUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachments]);
+
+  async function handleAttachmentDownload(a: AttachmentData) {
+    try {
+      const url = blobUrls[a.id] || (await fetchTrainingAttachmentBlobUrl(a.id));
+      triggerBlobDownload(url, a.originalName);
+    } catch (e: any) {
+      toast({ title: "다운로드 실패", description: e.message, variant: "destructive" });
+    }
+  }
 
   async function handleDelete() {
     if (!article || !confirm(`"${article.title}"을(를) 삭제하시겠습니까?`)) return;
@@ -136,7 +176,7 @@ export function TrainingArticleDetail() {
                   )}
                 </div>
 
-                <div className="mt-4 tc-content prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderTrainingContentToHtml(article.content) }} />
+                <TrainingContentView className="mt-4 tc-content prose prose-sm max-w-none" html={renderTrainingContentToHtml(article.content)} />
               </CardContent>
             </Card>
 
@@ -145,25 +185,46 @@ export function TrainingArticleDetail() {
                 <CardContent className="py-4">
                   <h3 className="text-sm font-semibold mb-3">첨부자료</h3>
                   <div className="space-y-3">
-                    {others.map((a) => (
-                      <div key={a.id} className="border rounded-md p-3">
-                        {a.attachmentType === "VIDEO" && (
-                          <video controls className="w-full max-h-[420px] rounded-md mb-2" src={`/api/training/attachments/${a.id}/file`} />
-                        )}
-                        {a.attachmentType === "PDF" && (
-                          <iframe title={a.originalName} src={`/api/training/attachments/${a.id}/file`} className="w-full h-[500px] rounded-md mb-2 border" />
-                        )}
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="flex items-center gap-1.5 text-muted-foreground">
-                            {a.attachmentType === "VIDEO" ? <Video className="h-4 w-4" /> : a.attachmentType === "PDF" ? <FileText className="h-4 w-4" /> : <FileIcon className="h-4 w-4" />}
-                            {a.originalName} · {(a.fileSize / 1024 / 1024).toFixed(2)}MB
-                          </span>
-                          <a href={`/api/training/attachments/${a.id}/file`} target="_blank" rel="noreferrer" download={a.originalName}>
-                            <Button size="sm" variant="ghost"><Download className="h-3.5 w-3.5" /></Button>
-                          </a>
+                    {others.map((a) => {
+                      const blobUrl = blobUrls[a.id];
+                      const isPreviewType = a.attachmentType === "VIDEO" || a.attachmentType === "PDF";
+                      return (
+                        <div key={a.id} className="border rounded-md p-3">
+                          {a.attachmentType === "VIDEO" && (
+                            blobUrl ? (
+                              <video controls className="w-full max-h-[420px] rounded-md mb-2" src={blobUrl} />
+                            ) : (
+                              <div className="w-full h-[120px] rounded-md mb-2 border flex items-center justify-center text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin mr-1" />불러오는 중...
+                              </div>
+                            )
+                          )}
+                          {a.attachmentType === "PDF" && (
+                            blobUrl ? (
+                              <iframe title={a.originalName} src={blobUrl} className="w-full h-[500px] rounded-md mb-2 border" />
+                            ) : (
+                              <div className="w-full h-[120px] rounded-md mb-2 border flex items-center justify-center text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin mr-1" />불러오는 중...
+                              </div>
+                            )
+                          )}
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                              {a.attachmentType === "VIDEO" ? <Video className="h-4 w-4" /> : a.attachmentType === "PDF" ? <FileText className="h-4 w-4" /> : <FileIcon className="h-4 w-4" />}
+                              {a.originalName} · {(a.fileSize / 1024 / 1024).toFixed(2)}MB
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={isPreviewType && !blobUrl}
+                              onClick={() => handleAttachmentDownload(a)}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
